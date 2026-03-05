@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
+use App\Domain\Telemetry\Services\TelemetryLogRecorder;
 use Database\Seeders\DeviceSchemaSeeder;
 use Database\Seeders\DeviceTelemetrySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -73,4 +74,31 @@ it('seeds one month of 15-minute energy meter telemetry with an incrementing cou
 
     expect($states)->not->toBe([])
         ->and(array_diff($states, ['idle', 'normal', 'fault']))->toBe([]);
+});
+
+it('temporarily disables broadcasting while generating telemetry history', function (): void {
+    config(['broadcasting.default' => 'reverb']);
+
+    $broadcastConnections = [];
+
+    $recorder = \Mockery::mock(TelemetryLogRecorder::class);
+    $recorder->shouldReceive('record')
+        ->atLeast()
+        ->once()
+        ->andReturnUsing(function () use (&$broadcastConnections): DeviceTelemetryLog {
+            $broadcastConnections[] = (string) config('broadcasting.default');
+
+            return new DeviceTelemetryLog;
+        });
+
+    app()->instance(TelemetryLogRecorder::class, $recorder);
+
+    $this->seed([
+        DeviceSchemaSeeder::class,
+        DeviceTelemetrySeeder::class,
+    ]);
+
+    expect($broadcastConnections)->not->toBe([])
+        ->and(array_values(array_unique($broadcastConnections)))->toBe(['null'])
+        ->and(config('broadcasting.default'))->toBe('reverb');
 });

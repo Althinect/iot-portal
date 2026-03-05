@@ -220,7 +220,7 @@ final readonly class DeviceCommandDispatcher
 
     private function publishToMqttWithRetry(string $mqttTopic, string $payload, string $host, int $port, int $commandLogId): void
     {
-        for ($attempt = 1; $attempt <= self::MAX_MQTT_PUBLISH_ATTEMPTS; $attempt++) {
+        foreach (range(1, self::MAX_MQTT_PUBLISH_ATTEMPTS) as $attempt) {
             try {
                 $this->mqttPublisher->publish($mqttTopic, $payload, $host, $port);
 

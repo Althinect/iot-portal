@@ -67,65 +67,72 @@ class DeviceTelemetrySeeder extends Seeder
         $bar = $this->command->getOutput()->createProgressBar($totalSteps);
         $bar->start();
 
-        while ($currentDate->lessThanOrEqualTo($now)) {
-            $hour = (int) $currentDate->format('H');
-            $isWeekend = in_array((int) $currentDate->format('N'), [6, 7], true);
-            $baseLoad = ($hour >= 7 && $hour <= 19) ? 1.0 : 0.45;
-            $loadMultiplier = $isWeekend ? $baseLoad * 0.7 : $baseLoad;
-            $randomNoise = rand(90, 110) / 100;
+        $defaultBroadcastConnection = config('broadcasting.default');
+        config(['broadcasting.default' => 'null']);
 
-            $v1 = round(230 + (rand(-35, 35) / 10), 2);
-            $v2 = round(229 + (rand(-35, 35) / 10), 2);
-            $v3 = round(231 + (rand(-35, 35) / 10), 2);
+        try {
+            while ($currentDate->lessThanOrEqualTo($now)) {
+                $hour = (int) $currentDate->format('H');
+                $isWeekend = in_array((int) $currentDate->format('N'), [6, 7], true);
+                $baseLoad = ($hour >= 7 && $hour <= 19) ? 1.0 : 0.45;
+                $loadMultiplier = $isWeekend ? $baseLoad * 0.7 : $baseLoad;
+                $randomNoise = rand(90, 110) / 100;
 
-            $a1 = round(max(0.2, (44 * $loadMultiplier * $randomNoise) + (rand(-20, 20) / 10)), 2);
-            $a2 = round(max(0.2, (39 * $loadMultiplier * $randomNoise) + (rand(-20, 20) / 10)), 2);
-            $a3 = round(max(0.2, (47 * $loadMultiplier * $randomNoise) + (rand(-20, 20) / 10)), 2);
+                $v1 = round(230 + (rand(-35, 35) / 10), 2);
+                $v2 = round(229 + (rand(-35, 35) / 10), 2);
+                $v3 = round(231 + (rand(-35, 35) / 10), 2);
 
-            $powerFactor = rand(87, 98) / 100;
-            $totalPowerWatts = (($v1 * $a1) + ($v2 * $a2) + ($v3 * $a3)) * $powerFactor;
-            $intervalHours = $stepMinutes / 60;
-            $totalEnergyKwh = round($totalEnergyKwh + (($totalPowerWatts / 1000) * $intervalHours), 3);
+                $a1 = round(max(0.2, (44 * $loadMultiplier * $randomNoise) + (rand(-20, 20) / 10)), 2);
+                $a2 = round(max(0.2, (39 * $loadMultiplier * $randomNoise) + (rand(-20, 20) / 10)), 2);
+                $a3 = round(max(0.2, (47 * $loadMultiplier * $randomNoise) + (rand(-20, 20) / 10)), 2);
 
-            $meterState = match (true) {
-                max($a1, $a2, $a3) > 75 => 'fault',
-                $totalPowerWatts < 8000 => 'idle',
-                default => 'normal',
-            };
+                $powerFactor = rand(87, 98) / 100;
+                $totalPowerWatts = (($v1 * $a1) + ($v2 * $a2) + ($v3 * $a3)) * $powerFactor;
+                $intervalHours = $stepMinutes / 60;
+                $totalEnergyKwh = round($totalEnergyKwh + (($totalPowerWatts / 1000) * $intervalHours), 3);
 
-            if (rand(1, 200) === 1) {
-                $meterState = 'fault';
+                $meterState = match (true) {
+                    max($a1, $a2, $a3) > 75 => 'fault',
+                    $totalPowerWatts < 8000 => 'idle',
+                    default => 'normal',
+                };
+
+                if (rand(1, 200) === 1) {
+                    $meterState = 'fault';
+                }
+
+                $payload = [
+                    'voltages' => [
+                        'V1' => $v1,
+                        'V2' => $v2,
+                        'V3' => $v3,
+                    ],
+                    'currents' => [
+                        'A1' => $a1,
+                        'A2' => $a2,
+                        'A3' => $a3,
+                    ],
+                    'energy' => [
+                        'total_energy_kwh' => $totalEnergyKwh,
+                    ],
+                    'status' => [
+                        'meter_state' => $meterState,
+                    ],
+                ];
+
+                $this->recorder->record(
+                    device: $device,
+                    payload: $payload,
+                    recordedAt: $currentDate->copy(),
+                    receivedAt: $currentDate->copy()->addSeconds(rand(1, 5)),
+                    topicSuffix: 'telemetry',
+                );
+
+                $currentDate->addMinutes($stepMinutes);
+                $bar->advance();
             }
-
-            $payload = [
-                'voltages' => [
-                    'V1' => $v1,
-                    'V2' => $v2,
-                    'V3' => $v3,
-                ],
-                'currents' => [
-                    'A1' => $a1,
-                    'A2' => $a2,
-                    'A3' => $a3,
-                ],
-                'energy' => [
-                    'total_energy_kwh' => $totalEnergyKwh,
-                ],
-                'status' => [
-                    'meter_state' => $meterState,
-                ],
-            ];
-
-            $this->recorder->record(
-                device: $device,
-                payload: $payload,
-                recordedAt: $currentDate->copy(),
-                receivedAt: $currentDate->copy()->addSeconds(rand(1, 5)),
-                topicSuffix: 'telemetry',
-            );
-
-            $currentDate->addMinutes($stepMinutes);
-            $bar->advance();
+        } finally {
+            config(['broadcasting.default' => $defaultBroadcastConnection]);
         }
 
         $bar->finish();
