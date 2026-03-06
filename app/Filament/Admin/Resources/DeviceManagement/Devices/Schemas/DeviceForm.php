@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Admin\Resources\DeviceManagement\Devices\Schemas;
 
+use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
 use Filament\Forms\Components\KeyValue;
@@ -15,6 +16,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
+use Illuminate\Support\Str;
 
 class DeviceForm
 {
@@ -127,10 +129,35 @@ class DeviceForm
                             ->label('Is Active')
                             ->default(true),
 
-                        TextInput::make('connection_state')
+                        Placeholder::make('effective_connection_state')
                             ->label('Connection State')
-                            ->disabled()
-                            ->placeholder('Unknown'),
+                            ->content(fn (?Device $record): string => $record ? Str::headline($record->effectiveConnectionState()) : 'Unknown'),
+
+                        TextInput::make('presence_timeout_seconds')
+                            ->label('Presence Timeout (seconds)')
+                            ->numeric()
+                            ->integer()
+                            ->minValue(60)
+                            ->maxValue(86400)
+                            ->live()
+                            ->placeholder('Global fallback (300 seconds)')
+                            ->dehydrateStateUsing(fn (mixed $state): ?int => is_numeric($state) ? (int) $state : null)
+                            ->helperText('Blank uses the global fallback of 300 seconds.'),
+
+                        Placeholder::make('effective_presence_timeout')
+                            ->label('Effective Timeout')
+                            ->content(function (Get $get, ?Device $record): string {
+                                $configuredTimeout = config('iot.presence.heartbeat_timeout_seconds', 300);
+                                $fallbackTimeoutSeconds = is_numeric($configuredTimeout) && (int) $configuredTimeout > 0
+                                    ? (int) $configuredTimeout
+                                    : 300;
+                                $override = $get('presence_timeout_seconds');
+                                $effectiveTimeoutSeconds = is_numeric($override) && (int) $override >= 60
+                                    ? (int) $override
+                                    : ($record?->presenceTimeoutSeconds() ?? $fallbackTimeoutSeconds);
+
+                                return "{$effectiveTimeoutSeconds} seconds";
+                            }),
 
                         TextInput::make('last_seen_at')
                             ->label('Last Seen At')

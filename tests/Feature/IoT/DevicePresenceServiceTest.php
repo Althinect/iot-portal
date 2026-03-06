@@ -6,6 +6,7 @@ use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Services\DevicePresenceService;
 use App\Events\DeviceConnectionChanged;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 
 uses(RefreshDatabase::class);
@@ -14,38 +15,49 @@ beforeEach(function (): void {
     $this->service = app(DevicePresenceService::class);
 });
 
+afterEach(function (): void {
+    Carbon::setTestNow();
+});
+
 it('marks a device online and broadcasts when transitioning from offline', function (): void {
     Event::fake([DeviceConnectionChanged::class]);
+    Carbon::setTestNow(Carbon::parse('2026-03-05 12:00:00'));
+    config()->set('iot.presence.heartbeat_timeout_seconds', 300);
 
     $device = Device::factory()->create([
         'connection_state' => 'offline',
         'last_seen_at' => null,
+        'offline_deadline_at' => null,
     ]);
 
     $this->service->markOnline($device);
 
     $device->refresh();
     expect($device->connection_state)->toBe('online')
-        ->and($device->last_seen_at)->not->toBeNull();
+        ->and($device->last_seen_at)->not->toBeNull()
+        ->and($device->offline_deadline_at?->equalTo($device->last_seen_at->copy()->addSeconds(300)))->toBeTrue();
 
     Event::assertDispatched(DeviceConnectionChanged::class, function (DeviceConnectionChanged $event) use ($device): bool {
         return $event->deviceId === $device->id && $event->connectionState === 'online';
     });
 });
 
-it('updates last_seen_at without broadcasting when already online', function (): void {
+it('updates last_seen_at and uses the device-specific timeout without broadcasting when already online', function (): void {
     Event::fake([DeviceConnectionChanged::class]);
+    $seenAt = Carbon::parse('2026-03-05 12:05:00');
 
     $device = Device::factory()->create([
         'connection_state' => 'online',
-        'last_seen_at' => now()->subMinutes(5),
+        'presence_timeout_seconds' => 900,
+        'last_seen_at' => $seenAt->copy()->subMinutes(5),
     ]);
 
-    $this->service->markOnline($device);
+    $this->service->markOnline($device, $seenAt);
 
     $device->refresh();
     expect($device->connection_state)->toBe('online')
-        ->and($device->last_seen_at->diffInMinutes(now()))->toBeLessThan(1);
+        ->and($device->last_seen_at?->equalTo($seenAt))->toBeTrue()
+        ->and($device->offline_deadline_at?->equalTo($seenAt->copy()->addSeconds(900)))->toBeTrue();
 
     Event::assertNotDispatched(DeviceConnectionChanged::class);
 });
@@ -78,23 +90,27 @@ it('broadcasts when a stale online model is offline in the database', function (
 
 it('marks a device offline and broadcasts when transitioning from online', function (): void {
     Event::fake([DeviceConnectionChanged::class]);
+    $lastSeenAt = Carbon::parse('2026-03-05 11:58:00');
 
     $device = Device::factory()->create([
         'connection_state' => 'online',
-        'last_seen_at' => now()->subMinutes(2),
+        'last_seen_at' => $lastSeenAt,
+        'offline_deadline_at' => $lastSeenAt->copy()->addMinutes(5),
     ]);
 
     $this->service->markOffline($device);
 
     $device->refresh();
-    expect($device->connection_state)->toBe('offline');
+    expect($device->connection_state)->toBe('offline')
+        ->and($device->last_seen_at?->equalTo($lastSeenAt))->toBeTrue()
+        ->and($device->offline_deadline_at)->toBeNull();
 
     Event::assertDispatched(DeviceConnectionChanged::class, function (DeviceConnectionChanged $event) use ($device): bool {
         return $event->deviceId === $device->id && $event->connectionState === 'offline';
     });
 });
 
-it('does not broadcast when marking an already offline device as offline', function (): void {
+it('clears the offline deadline without broadcasting when marking an already offline device as offline', function (): void {
     Event::fake([DeviceConnectionChanged::class]);
 
     $device = Device::factory()->create([
@@ -102,7 +118,17 @@ it('does not broadcast when marking an already offline device as offline', funct
         'last_seen_at' => now()->subHours(1),
     ]);
 
+    Device::query()
+        ->whereKey($device->id)
+        ->update([
+            'offline_deadline_at' => now()->addMinutes(2),
+        ]);
+
     $this->service->markOffline($device);
+
+    $device->refresh();
+
+    expect($device->offline_deadline_at)->toBeNull();
 
     Event::assertNotDispatched(DeviceConnectionChanged::class);
 });

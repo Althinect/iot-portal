@@ -11,6 +11,10 @@ use Illuminate\Support\Facades\Log;
 
 class DevicePresenceService
 {
+    public function __construct(
+        private readonly DevicePresencePolicy $presencePolicy,
+    ) {}
+
     public function markOnline(Device $device, ?Carbon $seenAt = null): void
     {
         $resolvedSeenAt = $seenAt ?? now();
@@ -21,10 +25,12 @@ class DevicePresenceService
         }
 
         $previousState = $freshDevice->connection_state;
+        $offlineDeadlineAt = $this->presencePolicy->offlineDeadlineFor($freshDevice, $resolvedSeenAt);
 
         $freshDevice->updateQuietly([
             'connection_state' => 'online',
             'last_seen_at' => $resolvedSeenAt,
+            'offline_deadline_at' => $offlineDeadlineAt,
         ]);
 
         if ($previousState !== 'online') {
@@ -61,16 +67,21 @@ class DevicePresenceService
         $previousState = $freshDevice->connection_state;
 
         if ($previousState === 'offline') {
+            if ($freshDevice->storedOfflineDeadlineAt() !== null) {
+                $freshDevice->updateQuietly([
+                    'offline_deadline_at' => null,
+                ]);
+            }
+
             return;
         }
 
         $freshDevice->updateQuietly([
             'connection_state' => 'offline',
+            'offline_deadline_at' => null,
         ]);
 
-        $resolvedLastSeenAt = $seenAt ?? ($freshDevice->last_seen_at
-            ? Carbon::parse((string) $freshDevice->last_seen_at)
-            : null);
+        $resolvedLastSeenAt = $seenAt ?? $freshDevice->lastSeenAt();
 
         try {
             event(new DeviceConnectionChanged(

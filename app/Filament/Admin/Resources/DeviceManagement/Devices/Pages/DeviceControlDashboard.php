@@ -195,7 +195,7 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
 
         $device->loadMissing('deviceType', 'schemaVersion.topics.parameters');
 
-        $this->deviceConnectionState = $device->connection_state;
+        $this->deviceConnectionState = $device->effectiveConnectionState();
 
         $this->loadDefaultPayload();
         $this->loadInitialDeviceState();

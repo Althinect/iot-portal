@@ -14,7 +14,7 @@ use Filament\Infolists\Components\KeyValueEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
+use Illuminate\Support\Str;
 
 class DeviceInfolist
 {
@@ -59,27 +59,37 @@ class DeviceInfolist
 
                 Section::make('Status')
                     ->schema([
-                        IconEntry::make('is_active')
+                        TextEntry::make('is_active')
                             ->label('Active')
-                            ->boolean(),
+                            ->badge()
+                            ->formatStateUsing(fn (bool $state): string => $state ? 'Active' : 'Inactive')
+                            ->color(fn (bool $state): string => $state ? 'success' : 'gray'),
 
-                        IconEntry::make('connection_state')
+                        TextEntry::make('effective_connection_state')
                             ->label('Connection State')
-                            ->icon(fn (?string $state): Heroicon => match ($state) {
-                                'online' => Heroicon::Wifi,
-                                'offline' => Heroicon::SignalSlash,
-                                default => Heroicon::QuestionMarkCircle,
-                            })
-                            ->color(fn (?string $state): string => match ($state) {
+                            ->state(fn (Device $record): string => $record->effectiveConnectionState())
+                            ->badge()
+                            ->formatStateUsing(fn (string $state): string => Str::headline($state))
+                            ->color(fn (string $state): string => match ($state) {
                                 'online' => 'success',
                                 'offline' => 'danger',
                                 default => 'gray',
                             }),
 
+                        TextEntry::make('effective_presence_timeout')
+                            ->label('Effective Timeout')
+                            ->state(fn (Device $record): string => "{$record->presenceTimeoutSeconds()} seconds"),
+
                         TextEntry::make('last_seen_at')
                             ->label('Last Seen')
                             ->since()
                             ->placeholder('Never'),
+
+                        TextEntry::make('offline_deadline_at')
+                            ->label('Offline Deadline')
+                            ->state(fn (Device $record) => $record->resolvedOfflineDeadlineAt())
+                            ->dateTime()
+                            ->placeholder('Pending first signal'),
                     ])
                     ->columns(2),
 

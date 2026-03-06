@@ -20,6 +20,7 @@ use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class DevicesTable
 {
@@ -59,8 +60,9 @@ class DevicesTable
                     ->boolean()
                     ->sortable(),
 
-                IconColumn::make('connection_state')
+                IconColumn::make('effective_connection_state')
                     ->label('Status')
+                    ->state(fn (Device $record): string => $record->effectiveConnectionState())
                     ->icon(fn (?string $state): Heroicon => match ($state) {
                         'online' => Heroicon::Wifi,
                         'offline' => Heroicon::SignalSlash,
@@ -71,12 +73,7 @@ class DevicesTable
                         'offline' => 'danger',
                         default => 'gray',
                     })
-                    ->tooltip(fn (?string $state): string => match ($state) {
-                        'online' => 'Online',
-                        'offline' => 'Offline',
-                        default => 'Unknown',
-                    })
-                    ->sortable(),
+                    ->tooltip(fn (Device $record): string => $record->presenceStatusTooltip()),
 
                 TextColumn::make('last_seen_at')
                     ->label('Last Seen')
@@ -106,11 +103,21 @@ class DevicesTable
                     ->searchable()
                     ->preload(),
 
-                SelectFilter::make('connection_state')
+                SelectFilter::make('effective_connection_state')
+                    ->label('Status')
                     ->options([
                         'online' => 'Online',
                         'offline' => 'Offline',
-                    ]),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        $value = $data['value'] ?? null;
+
+                        if (! is_string($value) || ! in_array($value, ['online', 'offline'], true)) {
+                            return $query;
+                        }
+
+                        return $query->whereEffectiveConnectionState($value);
+                    }),
             ])
             ->recordActions([
                 Actions\ActionGroup::make([

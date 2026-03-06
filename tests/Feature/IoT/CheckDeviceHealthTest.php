@@ -5,26 +5,36 @@ declare(strict_types=1);
 use App\Domain\DeviceManagement\Models\Device;
 use App\Events\DeviceConnectionChanged;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 
 uses(RefreshDatabase::class);
 
-it('marks stale online devices as offline and broadcasts events', function (): void {
+afterEach(function (): void {
+    Carbon::setTestNow();
+});
+
+it('marks devices offline when their offline deadline has passed and broadcasts events', function (): void {
     Event::fake([DeviceConnectionChanged::class]);
+    $now = Carbon::parse('2026-03-05 12:00:00');
+
+    Carbon::setTestNow($now);
 
     $staleDevice = Device::factory()->create([
         'connection_state' => 'online',
-        'last_seen_at' => now()->subMinutes(10),
+        'last_seen_at' => $now->copy()->subMinutes(10),
+        'offline_deadline_at' => $now->copy()->subMinute(),
     ]);
 
     $recentDevice = Device::factory()->create([
         'connection_state' => 'online',
-        'last_seen_at' => now()->subSeconds(30),
+        'last_seen_at' => $now->copy()->subSeconds(30),
+        'offline_deadline_at' => $now->copy()->addMinutes(4),
     ]);
 
     $alreadyOffline = Device::factory()->create([
         'connection_state' => 'offline',
-        'last_seen_at' => now()->subHours(1),
+        'last_seen_at' => $now->copy()->subHours(1),
     ]);
 
     $this->artisan('iot:check-device-health', ['--seconds' => 300])
@@ -47,10 +57,12 @@ it('marks stale online devices as offline and broadcasts events', function (): v
 
 it('marks devices with null last_seen_at as offline', function (): void {
     Event::fake([DeviceConnectionChanged::class]);
+    Carbon::setTestNow(Carbon::parse('2026-03-05 12:00:00'));
 
     $device = Device::factory()->create([
         'connection_state' => 'online',
         'last_seen_at' => null,
+        'offline_deadline_at' => null,
     ]);
 
     $this->artisan('iot:check-device-health', ['--seconds' => 300])
@@ -64,10 +76,14 @@ it('marks devices with null last_seen_at as offline', function (): void {
 
 it('does not mark recently seen devices as offline', function (): void {
     Event::fake([DeviceConnectionChanged::class]);
+    $now = Carbon::parse('2026-03-05 12:00:00');
+
+    Carbon::setTestNow($now);
 
     $device = Device::factory()->create([
         'connection_state' => 'online',
-        'last_seen_at' => now(),
+        'last_seen_at' => $now,
+        'offline_deadline_at' => $now->copy()->addMinutes(5),
     ]);
 
     $this->artisan('iot:check-device-health', ['--seconds' => 300])
@@ -77,4 +93,32 @@ it('does not mark recently seen devices as offline', function (): void {
     expect($device->connection_state)->toBe('online');
 
     Event::assertNotDispatched(DeviceConnectionChanged::class);
+});
+
+it('marks legacy online devices with no offline deadline as offline when they exceed the fallback timeout', function (): void {
+    Event::fake([DeviceConnectionChanged::class]);
+    $now = Carbon::parse('2026-03-05 12:00:00');
+
+    Carbon::setTestNow($now);
+
+    $device = Device::factory()->create([
+        'connection_state' => 'online',
+        'last_seen_at' => $now->copy()->subMinutes(10),
+    ]);
+
+    Device::query()
+        ->whereKey($device->id)
+        ->update([
+            'offline_deadline_at' => null,
+        ]);
+
+    $this->artisan('iot:check-device-health', ['--seconds' => 300])
+        ->assertExitCode(0);
+
+    $device->refresh();
+
+    expect($device->connection_state)->toBe('offline')
+        ->and($device->offline_deadline_at)->toBeNull();
+
+    Event::assertDispatched(DeviceConnectionChanged::class, 1);
 });
