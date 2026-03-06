@@ -19,6 +19,8 @@ return [
 
     'capture_stage_snapshots' => (bool) env('INGESTION_CAPTURE_STAGE_SNAPSHOTS', true),
 
+    'capture_success_stage_snapshots' => (bool) env('INGESTION_CAPTURE_SUCCESS_STAGE_SNAPSHOTS', false),
+
     'default_raw_retention_days' => (int) env('INGESTION_DEFAULT_RAW_RETENTION_DAYS', 90),
 
     'nats' => [

@@ -41,5 +41,6 @@ return [
         'subject_prefix' => (string) env('IOT_PRESENCE_SUBJECT_PREFIX', 'devices'),
         'subject_suffix' => (string) env('IOT_PRESENCE_SUBJECT_SUFFIX', 'presence'),
         'heartbeat_timeout_seconds' => (int) env('IOT_HEARTBEAT_TIMEOUT_SECONDS', 300),
+        'write_throttle_seconds' => (int) env('IOT_PRESENCE_WRITE_THROTTLE_SECONDS', 15),
     ],
 ];

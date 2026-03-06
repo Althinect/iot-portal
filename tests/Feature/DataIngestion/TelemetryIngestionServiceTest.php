@@ -27,6 +27,8 @@ beforeEach(function (): void {
         'ingestion.publish_analytics' => true,
         'ingestion.publish_invalid_events' => true,
         'ingestion.capture_stage_snapshots' => true,
+        'ingestion.capture_success_stage_snapshots' => false,
+        'iot.presence.write_throttle_seconds' => 0,
     ]);
 
     $this->fakeHotStateStore = new class implements HotStateStore
@@ -171,6 +173,17 @@ it('processes valid telemetry through all stages and publishes analytics', funct
     $message->refresh();
 
     expect($message->stageLogs)->toHaveCount(6);
+    expect($message->organization_id)->toBe($context['device']->organization_id)
+        ->and($message->device_id)->toBe($context['device']->id)
+        ->and($message->device_schema_version_id)->toBe($context['device']->device_schema_version_id)
+        ->and($message->schema_version_topic_id)->toBe($context['topic']->id);
+
+    $successfulStage = $message->stageLogs()->where('stage', 'persist')->first();
+
+    expect($successfulStage)->not->toBeNull()
+        ->and($successfulStage?->input_snapshot)->toBeNull()
+        ->and($successfulStage?->output_snapshot)->toBeNull()
+        ->and($successfulStage?->change_set)->toBeNull();
 
     $telemetryLog = $message->telemetryLog()->first();
 
@@ -209,6 +222,16 @@ it('halts processing on validation failure and publishes invalid telemetry event
     $message->refresh();
 
     expect($message->stageLogs)->toHaveCount(2);
+    expect($message->organization_id)->toBe($context['device']->organization_id)
+        ->and($message->device_id)->toBe($context['device']->id)
+        ->and($message->device_schema_version_id)->toBe($context['device']->device_schema_version_id)
+        ->and($message->schema_version_topic_id)->toBe($context['topic']->id);
+
+    $validationStage = $message->stageLogs()->where('stage', 'validate')->first();
+
+    expect($validationStage)->not->toBeNull()
+        ->and($validationStage?->input_snapshot)->not->toBeNull()
+        ->and($validationStage?->output_snapshot)->not->toBeNull();
 
     $telemetryLog = $message->telemetryLog()->first();
 

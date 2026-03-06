@@ -25,6 +25,11 @@ class DevicePresenceService
         }
 
         $previousState = $freshDevice->connection_state;
+
+        if (! $this->presencePolicy->shouldPersistOnlineHeartbeat($freshDevice, $resolvedSeenAt)) {
+            return;
+        }
+
         $offlineDeadlineAt = $this->presencePolicy->offlineDeadlineFor($freshDevice, $resolvedSeenAt);
 
         $freshDevice->updateQuietly([
@@ -149,7 +154,17 @@ class DevicePresenceService
 
     private function refreshDevice(Device $device): ?Device
     {
-        $freshDevice = $device->fresh();
+        $freshDevice = Device::query()
+            ->select([
+                'id',
+                'uuid',
+                'connection_state',
+                'last_seen_at',
+                'offline_deadline_at',
+                'presence_timeout_seconds',
+            ])
+            ->whereKey($device->getKey())
+            ->first();
 
         if ($freshDevice === null) {
             Log::channel('device_control')->warning('Presence update skipped for missing device', [

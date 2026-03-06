@@ -28,9 +28,39 @@ final class DevicePresencePolicy
         return self::DEFAULT_TIMEOUT_SECONDS;
     }
 
+    public function writeThrottleSeconds(): int
+    {
+        $configuredThrottle = config('iot.presence.write_throttle_seconds', 15);
+
+        if (is_numeric($configuredThrottle) && (int) $configuredThrottle >= 0) {
+            return (int) $configuredThrottle;
+        }
+
+        return 15;
+    }
+
     public function offlineDeadlineFor(Device $device, Carbon $seenAt): Carbon
     {
         return $seenAt->copy()->addSeconds($this->timeoutFor($device));
+    }
+
+    public function shouldPersistOnlineHeartbeat(Device $device, Carbon $seenAt): bool
+    {
+        if ($device->connection_state !== 'online') {
+            return true;
+        }
+
+        $lastSeenAt = $device->lastSeenAt();
+
+        if ($lastSeenAt === null || $device->storedOfflineDeadlineAt() === null) {
+            return true;
+        }
+
+        if ($seenAt->lessThanOrEqualTo($lastSeenAt)) {
+            return false;
+        }
+
+        return $lastSeenAt->copy()->addSeconds($this->writeThrottleSeconds())->lessThanOrEqualTo($seenAt);
     }
 
     public function effectiveStateFor(Device $device, Carbon $now): string

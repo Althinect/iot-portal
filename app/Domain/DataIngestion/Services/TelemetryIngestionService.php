@@ -100,26 +100,25 @@ class TelemetryIngestionService
         $topic = $resolved['topic'];
 
         $schemaVersion = $device->schemaVersion;
+        $messageContext = [
+            'organization_id' => $device->organization_id,
+            'device_id' => $device->id,
+            'schema_version_topic_id' => $topic->id,
+        ];
 
         if ($schemaVersion === null) {
-            $ingestionMessage->update([
+            $this->finalizeMessage($ingestionMessage, [
+                ...$messageContext,
                 'status' => IngestionStatus::FailedTerminal,
                 'error_summary' => [
                     'reason' => 'schema_version_missing',
                 ],
-                'processed_at' => now(),
             ]);
 
             return $ingestionMessage;
         }
 
-        $ingestionMessage->update([
-            'organization_id' => $device->organization_id,
-            'device_id' => $device->id,
-            'device_schema_version_id' => $schemaVersion->id,
-            'schema_version_topic_id' => $topic->id,
-            'status' => IngestionStatus::Processing,
-        ]);
+        $messageContext['device_schema_version_id'] = $schemaVersion->id;
 
         $this->logStage(
             ingestionMessage: $ingestionMessage,
@@ -175,12 +174,12 @@ class TelemetryIngestionService
                 receivedAt: $envelope->resolveReceivedAt(),
             );
 
-            $ingestionMessage->update([
+            $this->finalizeMessage($ingestionMessage, [
+                ...$messageContext,
                 'status' => IngestionStatus::FailedValidation,
                 'error_summary' => [
                     'validation_errors' => $validationResult['validation_errors'],
                 ],
-                'processed_at' => now(),
             ]);
 
             if ($device->is_active) {
@@ -203,9 +202,9 @@ class TelemetryIngestionService
                 receivedAt: $envelope->resolveReceivedAt(),
             );
 
-            $ingestionMessage->update([
+            $this->finalizeMessage($ingestionMessage, [
+                ...$messageContext,
                 'status' => IngestionStatus::InactiveSkipped,
-                'processed_at' => now(),
             ]);
 
             return $ingestionMessage;
@@ -307,13 +306,13 @@ class TelemetryIngestionService
                 errors: $publishErrors,
             );
 
-            $ingestionMessage->update([
+            $this->finalizeMessage($ingestionMessage, [
+                ...$messageContext,
                 'status' => IngestionStatus::FailedTerminal,
                 'error_summary' => [
                     'reason' => 'publish_failed',
                     'errors' => $publishErrors,
                 ],
-                'processed_at' => now(),
             ]);
 
             return $ingestionMessage;
@@ -327,9 +326,9 @@ class TelemetryIngestionService
             outputSnapshot: $publishOutput,
         );
 
-        $ingestionMessage->update([
+        $this->finalizeMessage($ingestionMessage, [
+            ...$messageContext,
             'status' => IngestionStatus::Completed,
-            'processed_at' => now(),
         ]);
 
         return $ingestionMessage;
@@ -363,6 +362,9 @@ class TelemetryIngestionService
         array $errors = [],
     ): void {
         $captureSnapshots = (bool) config('ingestion.capture_stage_snapshots', true);
+        $captureSuccessfulSnapshots = (bool) config('ingestion.capture_success_stage_snapshots', false);
+        $shouldCaptureSnapshots = $captureSnapshots
+            && ($status !== IngestionStatus::Completed || $captureSuccessfulSnapshots);
 
         IngestionStageLog::create([
             'ingestion_message_id' => $ingestionMessage->id,
@@ -371,10 +373,21 @@ class TelemetryIngestionService
             'duration_ms' => is_numeric($startedAt)
                 ? (int) round((microtime(true) - (float) $startedAt) * 1000)
                 : null,
-            'input_snapshot' => $captureSnapshots ? $inputSnapshot : null,
-            'output_snapshot' => $captureSnapshots ? $outputSnapshot : null,
-            'change_set' => $changeSet !== [] ? $changeSet : null,
+            'input_snapshot' => $shouldCaptureSnapshots ? $inputSnapshot : null,
+            'output_snapshot' => $shouldCaptureSnapshots ? $outputSnapshot : null,
+            'change_set' => $shouldCaptureSnapshots && $changeSet !== [] ? $changeSet : null,
             'errors' => $errors !== [] ? $errors : null,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function finalizeMessage(IngestionMessage $ingestionMessage, array $attributes): void
+    {
+        $ingestionMessage->update([
+            ...$attributes,
+            'processed_at' => now(),
         ]);
     }
 }

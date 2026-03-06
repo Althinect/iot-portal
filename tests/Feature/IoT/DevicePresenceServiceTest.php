@@ -45,6 +45,7 @@ it('marks a device online and broadcasts when transitioning from offline', funct
 it('updates last_seen_at and uses the device-specific timeout without broadcasting when already online', function (): void {
     Event::fake([DeviceConnectionChanged::class]);
     $seenAt = Carbon::parse('2026-03-05 12:05:00');
+    config()->set('iot.presence.write_throttle_seconds', 15);
 
     $device = Device::factory()->create([
         'connection_state' => 'online',
@@ -58,6 +59,30 @@ it('updates last_seen_at and uses the device-specific timeout without broadcasti
     expect($device->connection_state)->toBe('online')
         ->and($device->last_seen_at?->equalTo($seenAt))->toBeTrue()
         ->and($device->offline_deadline_at?->equalTo($seenAt->copy()->addSeconds(900)))->toBeTrue();
+
+    Event::assertNotDispatched(DeviceConnectionChanged::class);
+});
+
+it('skips presence writes when an online heartbeat arrives within the write throttle window', function (): void {
+    Event::fake([DeviceConnectionChanged::class]);
+    config()->set('iot.presence.write_throttle_seconds', 30);
+
+    $lastSeenAt = Carbon::parse('2026-03-05 12:00:00');
+    $offlineDeadlineAt = $lastSeenAt->copy()->addMinutes(5);
+    $seenAt = $lastSeenAt->copy()->addSeconds(10);
+
+    $device = Device::factory()->create([
+        'connection_state' => 'online',
+        'last_seen_at' => $lastSeenAt,
+        'offline_deadline_at' => $offlineDeadlineAt,
+    ]);
+
+    $this->service->markOnline($device, $seenAt);
+
+    $device->refresh();
+
+    expect($device->last_seen_at?->equalTo($lastSeenAt))->toBeTrue()
+        ->and($device->offline_deadline_at?->equalTo($offlineDeadlineAt))->toBeTrue();
 
     Event::assertNotDispatched(DeviceConnectionChanged::class);
 });
