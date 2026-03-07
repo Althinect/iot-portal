@@ -95,6 +95,48 @@ it('does not mark recently seen devices as offline', function (): void {
     Event::assertNotDispatched(DeviceConnectionChanged::class);
 });
 
+it('applies the command seconds override to devices with persisted offline deadlines', function (): void {
+    Event::fake([DeviceConnectionChanged::class]);
+    $now = Carbon::parse('2026-03-05 12:00:00');
+
+    Carbon::setTestNow($now);
+
+    $device = Device::factory()->create([
+        'connection_state' => 'online',
+        'last_seen_at' => $now->copy()->subSeconds(90),
+    ]);
+
+    $this->artisan('iot:check-device-health', ['--seconds' => 60])
+        ->assertExitCode(0);
+
+    $device->refresh();
+
+    expect($device->connection_state)->toBe('offline');
+
+    Event::assertDispatched(DeviceConnectionChanged::class, 1);
+});
+
+it('allows a longer command seconds override to defer offline checks for persisted deadlines', function (): void {
+    Event::fake([DeviceConnectionChanged::class]);
+    $now = Carbon::parse('2026-03-05 12:00:00');
+
+    Carbon::setTestNow($now);
+
+    $device = Device::factory()->create([
+        'connection_state' => 'online',
+        'last_seen_at' => $now->copy()->subMinutes(6),
+    ]);
+
+    $this->artisan('iot:check-device-health', ['--seconds' => 600])
+        ->assertExitCode(0);
+
+    $device->refresh();
+
+    expect($device->connection_state)->toBe('online');
+
+    Event::assertNotDispatched(DeviceConnectionChanged::class);
+});
+
 it('marks legacy online devices with no offline deadline as offline when they exceed the fallback timeout', function (): void {
     Event::fake([DeviceConnectionChanged::class]);
     $now = Carbon::parse('2026-03-05 12:00:00');

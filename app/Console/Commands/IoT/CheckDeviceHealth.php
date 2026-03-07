@@ -23,7 +23,8 @@ class CheckDeviceHealth extends Command
             $secondsOption = $this->option('seconds');
             $configuredTimeout = config('iot.presence.heartbeat_timeout_seconds', 300);
             $fallbackTimeout = is_numeric($configuredTimeout) ? (int) $configuredTimeout : 300;
-            $seconds = is_numeric($secondsOption) ? (int) $secondsOption : $fallbackTimeout;
+            $hasSecondsOverride = is_numeric($secondsOption);
+            $seconds = $hasSecondsOverride ? (int) $secondsOption : $fallbackTimeout;
 
             $resolvedSeconds = max(1, $seconds);
             $now = now();
@@ -33,17 +34,30 @@ class CheckDeviceHealth extends Command
                 ->where('connection_state', 'online')
                 ->count();
 
-            Device::query()
+            $devicesToMarkOffline = Device::query()
                 ->where('connection_state', 'online')
-                ->where(function (Builder $query) use ($now, $timeoutCutoff): void {
-                    $query->where('offline_deadline_at', '<=', $now)
-                        ->orWhereNull('last_seen_at');
+                ->when(
+                    $hasSecondsOverride,
+                    function (Builder $query) use ($timeoutCutoff): void {
+                        $query->where(function (Builder $query) use ($timeoutCutoff): void {
+                            $query->whereNull('last_seen_at')
+                                ->orWhere('last_seen_at', '<=', $timeoutCutoff);
+                        });
+                    },
+                    function (Builder $query) use ($now, $timeoutCutoff): void {
+                        $query->where(function (Builder $query) use ($now, $timeoutCutoff): void {
+                            $query->where('offline_deadline_at', '<=', $now)
+                                ->orWhereNull('last_seen_at');
 
-                    $query->orWhere(function (Builder $query) use ($timeoutCutoff): void {
-                        $query->whereNull('offline_deadline_at')
-                            ->where('last_seen_at', '<=', $timeoutCutoff);
-                    });
-                })
+                            $query->orWhere(function (Builder $query) use ($timeoutCutoff): void {
+                                $query->whereNull('offline_deadline_at')
+                                    ->where('last_seen_at', '<=', $timeoutCutoff);
+                            });
+                        });
+                    }
+                );
+
+            $devicesToMarkOffline
                 ->orderBy('id')
                 ->chunkById(100, function ($devices) use (&$markedOffline, $presenceService): void {
                     foreach ($devices as $device) {
