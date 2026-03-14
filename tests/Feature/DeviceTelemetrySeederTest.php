@@ -5,13 +5,17 @@ declare(strict_types=1);
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use App\Domain\Telemetry\Services\TelemetryLogRecorder;
+use App\Events\TelemetryReceived;
 use Database\Seeders\DeviceSchemaSeeder;
 use Database\Seeders\DeviceTelemetrySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 
 uses(RefreshDatabase::class);
 
 it('seeds one month of 15-minute energy meter telemetry with an incrementing counter', function (): void {
+    Event::fake([TelemetryReceived::class]);
+
     $this->seed([
         DeviceSchemaSeeder::class,
         DeviceTelemetrySeeder::class,

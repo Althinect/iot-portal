@@ -210,8 +210,9 @@
 
     <x-filament::section
         heading="Ingestion Health"
-        description="Quick debugging view for post-persist publish behaviour."
+        {{-- description="Quick debugging view for post-persist publish behaviour." --}}
         :icon="\Filament\Support\Icons\Heroicon::OutlinedExclamationTriangle"
+        :collapsible="true"
         class="mb-6"
     >
         <div class="tv-health-shell">
@@ -279,53 +280,76 @@
                 </div>
             @endif
         </div>
-    </x-filament::section>
+</x-filament::section>
 
-    <livewire:admin.telemetry-live-stream />
+    @php
+        $rawTelemetryDiagnosticsEnabled = \Laravel\Pennant\Feature::active('iot.diagnostics.raw_telemetry_stream');
+    @endphp
 
-    @push('scripts')
-        <script>
-            document.addEventListener('livewire:init', () => {
-                if (window.__telemetryPusherBound || ! window.Pusher) {
-                    return;
-                }
+    @if ($rawTelemetryDiagnosticsEnabled)
+        <livewire:admin.telemetry-live-stream />
 
-                window.__telemetryPusherBound = true;
-
-                const pusher = new window.Pusher(@js(config('broadcasting.connections.reverb.key')), {
-                    cluster: 'mt1',
-                    wsHost: @js(config('broadcasting.connections.reverb.options.host')),
-                    wsPort: @js(config('broadcasting.connections.reverb.options.port')),
-                    wssPort: @js(config('broadcasting.connections.reverb.options.port')),
-                    forceTLS: @js(config('broadcasting.connections.reverb.options.scheme') === 'https'),
-                    enabledTransports: ['ws', 'wss'],
-                    disableStats: true,
-                });
-
-                const channel = pusher.subscribe('telemetry');
-
-                channel.bind('telemetry.incoming', (event) => {
-                    const params = new URLSearchParams(window.location.search);
-                    const selectedDevice = params.get('device');
-                    const selectedTopicSuffix = params.get('topic');
-
-                    if (!selectedDevice || !selectedTopicSuffix) {
+        @push('scripts')
+            <script>
+                document.addEventListener('livewire:init', () => {
+                    if (window.__telemetryPusherBound || ! window.Pusher) {
                         return;
                     }
 
-                    const deviceMatches = selectedDevice === event?.device_external_id
-                        || selectedDevice === event?.device_uuid;
+                    window.__telemetryPusherBound = true;
 
-                    const topicMatches = typeof event?.topic === 'string'
-                        && event.topic.endsWith('/' + selectedTopicSuffix);
+                    const pusher = new window.Pusher(@js(config('broadcasting.connections.reverb.key')), {
+                        cluster: 'mt1',
+                        wsHost: @js(config('broadcasting.connections.reverb.options.host')),
+                        wsPort: @js(config('broadcasting.connections.reverb.options.port')),
+                        wssPort: @js(config('broadcasting.connections.reverb.options.port')),
+                        forceTLS: @js(config('broadcasting.connections.reverb.options.scheme') === 'https'),
+                        enabledTransports: ['ws', 'wss'],
+                        disableStats: true,
+                    });
 
-                    if (!deviceMatches || !topicMatches) {
-                        return;
-                    }
+                    const channel = pusher.subscribe('telemetry');
 
-                    Livewire.dispatch('telemetryIncoming', { entry: event });
+                    channel.bind('telemetry.incoming', (event) => {
+                        const params = new URLSearchParams(window.location.search);
+                        const selectedDevice = params.get('device');
+                        const selectedTopicSuffix = params.get('topic');
+
+                        if (!selectedDevice || !selectedTopicSuffix) {
+                            return;
+                        }
+
+                        const deviceMatches = selectedDevice === event?.device_external_id
+                            || selectedDevice === event?.device_uuid;
+
+                        const topicMatches = typeof event?.topic === 'string'
+                            && event.topic.endsWith('/' + selectedTopicSuffix);
+
+                        if (!deviceMatches || !topicMatches) {
+                            return;
+                        }
+
+                        Livewire.dispatch('telemetryIncoming', { entry: event });
+                    });
                 });
-            });
-        </script>
-    @endpush
+            </script>
+        @endpush
+    @else
+        <x-filament::section
+            heading="Pre-Ingestion Stream"
+            description="Diagnostic-only raw telemetry stream"
+            :icon="\Filament\Support\Icons\Heroicon::OutlinedSignal"
+        >
+            <div class="space-y-3">
+                <x-filament::badge color="warning" size="sm">
+                    Diagnostics Disabled
+                </x-filament::badge>
+
+                <p class="text-sm text-gray-600 dark:text-gray-300">
+                    Raw telemetry broadcasting is disabled by default so ingest does not fan out every inbound payload.
+                    Enable <code>IOT_BROADCAST_RAW_TELEMETRY=true</code> only during targeted debugging.
+                </p>
+            </div>
+        </x-filament::section>
+    @endif
 </x-filament-panels::page>

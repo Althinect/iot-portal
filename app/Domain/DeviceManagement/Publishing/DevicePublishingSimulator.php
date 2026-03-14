@@ -5,16 +5,20 @@ declare(strict_types=1);
 namespace App\Domain\DeviceManagement\Publishing;
 
 use App\Domain\DeviceManagement\Models\Device;
+use App\Domain\DeviceManagement\Publishing\Nats\NatsPublisher;
 use App\Domain\DeviceManagement\Publishing\Nats\NatsPublisherFactory;
+use App\Domain\DeviceManagement\Services\DevicePresenceService;
 use App\Domain\DeviceSchema\Enums\ParameterDataType;
 use App\Domain\DeviceSchema\Models\ParameterDefinition;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
 use App\Events\TelemetryIncoming;
+use Illuminate\Support\Collection;
 
 final readonly class DevicePublishingSimulator
 {
     public function __construct(
         private NatsPublisherFactory $publisherFactory,
+        private DevicePresenceService $presenceService,
     ) {}
 
     /**
@@ -33,62 +37,109 @@ final readonly class DevicePublishingSimulator
         ?callable $onBeforePublish = null,
         ?callable $onPublishFailed = null,
     ): void {
-        $device->loadMissing('deviceType', 'schemaVersion.topics.parameters');
-        $resolvedHost = $this->resolveHost($host);
-        $resolvedPort = $this->resolvePort($port);
+        $topics = $this->resolvePublishTopics($device, $schemaVersionTopicId);
 
-        $topics = $device->schemaVersion?->topics
-            ?->filter(fn (SchemaVersionTopic $topic): bool => $topic->isPublish())
-            ->when(
-                $schemaVersionTopicId !== null,
-                fn ($collection) => $collection->where('id', $schemaVersionTopicId),
-            )
-            ->sortBy('sequence');
-
-        if (! $topics || $topics->isEmpty()) {
+        if ($topics->isEmpty()) {
             return;
         }
 
-        $publisher = $this->publisherFactory->make($resolvedHost, $resolvedPort);
+        $publisher = $this->createPublisher($host, $port);
         $counterState = [];
 
         for ($i = 1; $i <= $count; $i++) {
-            foreach ($topics as $topic) {
-                $payload = $this->generateRandomPayload($topic, $counterState);
-                $mqttTopic = $this->resolveTopicWithExternalId($device, $topic);
-
-                if ($onBeforePublish !== null) {
-                    $onBeforePublish($i, $mqttTopic, $payload, $topic);
-                }
-
-                // NATS MQTT uses direct subject mapping; convert MQTT topic to NATS subject.
-                $natsSubject = str_replace('/', '.', $mqttTopic);
-
-                $encodedPayload = json_encode($payload);
-                $encodedPayload = is_string($encodedPayload) ? $encodedPayload : '{}';
-
-                try {
-                    $publisher->publish($natsSubject, $encodedPayload);
-
-                    event(new TelemetryIncoming(
-                        topic: $mqttTopic,
-                        deviceUuid: $device->uuid,
-                        deviceExternalId: $device->external_id,
-                        payload: $payload,
-                    ));
-                } catch (\Throwable $exception) {
-                    report($exception);
-
-                    if ($onPublishFailed !== null) {
-                        $onPublishFailed($i, $mqttTopic, $exception, $topic);
-                    }
-                }
-            }
+            $this->publishTopics(
+                device: $device,
+                publisher: $publisher,
+                iteration: $i,
+                schemaVersionTopicId: $schemaVersionTopicId,
+                counterState: $counterState,
+                onBeforePublish: $onBeforePublish,
+                onPublishFailed: $onPublishFailed,
+            );
 
             if ($i < $count && $intervalSeconds > 0) {
                 sleep($intervalSeconds);
             }
         }
+    }
+
+    public function createPublisher(?string $host = null, ?int $port = null): NatsPublisher
+    {
+        return $this->publisherFactory->make(
+            $this->resolveHost($host),
+            $this->resolvePort($port),
+        );
+    }
+
+    /**
+     * @param  array<string, float>  $counterState
+     * @param  (callable(int $iteration, string $mqttTopic, array<string, mixed> $payload, SchemaVersionTopic $topic): void)|null  $onBeforePublish
+     * @param  (callable(int $iteration, string $mqttTopic, \Throwable $exception, SchemaVersionTopic $topic): void)|null  $onPublishFailed
+     */
+    public function publishTopics(
+        Device $device,
+        NatsPublisher $publisher,
+        int $iteration = 1,
+        ?int $schemaVersionTopicId = null,
+        array &$counterState = [],
+        ?callable $onBeforePublish = null,
+        ?callable $onPublishFailed = null,
+    ): int {
+        $publishedMessages = 0;
+        $topics = $this->resolvePublishTopics($device, $schemaVersionTopicId);
+
+        foreach ($topics as $topic) {
+            $payload = $this->generateRandomPayload($topic, $counterState);
+            $mqttTopic = $this->resolveTopicWithExternalId($device, $topic);
+
+            if ($onBeforePublish !== null) {
+                $onBeforePublish($iteration, $mqttTopic, $payload, $topic);
+            }
+
+            $natsSubject = str_replace('/', '.', $mqttTopic);
+            $encodedPayload = json_encode($payload);
+            $encodedPayload = is_string($encodedPayload) ? $encodedPayload : '{}';
+
+            try {
+                $publisher->publish($natsSubject, $encodedPayload);
+                $this->presenceService->markOnline($device);
+
+                event(new TelemetryIncoming(
+                    topic: $mqttTopic,
+                    deviceUuid: $device->uuid,
+                    deviceExternalId: $device->external_id,
+                    payload: $payload,
+                ));
+
+                $publishedMessages++;
+            } catch (\Throwable $exception) {
+                report($exception);
+
+                if ($onPublishFailed !== null) {
+                    $onPublishFailed($iteration, $mqttTopic, $exception, $topic);
+                }
+            }
+        }
+
+        return $publishedMessages;
+    }
+
+    /**
+     * @return Collection<int, SchemaVersionTopic>
+     */
+    public function resolvePublishTopics(Device $device, ?int $schemaVersionTopicId = null): Collection
+    {
+        $device->loadMissing('deviceType', 'schemaVersion.topics.parameters');
+
+        return $device->schemaVersion?->topics
+            ?->filter(fn (SchemaVersionTopic $topic): bool => $topic->isPublish())
+            ->when(
+                $schemaVersionTopicId !== null,
+                fn (Collection $topics): Collection => $topics->where('id', $schemaVersionTopicId),
+            )
+            ->sortBy('sequence')
+            ->values()
+            ?? collect();
     }
 
     /**

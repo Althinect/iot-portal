@@ -160,6 +160,14 @@ class Device extends Model
         );
     }
 
+    /**
+     * @return HasOne<TemporaryDevice, $this>
+     */
+    public function temporaryDevice(): HasOne
+    {
+        return $this->hasOne(TemporaryDevice::class);
+    }
+
     public function canBeControlled(): bool
     {
         if ($this->getAttribute('device_schema_version_id') === null) {

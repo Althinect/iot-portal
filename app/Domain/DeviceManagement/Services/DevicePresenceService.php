@@ -6,6 +6,7 @@ namespace App\Domain\DeviceManagement\Services;
 
 use App\Domain\DeviceManagement\Models\Device;
 use App\Events\DeviceConnectionChanged;
+use Illuminate\Cache\CacheManager;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -13,49 +14,71 @@ class DevicePresenceService
 {
     public function __construct(
         private readonly DevicePresencePolicy $presencePolicy,
+        private readonly CacheManager $cacheManager,
     ) {}
 
     public function markOnline(Device $device, ?Carbon $seenAt = null): void
     {
         $resolvedSeenAt = $seenAt ?? now();
-        $freshDevice = $this->refreshDevice($device);
 
-        if ($freshDevice === null) {
+        if ($this->withinWriteThrottleWindow($device, $resolvedSeenAt)) {
             return;
         }
 
-        $previousState = $freshDevice->connection_state;
+        $offlineDeadlineAt = $this->presencePolicy->offlineDeadlineFor($device, $resolvedSeenAt);
+        $updatedAt = now();
+        $transitionedToOnline = Device::query()
+            ->whereKey($device->getKey())
+            ->where(function ($query): void {
+                $query
+                    ->where('connection_state', '!=', 'online')
+                    ->orWhereNull('connection_state');
+            })
+            ->update([
+                'connection_state' => 'online',
+                'last_seen_at' => $resolvedSeenAt,
+                'offline_deadline_at' => $offlineDeadlineAt,
+                'updated_at' => $updatedAt,
+            ]) > 0;
 
-        if (! $this->presencePolicy->shouldPersistOnlineHeartbeat($freshDevice, $resolvedSeenAt)) {
-            return;
+        if (! $transitionedToOnline) {
+            Device::query()
+                ->whereKey($device->getKey())
+                ->update([
+                    'last_seen_at' => $resolvedSeenAt,
+                    'offline_deadline_at' => $offlineDeadlineAt,
+                    'updated_at' => $updatedAt,
+                ]);
         }
 
-        $offlineDeadlineAt = $this->presencePolicy->offlineDeadlineFor($freshDevice, $resolvedSeenAt);
+        $previousState = $transitionedToOnline ? $device->connection_state : 'online';
 
-        $freshDevice->updateQuietly([
+        $device->forceFill([
             'connection_state' => 'online',
             'last_seen_at' => $resolvedSeenAt,
             'offline_deadline_at' => $offlineDeadlineAt,
+            'updated_at' => $updatedAt,
         ]);
+        $this->rememberLastPresenceWrite($device, $resolvedSeenAt);
 
-        if ($previousState !== 'online') {
+        if ($transitionedToOnline) {
             try {
                 event(new DeviceConnectionChanged(
-                    deviceId: $freshDevice->id,
-                    deviceUuid: $freshDevice->uuid,
+                    deviceId: $device->id,
+                    deviceUuid: $device->uuid,
                     connectionState: 'online',
                     lastSeenAt: $resolvedSeenAt,
                 ));
             } catch (\Throwable $e) {
                 Log::channel('device_control')->warning('DeviceConnectionChanged broadcast failed (non-fatal)', [
-                    'device_id' => $freshDevice->id,
+                    'device_id' => $device->id,
                     'error' => $e->getMessage(),
                 ]);
             }
 
             Log::channel('device_control')->debug('Device came online', [
-                'device_id' => $freshDevice->id,
-                'device_uuid' => $freshDevice->uuid,
+                'device_id' => $device->id,
+                'device_uuid' => $device->uuid,
                 'previous_state' => $previousState,
             ]);
         }
@@ -63,48 +86,62 @@ class DevicePresenceService
 
     public function markOffline(Device $device, ?Carbon $seenAt = null): void
     {
-        $freshDevice = $this->refreshDevice($device);
+        $updatedAt = now();
+        $transitionedToOffline = Device::query()
+            ->whereKey($device->getKey())
+            ->where(function ($query): void {
+                $query
+                    ->where('connection_state', '!=', 'offline')
+                    ->orWhereNull('connection_state');
+            })
+            ->update([
+                'connection_state' => 'offline',
+                'offline_deadline_at' => null,
+                'updated_at' => $updatedAt,
+            ]) > 0;
 
-        if ($freshDevice === null) {
-            return;
-        }
-
-        $previousState = $freshDevice->connection_state;
-
-        if ($previousState === 'offline') {
-            if ($freshDevice->storedOfflineDeadlineAt() !== null) {
-                $freshDevice->updateQuietly([
+        if (! $transitionedToOffline) {
+            Device::query()
+                ->whereKey($device->getKey())
+                ->whereNotNull('offline_deadline_at')
+                ->update([
                     'offline_deadline_at' => null,
+                    'updated_at' => $updatedAt,
                 ]);
-            }
-
-            return;
         }
 
-        $freshDevice->updateQuietly([
+        $previousState = $transitionedToOffline ? $device->connection_state : 'offline';
+
+        $device->forceFill([
             'connection_state' => 'offline',
             'offline_deadline_at' => null,
+            'updated_at' => $updatedAt,
         ]);
+        $this->forgetLastPresenceWrite($device);
 
-        $resolvedLastSeenAt = $seenAt ?? $freshDevice->lastSeenAt();
+        $resolvedLastSeenAt = $seenAt ?? $device->lastSeenAt();
+
+        if (! $transitionedToOffline) {
+            return;
+        }
 
         try {
             event(new DeviceConnectionChanged(
-                deviceId: $freshDevice->id,
-                deviceUuid: $freshDevice->uuid,
+                deviceId: $device->id,
+                deviceUuid: $device->uuid,
                 connectionState: 'offline',
                 lastSeenAt: $resolvedLastSeenAt,
             ));
         } catch (\Throwable $e) {
             Log::channel('device_control')->warning('DeviceConnectionChanged broadcast failed (non-fatal)', [
-                'device_id' => $freshDevice->id,
+                'device_id' => $device->id,
                 'error' => $e->getMessage(),
             ]);
         }
 
         Log::channel('device_control')->debug('Device went offline', [
-            'device_id' => $freshDevice->id,
-            'device_uuid' => $freshDevice->uuid,
+            'device_id' => $device->id,
+            'device_uuid' => $device->uuid,
             'previous_state' => $previousState,
         ]);
     }
@@ -152,28 +189,61 @@ class DevicePresenceService
         return Device::query()->where('external_id', $identifier)->first();
     }
 
-    private function refreshDevice(Device $device): ?Device
+    private function withinWriteThrottleWindow(Device $device, Carbon $seenAt): bool
     {
-        $freshDevice = Device::query()
-            ->select([
-                'id',
-                'uuid',
-                'connection_state',
-                'last_seen_at',
-                'offline_deadline_at',
-                'presence_timeout_seconds',
-            ])
-            ->whereKey($device->getKey())
-            ->first();
-
-        if ($freshDevice === null) {
-            Log::channel('device_control')->warning('Presence update skipped for missing device', [
-                'device_id' => $device->id,
-            ]);
-
-            return null;
+        if (! $this->presencePolicy->shouldPersistOnlineHeartbeat($device, $seenAt)) {
+            return true;
         }
 
-        return $freshDevice;
+        $writeThrottleSeconds = $this->presencePolicy->writeThrottleSeconds();
+
+        if ($writeThrottleSeconds === 0) {
+            return false;
+        }
+
+        $lastWrite = $this->cacheManager->store()->get($this->presenceCacheKey($device));
+
+        if (! is_string($lastWrite) || trim($lastWrite) === '') {
+            return false;
+        }
+
+        try {
+            $lastWriteAt = Carbon::parse($lastWrite);
+        } catch (\Throwable) {
+            return false;
+        }
+
+        if ($seenAt->lessThanOrEqualTo($lastWriteAt)) {
+            return true;
+        }
+
+        return $lastWriteAt->copy()->addSeconds($writeThrottleSeconds)->greaterThan($seenAt);
+    }
+
+    private function rememberLastPresenceWrite(Device $device, Carbon $seenAt): void
+    {
+        $ttlSeconds = max($device->presenceTimeoutSeconds(), $this->presencePolicy->writeThrottleSeconds(), 60);
+
+        $this->cacheManager->store()->put(
+            $this->presenceCacheKey($device),
+            $seenAt->toIso8601String(),
+            now()->addSeconds($ttlSeconds),
+        );
+    }
+
+    private function forgetLastPresenceWrite(Device $device): void
+    {
+        $this->cacheManager->store()->forget($this->presenceCacheKey($device));
+    }
+
+    private function presenceCacheKey(Device $device): string
+    {
+        $deviceKey = $device->getKey();
+
+        if (is_int($deviceKey) || is_string($deviceKey)) {
+            return 'iot:presence:last-write:'.(string) $deviceKey;
+        }
+
+        return 'iot:presence:last-write:'.spl_object_hash($device);
     }
 }

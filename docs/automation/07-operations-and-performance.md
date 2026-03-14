@@ -15,6 +15,7 @@ Recommended baseline:
 | Setting | Recommended Value |
 |---------|-------------------|
 | `AUTOMATION_PIPELINE_ENABLED` | `true` |
+| `AUTOMATION_PIPELINE_TELEMETRY_FANOUT_ENABLED` | `true` |
 | `AUTOMATION_PIPELINE_QUEUE_CONNECTION` | `redis` |
 | `AUTOMATION_PIPELINE_QUEUE` | `default` (or dedicated automation queue) |
 | `AUTOMATION_PIPELINE_LOG_CHANNEL` | `automation_pipeline` |
@@ -34,6 +35,17 @@ Result:
 
 - Trigger matching logs appear.
 - Run job start logs do not appear.
+
+## Telemetry Fan-Out Kill Switch
+
+Telemetry-triggered automation dispatch can be disabled independently of the broader automation module.
+
+Use:
+
+- `AUTOMATION_PIPELINE_ENABLED=false` to disable the automation pipeline broadly.
+- `AUTOMATION_PIPELINE_TELEMETRY_FANOUT_ENABLED=false` to keep automation code and workers available while stopping telemetry events from queueing automation runs.
+
+This is intended as an operational guardrail during ingestion incidents or load tests where telemetry persistence must remain available even if automation fan-out needs to be suppressed temporarily.
 
 ## Suggested Horizon Strategy
 
@@ -118,6 +130,7 @@ PHP fibers can be useful for specific in-process concurrency patterns, but they 
 
 - Queue backend and Horizon workers are aligned.
 - `AUTOMATION_PIPELINE_ENABLED=true` in active environments.
+- `AUTOMATION_PIPELINE_TELEMETRY_FANOUT_ENABLED=true` unless telemetry-triggered automation is intentionally suppressed.
 - Correlation logs are enabled and searchable.
 - Failed jobs monitoring is active.
 - Replay strategy is defined for missed telemetry windows.

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Providers;
 
 use App\Database\TimescalePostgresConnection;
@@ -9,8 +11,12 @@ use App\Domain\Automation\Models\AutomationWorkflow;
 use App\Domain\Automation\Services\DatabaseTriggerMatcher;
 use App\Domain\DataIngestion\Contracts\AnalyticsPublisher;
 use App\Domain\DataIngestion\Contracts\HotStateStore;
+use App\Domain\DataIngestion\Listeners\QueueTelemetryAnalyticsPublishes;
+use App\Domain\DataIngestion\Listeners\QueueTelemetryHotStateWrites;
+use App\Domain\DataIngestion\Services\DeviceTelemetryTopicResolver;
 use App\Domain\DataIngestion\Services\NatsAnalyticsPublisher;
 use App\Domain\DataIngestion\Services\NatsKvHotStateStore;
+use App\Domain\DataIngestion\Services\TelemetrySchemaMetadataCache;
 use App\Domain\DeviceManagement\Publishing\Mqtt\MqttCommandPublisher;
 use App\Domain\DeviceManagement\Publishing\Mqtt\PhpMqttCommandPublisher;
 use App\Domain\DeviceManagement\Publishing\Nats\BasisNatsDeviceStateStore;
@@ -21,6 +27,9 @@ use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
 use App\Domain\Reporting\Models\ReportRun;
 use App\Domain\Shared\Models\User;
+use App\Domain\Shared\Services\HorizonRuntimeConfigurator;
+use App\Domain\Shared\Services\RuntimeSettingManager;
+use App\Domain\Shared\Services\RuntimeSettingRegistry;
 use App\Events\TelemetryReceived;
 use App\Policies\AutomationWorkflowPolicy;
 use App\Policies\IoTDashboardPolicy;
@@ -59,6 +68,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(HotStateStore::class, NatsKvHotStateStore::class);
         $this->app->bind(AnalyticsPublisher::class, NatsAnalyticsPublisher::class);
         $this->app->bind(TriggerMatcher::class, DatabaseTriggerMatcher::class);
+        $this->app->singleton(RuntimeSettingRegistry::class);
+        $this->app->scoped(RuntimeSettingManager::class);
+        $this->app->singleton(HorizonRuntimeConfigurator::class);
+        $this->app->singleton(DeviceTelemetryTopicResolver::class);
+        $this->app->singleton(TelemetrySchemaMetadataCache::class);
 
         if ($this->app->environment('local')) {
             $this->app->register(\Laravel\Telescope\TelescopeServiceProvider::class);
@@ -117,5 +131,22 @@ class AppServiceProvider extends ServiceProvider
         });
 
         Event::listen(TelemetryReceived::class, QueueTelemetryAutomationRuns::class);
+        Event::listen(TelemetryReceived::class, QueueTelemetryHotStateWrites::class);
+        Event::listen(TelemetryReceived::class, QueueTelemetryAnalyticsPublishes::class);
+
+        if ($this->shouldApplyHorizonRuntimeConfiguration()) {
+            $this->app->make(HorizonRuntimeConfigurator::class)->apply();
+        }
+    }
+
+    private function shouldApplyHorizonRuntimeConfiguration(): bool
+    {
+        if (! $this->app->runningInConsole()) {
+            return false;
+        }
+
+        $command = $_SERVER['argv'][1] ?? null;
+
+        return is_string($command) && str_starts_with($command, 'horizon');
     }
 }

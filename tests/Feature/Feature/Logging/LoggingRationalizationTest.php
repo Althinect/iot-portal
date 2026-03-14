@@ -273,7 +273,7 @@ it('writes successful device command lifecycle logs at debug without info chatte
         );
 });
 
-it('writes matched automation listener logs at debug without info chatter', function (): void {
+it('does not emit automation listener debug chatter on matched telemetry events', function (): void {
     $logger = new RecordingLogger;
 
     bindRecordingLogManager($logger);
@@ -283,6 +283,11 @@ it('writes matched automation listener logs at debug without info chatter', func
 
     app()->bind(TriggerMatcher::class, fn () => new class implements TriggerMatcher
     {
+        public function hasCandidateTelemetryTriggers(DeviceTelemetryLog $telemetryLog): bool
+        {
+            return true;
+        }
+
         public function matchTelemetryTriggers(DeviceTelemetryLog $telemetryLog): Collection
         {
             return collect([101, 202]);
@@ -294,10 +299,7 @@ it('writes matched automation listener logs at debug without info chatter', func
     Queue::assertPushed(StartAutomationRunFromTelemetry::class, 2);
 
     expect($logger->messagesForLevel('info'))->toBe([])
-        ->and($logger->messagesForLevel('debug'))->toContain(
-            'Automation telemetry event matched workflows.',
-            'Queueing automation run from telemetry event.',
-        );
+        ->and($logger->messagesForLevel('debug'))->toBe([]);
 });
 
 it('logs device health warnings only when devices are actually marked offline', function (): void {

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\IoT;
 
-use App\Domain\DeviceManagement\Services\DevicePresenceService;
+use App\Domain\DeviceManagement\Services\DevicePresenceMessageHandler;
 use Basis\Nats\Client;
 use Basis\Nats\Configuration;
 use Basis\Nats\Message\Payload;
@@ -20,7 +20,7 @@ class ListenForDevicePresence extends Command
 
     protected $description = 'Listen for device presence (LWT) messages and update connection state';
 
-    public function handle(DevicePresenceService $presenceService): int
+    public function handle(DevicePresenceMessageHandler $messageHandler): int
     {
         $this->disableTelescopeRecording();
 
@@ -28,7 +28,7 @@ class ListenForDevicePresence extends Command
         $port = $this->resolvePort();
         $subjectPrefix = $this->resolveSubjectPrefix();
         $subjectSuffix = $this->resolveSubjectSuffix();
-        $natsSubject = "{$subjectPrefix}.*.{$subjectSuffix}";
+        $natsSubject = $messageHandler->subscriptionSubject($subjectPrefix, $subjectSuffix);
 
         $this->info('Starting device presence listener...');
         $this->info("Connecting to NATS at {$host}:{$port}");
@@ -47,36 +47,13 @@ class ListenForDevicePresence extends Command
 
         $client = new Client($configuration);
 
-        $client->subscribe($natsSubject, function (Payload $payload) use ($presenceService, $subjectPrefix, $subjectSuffix): void {
-            $sourceSubject = $payload->subject ?? '';
-            $body = trim($payload->body);
-
-            $deviceUuid = $this->extractDeviceUuid($sourceSubject, $subjectPrefix, $subjectSuffix);
-
-            if ($deviceUuid === null) {
-                Log::channel('device_control')->debug('Could not extract device UUID from presence subject', [
-                    'subject' => $sourceSubject,
-                ]);
-
-                return;
-            }
-
-            Log::channel('device_control')->debug('Presence message received', [
-                'subject' => $sourceSubject,
-                'device_uuid' => $deviceUuid,
-                'state' => $body,
-            ]);
-
-            if ($body === 'offline') {
-                $presenceService->markOfflineByUuid($deviceUuid);
-            } elseif ($body === 'online') {
-                $presenceService->markOnlineByUuid($deviceUuid);
-            } else {
-                Log::channel('device_control')->warning('Unknown presence payload', [
-                    'device_uuid' => $deviceUuid,
-                    'body' => $body,
-                ]);
-            }
+        $client->subscribe($natsSubject, function (Payload $payload) use ($messageHandler, $subjectPrefix, $subjectSuffix): void {
+            $messageHandler->handle(
+                subject: $payload->subject ?? '',
+                body: $payload->body,
+                prefix: $subjectPrefix,
+                suffix: $subjectSuffix,
+            );
         });
 
         $this->info('Device presence listener is running. Press Ctrl+C to stop.');
@@ -102,20 +79,6 @@ class ListenForDevicePresence extends Command
 
         /** @phpstan-ignore deadCode.unreachable */
         return self::SUCCESS;
-    }
-
-    private function extractDeviceUuid(string $subject, string $prefix, string $suffix): ?string
-    {
-        $natsPrefix = str_replace('/', '.', $prefix);
-        $natsSuffix = str_replace('/', '.', $suffix);
-
-        $pattern = '/^'.preg_quote($natsPrefix, '/').'\.([^.]+)\.'.preg_quote($natsSuffix, '/').'$/';
-
-        if (preg_match($pattern, $subject, $matches) === 1) {
-            return $matches[1];
-        }
-
-        return null;
     }
 
     private function resolveHost(): string

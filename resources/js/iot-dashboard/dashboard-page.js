@@ -17,6 +17,9 @@ function normalizeDashboardConfig(rawConfig) {
     return {
         dashboard_id: dashboardId,
         organization_id: Number.isInteger(organizationId) && organizationId > 0 ? organizationId : null,
+        snapshot_url: typeof rawConfig?.snapshot_url === 'string' && rawConfig.snapshot_url.trim() !== ''
+            ? rawConfig.snapshot_url
+            : null,
         widgets: Array.isArray(rawConfig?.widgets) ? rawConfig.widgets : [],
     };
 }
@@ -43,6 +46,7 @@ function handleWidgetsUpdated(event) {
         window.iotDashboardConfig = {
             dashboard_id: null,
             organization_id: null,
+            snapshot_url: null,
             widgets,
         };
     } else {

@@ -6,25 +6,39 @@ namespace App\Domain\Automation\Listeners;
 
 use App\Domain\Automation\Contracts\TriggerMatcher;
 use App\Domain\Automation\Jobs\StartAutomationRunFromTelemetry;
+use App\Domain\Automation\Services\TelemetryAutomationDispatchThrottle;
+use App\Domain\Shared\Services\RuntimeSettingManager;
 use App\Events\TelemetryReceived;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Log\LogManager;
 use Illuminate\Support\Str;
 use Psr\Log\LoggerInterface;
 
-class QueueTelemetryAutomationRuns
+class QueueTelemetryAutomationRuns implements ShouldQueue
 {
     public function __construct(
         private readonly TriggerMatcher $triggerMatcher,
+        private readonly TelemetryAutomationDispatchThrottle $dispatchThrottle,
         private readonly LogManager $logManager,
+        private readonly RuntimeSettingManager $runtimeSettingManager,
     ) {}
+
+    public function shouldQueue(TelemetryReceived $event): bool
+    {
+        if (! (bool) config('automation.enabled', true)) {
+            return false;
+        }
+
+        if (! $this->runtimeSettingManager->booleanValue('automation.pipeline.telemetry_fanout', $event->telemetryLog->device?->organization_id)) {
+            return false;
+        }
+
+        return $this->triggerMatcher->hasCandidateTelemetryTriggers($event->telemetryLog);
+    }
 
     public function handle(TelemetryReceived $event): void
     {
-        if (! (bool) config('automation.enabled', true)) {
-            $this->log()->debug('Automation telemetry listener skipped because pipeline is disabled.', [
-                'telemetry_log_id' => $this->resolveKeyAsString($event->telemetryLog->getKey()),
-            ]);
-
+        if (! $this->shouldQueue($event)) {
             return;
         }
 
@@ -42,32 +56,16 @@ class QueueTelemetryAutomationRuns
             return;
         }
 
-        $logContext = [
-            'event_correlation_id' => $eventCorrelationId,
-            'telemetry_log_id' => $telemetryLogId,
-            'device_id' => $telemetryLog->device_id,
-            'schema_version_topic_id' => $telemetryLog->schema_version_topic_id,
-            'matched_workflow_version_ids' => $workflowVersionIds->values()->all(),
-            'match_count' => $workflowVersionIds->count(),
-            'queue_connection' => config('automation.queue_connection', config('queue.default', 'database')),
-            'queue' => config('automation.queue', 'default'),
-        ];
-
         if ($workflowVersionIds->isEmpty()) {
-            $this->log()->debug('Automation telemetry event produced no matching workflows.', $logContext);
-
             return;
         }
-
-        $this->log()->debug('Automation telemetry event matched workflows.', $logContext);
 
         foreach ($workflowVersionIds as $workflowVersionId) {
             $resolvedWorkflowVersionId = (int) $workflowVersionId;
 
-            $this->log()->debug('Queueing automation run from telemetry event.', [
-                ...$logContext,
-                'workflow_version_id' => $resolvedWorkflowVersionId,
-            ]);
+            if (! $this->dispatchThrottle->shouldDispatch($resolvedWorkflowVersionId, $telemetryLog)) {
+                continue;
+            }
 
             StartAutomationRunFromTelemetry::dispatch(
                 workflowVersionId: $resolvedWorkflowVersionId,
@@ -85,6 +83,24 @@ class QueueTelemetryAutomationRuns
             : 'automation_pipeline';
 
         return $this->logManager->channel($logChannel);
+    }
+
+    public function viaConnection(): string
+    {
+        $queueConnection = config('automation.queue_connection', config('queue.default', 'database'));
+
+        return is_string($queueConnection) && $queueConnection !== ''
+            ? $queueConnection
+            : 'database';
+    }
+
+    public function viaQueue(): string
+    {
+        $queue = config('automation.queue', 'automation');
+
+        return is_string($queue) && $queue !== ''
+            ? $queue
+            : 'automation';
     }
 
     private function resolveKeyAsString(mixed $value): ?string

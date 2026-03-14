@@ -3,9 +3,8 @@ export class RealtimeManager {
         this.onPayload = onPayload;
         this.onSubscriptionStatusChanged = onSubscriptionStatusChanged;
         this.widgets = new Map();
-        this.organizationId = null;
-        this.channelName = null;
-        this.channel = null;
+        this.channels = new Map();
+        this.subscriptionStates = new Map();
         this.isSubscribed = false;
         this.connectionStatusUnsubscribe = null;
     }
@@ -18,13 +17,11 @@ export class RealtimeManager {
         });
     }
 
-    update(organizationId, widgets) {
+    update(widgets) {
         this.setWidgets(widgets);
 
-        const resolvedOrganizationId = Number(organizationId || 0);
-        const canUseRealtime = Number.isInteger(resolvedOrganizationId)
-            && resolvedOrganizationId > 0
-            && this.hasRealtimeWidget();
+        const nextChannelNames = this.collectChannelNames();
+        const canUseRealtime = nextChannelNames.length > 0;
 
         if (!canUseRealtime) {
             this.leave();
@@ -33,47 +30,13 @@ export class RealtimeManager {
         }
 
         if (!window.Echo) {
-            this.setSubscribed(false);
+            this.leave();
 
             return;
         }
 
-        const nextChannelName = `iot-dashboard.organization.${resolvedOrganizationId}`;
-
-        if (this.channel && this.channelName === nextChannelName) {
-            return;
-        }
-
-        this.leave();
-
-        this.organizationId = resolvedOrganizationId;
-        this.channelName = nextChannelName;
-        this.channel = window.Echo.private(nextChannelName);
-        this.setSubscribed(false);
-        this.channel.listen('.telemetry.received', this.onPayload);
-
-        if (typeof this.channel.subscribed === 'function') {
-            this.channel.subscribed(() => {
-                this.setSubscribed(true);
-            });
-        }
-
-        if (typeof this.channel.error === 'function') {
-            this.channel.error((error) => {
-                console.warn('IoT dashboard websocket subscription failed', error);
-                this.setSubscribed(false);
-            });
-        }
-
-        const connector = window.Echo?.connector;
-
-        if (connector && typeof connector.onConnectionChange === 'function') {
-            this.connectionStatusUnsubscribe = connector.onConnectionChange((status) => {
-                if (status !== 'connected') {
-                    this.setSubscribed(false);
-                }
-            });
-        }
+        this.syncConnectionStatusListener();
+        this.syncChannels(nextChannelNames);
     }
 
     shouldPollWidget(widget) {
@@ -85,30 +48,147 @@ export class RealtimeManager {
             return true;
         }
 
-        return !this.isSubscribed;
+        const channelName = this.resolveRealtimeChannel(widget);
+
+        if (typeof channelName !== 'string') {
+            return true;
+        }
+
+        return this.subscriptionStates.get(channelName) !== true;
     }
 
-    hasRealtimeWidget() {
-        return Array.from(this.widgets.values()).some((widget) => Boolean(widget.use_websocket));
+    collectChannelNames() {
+        return Array.from(new Set(
+            Array.from(this.widgets.values())
+                .filter((widget) => this.canUseRealtime(widget))
+                .map((widget) => this.resolveRealtimeChannel(widget))
+                .filter((channelName) => typeof channelName === 'string'),
+        ));
+    }
+
+    canUseRealtime(widget) {
+        return Boolean(widget?.use_websocket)
+            && widget?.type !== 'bar_chart'
+            && typeof this.resolveRealtimeChannel(widget) === 'string';
+    }
+
+    resolveRealtimeChannel(widget) {
+        const channelName = widget?.realtime?.channel;
+
+        if (typeof channelName !== 'string' || channelName.trim() === '') {
+            return null;
+        }
+
+        return channelName;
+    }
+
+    syncChannels(nextChannelNames) {
+        const nextChannelNameSet = new Set(nextChannelNames);
+
+        Array.from(this.channels.keys()).forEach((channelName) => {
+            if (nextChannelNameSet.has(channelName)) {
+                return;
+            }
+
+            this.leaveChannel(channelName);
+        });
+
+        nextChannelNames.forEach((channelName) => {
+            if (this.channels.has(channelName)) {
+                return;
+            }
+
+            const channel = window.Echo.private(channelName);
+
+            this.channels.set(channelName, channel);
+            this.subscriptionStates.set(channelName, false);
+            channel.listen('.telemetry.received', this.onPayload);
+
+            if (typeof channel.subscribed === 'function') {
+                channel.subscribed(() => {
+                    this.setChannelSubscribed(channelName, true);
+                });
+            }
+
+            if (typeof channel.error === 'function') {
+                channel.error((error) => {
+                    console.warn('IoT dashboard websocket subscription failed', error);
+                    this.setChannelSubscribed(channelName, false);
+                });
+            }
+        });
+
+        this.syncSubscribedState();
+    }
+
+    syncConnectionStatusListener() {
+        if (typeof this.connectionStatusUnsubscribe === 'function') {
+            return;
+        }
+
+        const connector = window.Echo?.connector;
+
+        if (!connector || typeof connector.onConnectionChange !== 'function') {
+            return;
+        }
+
+        this.connectionStatusUnsubscribe = connector.onConnectionChange((status) => {
+            if (status === 'connected') {
+                return;
+            }
+
+            Array.from(this.subscriptionStates.keys()).forEach((channelName) => {
+                this.subscriptionStates.set(channelName, false);
+            });
+
+            this.syncSubscribedState();
+        });
+    }
+
+    leaveChannel(channelName) {
+        const channel = this.channels.get(channelName);
+
+        if (channel && typeof channel.stopListening === 'function') {
+            channel.stopListening('.telemetry.received');
+        }
+
+        if (window.Echo) {
+            window.Echo.leave(channelName);
+        }
+
+        this.channels.delete(channelName);
+        this.subscriptionStates.delete(channelName);
+    }
+
+    setChannelSubscribed(channelName, nextState) {
+        if (!this.channels.has(channelName)) {
+            return;
+        }
+
+        const normalizedState = Boolean(nextState);
+
+        if (this.subscriptionStates.get(channelName) === normalizedState) {
+            return;
+        }
+
+        this.subscriptionStates.set(channelName, normalizedState);
+        this.syncSubscribedState();
+    }
+
+    syncSubscribedState() {
+        this.setSubscribed(Array.from(this.subscriptionStates.values()).some(Boolean));
     }
 
     leave() {
-        if (this.channel && typeof this.channel.stopListening === 'function') {
-            this.channel.stopListening('.telemetry.received');
-        }
-
-        if (this.channelName && window.Echo) {
-            window.Echo.leave(this.channelName);
-        }
+        Array.from(this.channels.keys()).forEach((channelName) => {
+            this.leaveChannel(channelName);
+        });
 
         if (typeof this.connectionStatusUnsubscribe === 'function') {
             this.connectionStatusUnsubscribe();
             this.connectionStatusUnsubscribe = null;
         }
 
-        this.channel = null;
-        this.channelName = null;
-        this.organizationId = null;
         this.setSubscribed(false);
     }
 

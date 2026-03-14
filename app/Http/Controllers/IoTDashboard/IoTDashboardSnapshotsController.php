@@ -9,6 +9,7 @@ use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 
 class IoTDashboardSnapshotsController extends Controller
@@ -34,10 +35,29 @@ class IoTDashboardSnapshotsController extends Controller
         ]);
 
         $widgetId = $request->integer('widget');
+        $requestedWidgetIds = $request->input('widgets', []);
+
+        if (! is_array($requestedWidgetIds)) {
+            $requestedWidgetIds = [];
+        }
+
+        /** @var Collection<int, mixed> $widgetIdCandidates */
+        $widgetIdCandidates = collect($requestedWidgetIds);
+
+        $widgetIds = $widgetIdCandidates
+            ->filter(fn (mixed $value): bool => is_numeric($value) && (int) $value > 0)
+            ->map(fn (mixed $value): int => (int) $value)
+            ->unique()
+            ->values()
+            ->all();
 
         $widgets = $dashboard->widgets
             ->when(
-                $widgetId > 0,
+                $widgetIds !== [],
+                fn ($collection) => $collection->whereIn('id', $widgetIds),
+            )
+            ->when(
+                $widgetIds === [] && $widgetId > 0,
                 fn ($collection) => $collection->where('id', $widgetId),
             )
             ->values();

@@ -18,6 +18,7 @@ use Filament\Actions;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -87,6 +88,12 @@ class DevicesTable
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->placeholder('—'),
 
+                TextColumn::make('temporaryDevice.expires_at')
+                    ->label('Temporary Expires')
+                    ->dateTime()
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
+
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
@@ -118,6 +125,10 @@ class DevicesTable
 
                         return $query->whereEffectiveConnectionState($value);
                     }),
+
+                Filter::make('temporary_devices')
+                    ->label('Temporary devices')
+                    ->query(fn (Builder $query): Builder => $query->whereHas('temporaryDevice')),
             ])
             ->recordActions([
                 Actions\ActionGroup::make([

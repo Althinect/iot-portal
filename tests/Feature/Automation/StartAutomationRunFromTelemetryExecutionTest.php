@@ -27,6 +27,11 @@ use Illuminate\Support\Facades\Notification;
 
 uses(RefreshDatabase::class);
 
+beforeEach(function (): void {
+    config()->set('automation.step_log_mode', 'all');
+    config()->set('automation.capture_step_snapshots', true);
+});
+
 function createExecutionFixture(float $voltage): array
 {
     $organization = Organization::factory()->create();
@@ -545,4 +550,53 @@ it('does not send alert when query value stays below threshold', function (): vo
         ->and($run?->steps()->where('node_id', 'alert-1')->exists())->toBeFalse();
 
     Notification::assertNothingSent();
+});
+
+it('persists only the automation run header for successful runs when step logging is failure only', function (): void {
+    config()->set('automation.step_log_mode', 'failures');
+    config()->set('automation.capture_step_snapshots', false);
+
+    bindFakeMqttPublisherForAutomationExecution();
+
+    $fixture = createExecutionFixture(voltage: 120.5);
+
+    (new StartAutomationRunFromTelemetry(
+        workflowVersionId: $fixture['version']->id,
+        telemetryLogId: $fixture['telemetryLog']->id,
+    ))->handle();
+
+    $run = $fixture['workflow']->runs()->latest('id')->first();
+
+    expect($run)->not->toBeNull()
+        ->and($run?->status->value)->toBe('completed')
+        ->and($run?->steps()->count())->toBe(0);
+});
+
+it('persists failed step details and snapshots even when success step logging is disabled', function (): void {
+    config()->set('automation.step_log_mode', 'failures');
+    config()->set('automation.capture_step_snapshots', false);
+
+    bindFakeMqttPublisherForAutomationExecution();
+
+    $fixture = createExecutionFixture(voltage: 120.5);
+    $graph = $fixture['version']->graph_json;
+
+    data_set($graph, 'nodes.2.data.config.target.topic_id', 999999);
+    $fixture['version']->update(['graph_json' => $graph]);
+
+    (new StartAutomationRunFromTelemetry(
+        workflowVersionId: $fixture['version']->id,
+        telemetryLogId: $fixture['telemetryLog']->id,
+    ))->handle();
+
+    $run = $fixture['workflow']->runs()->latest('id')->first();
+    $commandStep = $run?->steps()->where('node_id', 'command-1')->latest('id')->first();
+
+    expect($run)->not->toBeNull()
+        ->and($run?->status->value)->toBe('failed')
+        ->and($run?->steps()->count())->toBe(3)
+        ->and($commandStep)->not->toBeNull()
+        ->and($commandStep?->error)->toHaveKey('reason', 'command_target_topic_invalid')
+        ->and($commandStep?->input_snapshot)->not->toBeNull()
+        ->and($commandStep?->output_snapshot)->toBeArray();
 });

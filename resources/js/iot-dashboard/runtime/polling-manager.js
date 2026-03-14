@@ -1,6 +1,6 @@
 export class PollingManager {
     constructor() {
-        this.timers = new Map();
+        this.groups = new Map();
     }
 
     destroy() {
@@ -8,57 +8,73 @@ export class PollingManager {
     }
 
     stopAll() {
-        this.timers.forEach((timerId) => {
-            clearInterval(timerId);
+        this.groups.forEach((entry) => {
+            clearInterval(entry.timerId);
         });
 
-        this.timers.clear();
+        this.groups.clear();
     }
 
-    sync(widgets, shouldPoll, fetchSnapshot) {
-        const activeIds = new Set();
+    sync(widgets, shouldPoll, fetchSnapshots) {
+        const nextGroups = new Map();
 
         widgets.forEach((widget) => {
-            activeIds.add(widget.id);
-
             if (!shouldPoll(widget)) {
-                this.stopForWidget(widget.id);
-
                 return;
             }
 
-            this.startForWidget(widget, fetchSnapshot);
+            const intervalSeconds = Math.max(2, Number(widget.polling_interval_seconds || 10));
+            const groupKey = String(intervalSeconds);
+            const existingGroup = nextGroups.get(groupKey) ?? {
+                intervalSeconds,
+                widgetIds: [],
+            };
+
+            existingGroup.widgetIds.push(widget.id);
+            nextGroups.set(groupKey, existingGroup);
         });
 
-        Array.from(this.timers.keys()).forEach((widgetId) => {
-            if (!activeIds.has(widgetId)) {
-                this.stopForWidget(widgetId);
+        Array.from(this.groups.keys()).forEach((groupKey) => {
+            if (!nextGroups.has(groupKey)) {
+                this.stopForGroup(groupKey);
             }
         });
+
+        nextGroups.forEach(({ intervalSeconds, widgetIds }, groupKey) => {
+            this.startOrUpdateGroup(groupKey, intervalSeconds, widgetIds, fetchSnapshots);
+        });
     }
 
-    stopForWidget(widgetId) {
-        const timerId = this.timers.get(widgetId);
+    stopForGroup(groupKey) {
+        const entry = this.groups.get(groupKey);
 
-        if (!timerId) {
+        if (!entry) {
             return;
         }
 
-        clearInterval(timerId);
-        this.timers.delete(widgetId);
+        clearInterval(entry.timerId);
+        this.groups.delete(groupKey);
     }
 
-    startForWidget(widget, fetchSnapshot) {
-        if (this.timers.has(widget.id)) {
+    startOrUpdateGroup(groupKey, intervalSeconds, widgetIds, fetchSnapshots) {
+        const existingGroup = this.groups.get(groupKey);
+
+        if (existingGroup) {
+            existingGroup.widgetIds = [...widgetIds];
+
             return;
         }
 
-        const intervalSeconds = Math.max(2, Number(widget.polling_interval_seconds || 10));
+        const nextGroup = {
+            intervalSeconds,
+            widgetIds: [...widgetIds],
+            timerId: null,
+        };
 
-        const timerId = window.setInterval(() => {
-            fetchSnapshot(widget);
+        nextGroup.timerId = window.setInterval(() => {
+            fetchSnapshots([...nextGroup.widgetIds]);
         }, intervalSeconds * 1000);
 
-        this.timers.set(widget.id, timerId);
+        this.groups.set(groupKey, nextGroup);
     }
 }

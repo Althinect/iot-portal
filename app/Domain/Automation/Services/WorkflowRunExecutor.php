@@ -8,6 +8,7 @@ use App\Domain\Automation\Data\WorkflowExecutionResult;
 use App\Domain\Automation\Data\WorkflowGraph;
 use App\Domain\Automation\Enums\AutomationRunStatus;
 use App\Domain\Automation\Models\AutomationRun;
+use App\Domain\Automation\Models\AutomationRunStep;
 use App\Domain\Automation\Models\AutomationWorkflowVersion;
 use App\Domain\DeviceControl\Enums\CommandStatus;
 use App\Domain\DeviceControl\Services\DeviceCommandDispatcher;
@@ -66,8 +67,6 @@ class WorkflowRunExecutor
             'graph_edge_count' => count($graph->edges),
         ];
 
-        $this->log()->debug('Automation workflow execution started.', $baseLogContext);
-
         if ($triggerContexts === []) {
             $this->log()->warning('Automation workflow execution found no matching trigger nodes.', $baseLogContext);
 
@@ -80,6 +79,7 @@ class WorkflowRunExecutor
 
         $hasFailures = false;
         $stepSummaries = [];
+        $stepRecords = [];
         $stepSequence = 0;
 
         foreach ($triggerContexts as $triggerContext) {
@@ -94,6 +94,7 @@ class WorkflowRunExecutor
             $this->recordStep(
                 run: $run,
                 stepSummaries: $stepSummaries,
+                stepRecords: $stepRecords,
                 nodeId: $triggerNodeId,
                 nodeType: $triggerNodeType,
                 status: 'completed',
@@ -122,6 +123,7 @@ class WorkflowRunExecutor
                         'queries' => [],
                     ],
                     stepSummaries: $stepSummaries,
+                    stepRecords: $stepRecords,
                     hasFailures: $hasFailures,
                     runCorrelationId: $runCorrelationId,
                     stepSequence: $stepSequence,
@@ -130,6 +132,7 @@ class WorkflowRunExecutor
         }
 
         $finalStatus = $hasFailures ? AutomationRunStatus::Failed : AutomationRunStatus::Completed;
+        $this->persistStepAudit($run, $stepRecords, $finalStatus);
 
         if ($hasFailures) {
             $this->log()->warning('Automation workflow execution finished with failures.', [
@@ -137,13 +140,6 @@ class WorkflowRunExecutor
                 'status' => $finalStatus->value,
                 'step_count' => count($stepSummaries),
                 'failed' => true,
-            ]);
-        } else {
-            $this->log()->debug('Automation workflow execution finished.', [
-                ...$baseLogContext,
-                'status' => $finalStatus->value,
-                'step_count' => count($stepSummaries),
-                'failed' => false,
             ]);
         }
 
@@ -282,6 +278,7 @@ class WorkflowRunExecutor
      * @param  array<string, array<int, string>>  $edgesBySource
      * @param  array<string, mixed>  $executionContext
      * @param  array<int, array<string, mixed>>  $stepSummaries
+     * @param  array<int, array<string, mixed>>  $stepRecords
      */
     private function executeFromNode(
         AutomationRun $run,
@@ -290,6 +287,7 @@ class WorkflowRunExecutor
         array $edgesBySource,
         array $executionContext,
         array &$stepSummaries,
+        array &$stepRecords,
         bool &$hasFailures,
         string $runCorrelationId,
         int &$stepSequence,
@@ -319,6 +317,7 @@ class WorkflowRunExecutor
             $this->recordStep(
                 run: $run,
                 stepSummaries: $stepSummaries,
+                stepRecords: $stepRecords,
                 nodeId: $nodeId,
                 nodeType: $nodeType,
                 status: $result['status'],
@@ -348,6 +347,7 @@ class WorkflowRunExecutor
                     edgesBySource: $edgesBySource,
                     executionContext: $executionContext,
                     stepSummaries: $stepSummaries,
+                    stepRecords: $stepRecords,
                     hasFailures: $hasFailures,
                     runCorrelationId: $runCorrelationId,
                     stepSequence: $stepSequence,
@@ -369,6 +369,7 @@ class WorkflowRunExecutor
             $this->recordStep(
                 run: $run,
                 stepSummaries: $stepSummaries,
+                stepRecords: $stepRecords,
                 nodeId: $nodeId,
                 nodeType: $nodeType,
                 status: $result['status'],
@@ -394,6 +395,7 @@ class WorkflowRunExecutor
                     edgesBySource: $edgesBySource,
                     executionContext: $result['execution_context'],
                     stepSummaries: $stepSummaries,
+                    stepRecords: $stepRecords,
                     hasFailures: $hasFailures,
                     runCorrelationId: $runCorrelationId,
                     stepSequence: $stepSequence,
@@ -414,6 +416,7 @@ class WorkflowRunExecutor
             $this->recordStep(
                 run: $run,
                 stepSummaries: $stepSummaries,
+                stepRecords: $stepRecords,
                 nodeId: $nodeId,
                 nodeType: $nodeType,
                 status: $result['status'],
@@ -439,6 +442,7 @@ class WorkflowRunExecutor
                     edgesBySource: $edgesBySource,
                     executionContext: $executionContext,
                     stepSummaries: $stepSummaries,
+                    stepRecords: $stepRecords,
                     hasFailures: $hasFailures,
                     runCorrelationId: $runCorrelationId,
                     stepSequence: $stepSequence,
@@ -460,6 +464,7 @@ class WorkflowRunExecutor
             $this->recordStep(
                 run: $run,
                 stepSummaries: $stepSummaries,
+                stepRecords: $stepRecords,
                 nodeId: $nodeId,
                 nodeType: $nodeType,
                 status: $result['status'],
@@ -485,6 +490,7 @@ class WorkflowRunExecutor
                     edgesBySource: $edgesBySource,
                     executionContext: $result['execution_context'],
                     stepSummaries: $stepSummaries,
+                    stepRecords: $stepRecords,
                     hasFailures: $hasFailures,
                     runCorrelationId: $runCorrelationId,
                     stepSequence: $stepSequence,
@@ -497,6 +503,7 @@ class WorkflowRunExecutor
         $this->recordStep(
             run: $run,
             stepSummaries: $stepSummaries,
+            stepRecords: $stepRecords,
             nodeId: $nodeId,
             nodeType: $nodeType,
             status: 'skipped',
@@ -516,6 +523,7 @@ class WorkflowRunExecutor
                 edgesBySource: $edgesBySource,
                 executionContext: $executionContext,
                 stepSummaries: $stepSummaries,
+                stepRecords: $stepRecords,
                 hasFailures: $hasFailures,
                 runCorrelationId: $runCorrelationId,
                 stepSequence: $stepSequence,
@@ -569,15 +577,6 @@ class WorkflowRunExecutor
 
         $rawEvaluationResult = $this->jsonLogicEvaluator->evaluate($jsonLogic, $evaluationData);
         $passed = $this->resolveBoolean($rawEvaluationResult);
-
-        $this->log()->debug('Condition node evaluated.', [
-            'run_correlation_id' => $runCorrelationId,
-            'node_id' => $nodeId,
-            'passed' => $passed,
-            'raw_result_type' => get_debug_type($rawEvaluationResult),
-            'trigger_value' => Arr::get($executionContext, 'trigger.value'),
-            'query_value' => Arr::get($executionContext, 'query.value'),
-        ]);
 
         return [
             'status' => 'completed',
@@ -650,18 +649,6 @@ class WorkflowRunExecutor
         }
 
         $nextExecutionContext = $this->applyQueryResultToExecutionContext($executionContext, $nodeId, $result);
-
-        $sources = Arr::get($result, 'sources');
-        $sourceCount = is_array($sources) ? count($sources) : 0;
-
-        $this->log()->debug('Query node executed successfully.', [
-            'run_correlation_id' => $runCorrelationId,
-            'node_id' => $nodeId,
-            'query_value' => Arr::get($result, 'value'),
-            'window_start' => Arr::get($result, 'window.start'),
-            'window_end' => Arr::get($result, 'window.end'),
-            'source_count' => $sourceCount,
-        ]);
 
         return [
             'status' => 'completed',
@@ -811,13 +798,6 @@ class WorkflowRunExecutor
             ];
         }
 
-        $this->log()->debug('Alert node dispatched successfully.', [
-            'run_correlation_id' => $runCorrelationId,
-            'node_id' => $nodeId,
-            'recipient_count' => count($recipients),
-            'channel' => $channel,
-        ]);
-
         return [
             'status' => 'completed',
             'execution_context' => $executionContext,
@@ -910,14 +890,6 @@ class WorkflowRunExecutor
             ];
         }
 
-        $this->log()->debug('Command node dispatching device command.', [
-            'run_correlation_id' => $runCorrelationId,
-            'node_id' => $nodeId,
-            'target_device_id' => $device->id,
-            'target_topic_id' => $topic->id,
-            'payload_keys' => array_keys($resolvedPayload),
-        ]);
-
         $commandLog = $this->deviceCommandDispatcher->dispatch(
             device: $device,
             topic: $topic,
@@ -940,13 +912,6 @@ class WorkflowRunExecutor
                 ],
             ];
         }
-
-        $this->log()->debug('Command node dispatch completed.', [
-            'run_correlation_id' => $runCorrelationId,
-            'node_id' => $nodeId,
-            'command_log_id' => $commandLog->id,
-            'command_status' => $commandStatus,
-        ]);
 
         return [
             'status' => 'completed',
@@ -1200,6 +1165,7 @@ class WorkflowRunExecutor
 
     /**
      * @param  array<int, array<string, mixed>>  $stepSummaries
+     * @param  array<int, array<string, mixed>>  $stepRecords
      * @param  array<string, mixed>  $input
      * @param  array<string, mixed>  $output
      * @param  array<string, mixed>|null  $error
@@ -1207,6 +1173,7 @@ class WorkflowRunExecutor
     private function recordStep(
         AutomationRun $run,
         array &$stepSummaries,
+        array &$stepRecords,
         string $nodeId,
         string $nodeType,
         string $status,
@@ -1223,7 +1190,15 @@ class WorkflowRunExecutor
         $finishedAt = now();
         $stepCorrelationId = $this->buildStepCorrelationId($runCorrelationId, $stepSequence, $nodeId);
 
-        $run->steps()->create([
+        $stepSummaries[] = [
+            'node_id' => $nodeId,
+            'node_type' => $nodeType,
+            'status' => $status,
+            'step_correlation_id' => $stepCorrelationId,
+        ];
+
+        $stepRecords[] = [
+            'automation_run_id' => $run->id,
             'node_id' => $nodeId,
             'node_type' => $nodeType,
             'status' => $status,
@@ -1233,15 +1208,117 @@ class WorkflowRunExecutor
             'started_at' => $startedAt,
             'finished_at' => $finishedAt,
             'duration_ms' => $durationMs,
-        ]);
-
-        $stepSummaries[] = [
-            'node_id' => $nodeId,
-            'node_type' => $nodeType,
-            'status' => $status,
-            'step_correlation_id' => $stepCorrelationId,
         ];
+    }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $stepRecords
+     */
+    private function persistStepAudit(
+        AutomationRun $run,
+        array $stepRecords,
+        AutomationRunStatus $finalStatus,
+    ): void {
+        if ($stepRecords === [] || ! $this->shouldPersistStepAudit($run, $finalStatus)) {
+            return;
+        }
+
+        $captureSnapshots = $this->shouldCaptureStepSnapshots($finalStatus);
+        $timestamp = now();
+        $rows = array_map(function (array $stepRecord) use ($captureSnapshots, $timestamp): array {
+            $startedAt = $stepRecord['started_at'] instanceof \Illuminate\Support\Carbon
+                ? $stepRecord['started_at']
+                : $timestamp;
+            $finishedAt = $stepRecord['finished_at'] instanceof \Illuminate\Support\Carbon
+                ? $stepRecord['finished_at']
+                : $timestamp;
+
+            if (! $captureSnapshots) {
+                $stepRecord['input_snapshot'] = null;
+                $stepRecord['output_snapshot'] = null;
+            }
+
+            return [
+                'automation_run_id' => $stepRecord['automation_run_id'],
+                'node_id' => $stepRecord['node_id'],
+                'node_type' => $stepRecord['node_type'],
+                'status' => $stepRecord['status'],
+                'input_snapshot' => $stepRecord['input_snapshot'] !== null
+                    ? json_encode($stepRecord['input_snapshot'], JSON_THROW_ON_ERROR)
+                    : null,
+                'output_snapshot' => $stepRecord['output_snapshot'] !== null
+                    ? json_encode($stepRecord['output_snapshot'], JSON_THROW_ON_ERROR)
+                    : null,
+                'error' => $stepRecord['error'] !== null
+                    ? json_encode($stepRecord['error'], JSON_THROW_ON_ERROR)
+                    : null,
+                'started_at' => $startedAt->toDateTimeString(),
+                'finished_at' => $finishedAt->toDateTimeString(),
+                'duration_ms' => $stepRecord['duration_ms'],
+                'created_at' => $timestamp->toDateTimeString(),
+                'updated_at' => $timestamp->toDateTimeString(),
+            ];
+        }, $stepRecords);
+
+        AutomationRunStep::query()->insert($rows);
+    }
+
+    private function shouldPersistStepAudit(AutomationRun $run, AutomationRunStatus $finalStatus): bool
+    {
+        if ($finalStatus === AutomationRunStatus::Failed) {
+            return true;
+        }
+
+        return match ($this->resolveStepLogMode()) {
+            'all' => true,
+            'sampled' => $this->shouldSampleSuccessfulStepLogs($run),
+            default => false,
+        };
+    }
+
+    private function shouldCaptureStepSnapshots(AutomationRunStatus $finalStatus): bool
+    {
+        if ($finalStatus === AutomationRunStatus::Failed) {
+            return true;
+        }
+
+        return (bool) config('automation.capture_step_snapshots', false);
+    }
+
+    private function resolveStepLogMode(): string
+    {
+        $configuredMode = config('automation.step_log_mode', 'failures');
+
+        if (! is_string($configuredMode)) {
+            return 'failures';
+        }
+
+        return in_array($configuredMode, ['failures', 'sampled', 'all'], true)
+            ? $configuredMode
+            : 'failures';
+    }
+
+    private function shouldSampleSuccessfulStepLogs(AutomationRun $run): bool
+    {
+        $configuredSampleRate = config('automation.step_log_sample_rate', 0.0);
+
+        if (! is_numeric($configuredSampleRate)) {
+            return false;
+        }
+
+        $sampleRate = max(0.0, min(1.0, (float) $configuredSampleRate));
+
+        if ($sampleRate === 0.0) {
+            return false;
+        }
+
+        if ($sampleRate === 1.0) {
+            return true;
+        }
+
+        $normalizedHash = (float) sprintf('%u', crc32((string) $run->id));
+
+        return ($normalizedHash / 4_294_967_295) < $sampleRate;
     }
 
     private function buildStepCorrelationId(string $runCorrelationId, int $stepSequence, string $nodeId): string

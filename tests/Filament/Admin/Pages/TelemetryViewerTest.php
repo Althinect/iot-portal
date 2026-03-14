@@ -20,11 +20,19 @@ it('can render the telemetry viewer page', function (): void {
 
 it('shows the live telemetry viewer content', function (): void {
     livewire(TelemetryViewer::class)
+        ->assertSee('Diagnostics Disabled')
+        ->assertSee('Raw telemetry broadcasting is disabled by default');
+});
+
+it('shows the live telemetry stream when diagnostics are explicitly enabled', function (): void {
+    config()->set('iot.broadcast.raw_telemetry', true);
+
+    livewire(TelemetryViewer::class)
         ->assertSee('Pre-Ingestion Stream');
 });
 
 it('does not error when device query string is not a uuid', function (): void {
     $this->get('/admin/telemetry-viewer?device=1234567')
         ->assertOk()
-        ->assertSee('Pre-Ingestion Stream');
+        ->assertSee('Diagnostics Disabled');
 });

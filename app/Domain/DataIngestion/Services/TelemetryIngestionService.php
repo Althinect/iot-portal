@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Domain\DataIngestion\Services;
 
-use App\Domain\DataIngestion\Contracts\HotStateStore;
 use App\Domain\DataIngestion\DTO\IncomingTelemetryEnvelope;
 use App\Domain\DataIngestion\Enums\IngestionStage;
 use App\Domain\DataIngestion\Enums\IngestionStatus;
@@ -12,56 +11,38 @@ use App\Domain\DataIngestion\Models\IngestionMessage;
 use App\Domain\DataIngestion\Models\IngestionStageLog;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\Shared\Services\RuntimeSettingManager;
+use App\Domain\Telemetry\Models\DeviceTelemetryLog;
+use App\Events\TelemetryReceived;
 use Illuminate\Support\Collection;
-use Laravel\Pennant\Feature;
+use Illuminate\Support\Str;
 
 class TelemetryIngestionService
 {
     public function __construct(
         private readonly DeviceTelemetryTopicResolver $topicResolver,
+        private readonly TelemetrySchemaMetadataCache $schemaMetadataCache,
         private readonly TelemetryValidationService $validationService,
         private readonly TelemetryMutationService $mutationService,
         private readonly TelemetryDerivationService $derivationService,
         private readonly TelemetryPersistenceService $persistenceService,
-        private readonly HotStateStore $hotStateStore,
-        private readonly TelemetryAnalyticsPublishService $analyticsPublishService,
+        private readonly RuntimeSettingManager $runtimeSettingManager,
     ) {}
 
     public function ingest(IncomingTelemetryEnvelope $envelope): ?IngestionMessage
     {
-        if (! Feature::active('ingestion.pipeline.enabled')) {
+        if (! $this->runtimeSettingManager->booleanValue('ingestion.pipeline.enabled')) {
             return null;
         }
 
-        $featureDriver = Feature::value('ingestion.pipeline.driver');
-        $driver = is_string($featureDriver) ? $featureDriver : 'laravel';
-
-        if ($driver !== 'laravel') {
+        if ($this->runtimeSettingManager->stringValue('ingestion.pipeline.driver') !== 'laravel') {
             return null;
         }
 
-        $ingestionMessage = IngestionMessage::query()->firstOrCreate(
-            ['source_deduplication_key' => $envelope->deduplicationKey()],
-            [
-                'source_subject' => $envelope->sourceSubject,
-                'source_protocol' => 'mqtt',
-                'source_message_id' => $envelope->messageId,
-                'raw_payload' => $envelope->payload,
-                'status' => IngestionStatus::Queued,
-                'received_at' => $envelope->resolveReceivedAt(),
-            ],
-        );
+        $queueAttempt = $this->createQueuedIngestionMessage($envelope);
+        $ingestionMessage = $queueAttempt['message'];
 
-        if (! $ingestionMessage->wasRecentlyCreated) {
-            $status = $ingestionMessage->status;
-            $isDuplicate = $status === IngestionStatus::Duplicate->value;
-
-            if (! $isDuplicate) {
-                $ingestionMessage->update([
-                    'status' => IngestionStatus::Duplicate,
-                ]);
-            }
-
+        if (! $queueAttempt['should_continue']) {
             return $ingestionMessage;
         }
 
@@ -99,6 +80,36 @@ class TelemetryIngestionService
         /** @var SchemaVersionTopic $topic */
         $topic = $resolved['topic'];
 
+        if (! $this->runtimeSettingManager->booleanValue('ingestion.pipeline.enabled', $device->organization_id)) {
+            $this->finalizeMessage($ingestionMessage, [
+                'organization_id' => $device->organization_id,
+                'device_id' => $device->id,
+                'device_schema_version_id' => $device->device_schema_version_id,
+                'schema_version_topic_id' => $topic->id,
+                'status' => IngestionStatus::FailedTerminal,
+                'error_summary' => [
+                    'reason' => 'organization_pipeline_disabled',
+                ],
+            ]);
+
+            return $ingestionMessage;
+        }
+
+        if ($this->runtimeSettingManager->stringValue('ingestion.pipeline.driver', $device->organization_id) !== 'laravel') {
+            $this->finalizeMessage($ingestionMessage, [
+                'organization_id' => $device->organization_id,
+                'device_id' => $device->id,
+                'device_schema_version_id' => $device->device_schema_version_id,
+                'schema_version_topic_id' => $topic->id,
+                'status' => IngestionStatus::FailedTerminal,
+                'error_summary' => [
+                    'reason' => 'organization_driver_unsupported',
+                ],
+            ]);
+
+            return $ingestionMessage;
+        }
+
         $schemaVersion = $device->schemaVersion;
         $messageContext = [
             'organization_id' => $device->organization_id,
@@ -135,7 +146,7 @@ class TelemetryIngestionService
         );
 
         $parameters = $this->resolveActiveParameters($topic);
-        $derivedParameters = $schemaVersion->derivedParameters()->get();
+        $derivedParameters = $this->schemaMetadataCache->derivedParametersFor($schemaVersion);
 
         $validationStartedAt = microtime(true);
 
@@ -161,7 +172,7 @@ class TelemetryIngestionService
         );
 
         if ($validationResult['passes'] !== true) {
-            $this->persistenceService->persist(
+            $telemetryLog = $this->persistenceService->persist(
                 device: $device,
                 schemaVersion: $schemaVersion,
                 topic: $topic,
@@ -182,15 +193,13 @@ class TelemetryIngestionService
                 ],
             ]);
 
-            if ($device->is_active) {
-                $this->analyticsPublishService->publishInvalid($device, $topic, $validationResult['validation_errors'], $ingestionMessage);
-            }
+            $this->dispatchTelemetrySideEffects($ingestionMessage, $telemetryLog);
 
             return $ingestionMessage;
         }
 
         if (! $device->is_active) {
-            $this->persistenceService->persist(
+            $telemetryLog = $this->persistenceService->persist(
                 device: $device,
                 schemaVersion: $schemaVersion,
                 topic: $topic,
@@ -206,6 +215,8 @@ class TelemetryIngestionService
                 ...$messageContext,
                 'status' => IngestionStatus::InactiveSkipped,
             ]);
+
+            $this->dispatchTelemetrySideEffects($ingestionMessage, $telemetryLog);
 
             return $ingestionMessage;
         }
@@ -269,69 +280,51 @@ class TelemetryIngestionService
             ],
         );
 
-        $publishStartedAt = microtime(true);
-        $publishErrors = [];
-        $publishOutput = [
-            'hot_state_written' => false,
-            'analytics_published' => false,
-        ];
-
-        try {
-            $this->hotStateStore->store($device, $topic, $derivationResult['final_values'], $ingestionMessage);
-            $publishOutput['hot_state_written'] = true;
-        } catch (\Throwable $exception) {
-            report($exception);
-            $publishErrors['hot_state'] = $exception->getMessage();
-        }
-
-        try {
-            $this->analyticsPublishService->publishTelemetry($device, $topic, $derivationResult['final_values'], $ingestionMessage);
-            $publishOutput['analytics_published'] = true;
-        } catch (\Throwable $exception) {
-            report($exception);
-            $publishErrors['analytics_publish'] = $exception->getMessage();
-        }
-
-        if ($publishErrors !== []) {
-            $telemetryLog->update([
-                'processing_state' => 'publish_failed',
-            ]);
-
-            $this->logStage(
-                ingestionMessage: $ingestionMessage,
-                stage: IngestionStage::Publish,
-                status: IngestionStatus::FailedTerminal,
-                startedAt: $publishStartedAt,
-                outputSnapshot: $publishOutput,
-                errors: $publishErrors,
-            );
-
-            $this->finalizeMessage($ingestionMessage, [
-                ...$messageContext,
-                'status' => IngestionStatus::FailedTerminal,
-                'error_summary' => [
-                    'reason' => 'publish_failed',
-                    'errors' => $publishErrors,
-                ],
-            ]);
-
-            return $ingestionMessage;
-        }
-
-        $this->logStage(
-            ingestionMessage: $ingestionMessage,
-            stage: IngestionStage::Publish,
-            status: IngestionStatus::Completed,
-            startedAt: $publishStartedAt,
-            outputSnapshot: $publishOutput,
-        );
-
         $this->finalizeMessage($ingestionMessage, [
             ...$messageContext,
             'status' => IngestionStatus::Completed,
         ]);
 
+        $this->dispatchTelemetrySideEffects($ingestionMessage, $telemetryLog);
+
         return $ingestionMessage;
+    }
+
+    private function dispatchTelemetrySideEffects(IngestionMessage $ingestionMessage, DeviceTelemetryLog $telemetryLog): void
+    {
+        $dispatchStartedAt = microtime(true);
+        $dispatchOutput = [
+            'telemetry_log_id' => $telemetryLog->id,
+            'queue_connection' => $this->resolveSideEffectsQueueConnection(),
+            'queue' => $this->resolveSideEffectsQueue(),
+            'side_effects_dispatched' => false,
+        ];
+
+        try {
+            event(new TelemetryReceived($telemetryLog));
+            $dispatchOutput['side_effects_dispatched'] = true;
+
+            $this->logStage(
+                ingestionMessage: $ingestionMessage,
+                stage: IngestionStage::Publish,
+                status: IngestionStatus::Completed,
+                startedAt: $dispatchStartedAt,
+                outputSnapshot: $dispatchOutput,
+            );
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            $this->logStage(
+                ingestionMessage: $ingestionMessage,
+                stage: IngestionStage::Publish,
+                status: IngestionStatus::FailedTerminal,
+                startedAt: $dispatchStartedAt,
+                outputSnapshot: $dispatchOutput,
+                errors: [
+                    'side_effect_dispatch' => $exception->getMessage(),
+                ],
+            );
+        }
     }
 
     /**
@@ -339,10 +332,7 @@ class TelemetryIngestionService
      */
     private function resolveActiveParameters(SchemaVersionTopic $topic): Collection
     {
-        return $topic->parameters()
-            ->where('is_active', true)
-            ->orderBy('sequence')
-            ->get();
+        return $this->schemaMetadataCache->activeParametersFor($topic);
     }
 
     /**
@@ -442,6 +432,24 @@ class TelemetryIngestionService
         return ($normalizedHash / 4_294_967_295) < $sampleRate;
     }
 
+    private function resolveSideEffectsQueueConnection(): string
+    {
+        $configuredConnection = config('ingestion.side_effects_queue_connection', config('queue.default', 'redis'));
+
+        return is_string($configuredConnection) && $configuredConnection !== ''
+            ? $configuredConnection
+            : 'redis';
+    }
+
+    private function resolveSideEffectsQueue(): string
+    {
+        $configuredQueue = config('ingestion.side_effects_queue', 'telemetry-side-effects');
+
+        return is_string($configuredQueue) && $configuredQueue !== ''
+            ? $configuredQueue
+            : 'telemetry-side-effects';
+    }
+
     /**
      * @param  array<string, mixed>  $attributes
      */
@@ -451,5 +459,81 @@ class TelemetryIngestionService
             ...$attributes,
             'processed_at' => now(),
         ]);
+    }
+
+    /**
+     * @return array{message: IngestionMessage, should_continue: bool}
+     */
+    private function createQueuedIngestionMessage(IncomingTelemetryEnvelope $envelope): array
+    {
+        $timestamp = now();
+        $attributes = [
+            'id' => (string) Str::uuid(),
+            'source_deduplication_key' => $envelope->deduplicationKey(),
+            'source_subject' => $envelope->sourceSubject,
+            'source_protocol' => 'mqtt',
+            'source_message_id' => $envelope->messageId,
+            'raw_payload' => $envelope->payload,
+            'status' => IngestionStatus::Queued,
+            'received_at' => $envelope->resolveReceivedAt(),
+            'created_at' => $timestamp,
+            'updated_at' => $timestamp,
+        ];
+
+        if (IngestionMessage::query()->insertOrIgnore([
+            'id' => $attributes['id'],
+            'source_deduplication_key' => $attributes['source_deduplication_key'],
+            'source_subject' => $attributes['source_subject'],
+            'source_protocol' => $attributes['source_protocol'],
+            'source_message_id' => $attributes['source_message_id'],
+            'raw_payload' => json_encode($attributes['raw_payload'], JSON_THROW_ON_ERROR),
+            'status' => IngestionStatus::Queued->value,
+            'received_at' => $attributes['received_at']->toDateTimeString(),
+            'created_at' => $timestamp->toDateTimeString(),
+            'updated_at' => $timestamp->toDateTimeString(),
+        ]) === 1) {
+            $ingestionMessage = new IngestionMessage;
+            $ingestionMessage->forceFill($attributes);
+            $ingestionMessage->exists = true;
+            $ingestionMessage->wasRecentlyCreated = true;
+
+            return [
+                'message' => $ingestionMessage,
+                'should_continue' => true,
+            ];
+        }
+
+        $ingestionMessage = IngestionMessage::query()
+            ->select(['id', 'status', 'source_deduplication_key'])
+            ->where('source_deduplication_key', $envelope->deduplicationKey())
+            ->first();
+
+        if (! $ingestionMessage instanceof IngestionMessage) {
+            throw new \RuntimeException('Duplicate ingestion message could not be resolved.');
+        }
+
+        $currentStatus = $ingestionMessage->getAttribute('status');
+        $isDuplicate = $currentStatus instanceof IngestionStatus
+            ? $currentStatus === IngestionStatus::Duplicate
+            : $currentStatus === IngestionStatus::Duplicate->value;
+
+        if (! $isDuplicate) {
+            IngestionMessage::query()
+                ->whereKey($ingestionMessage->getKey())
+                ->where('status', '!=', IngestionStatus::Duplicate->value)
+                ->update([
+                    'status' => IngestionStatus::Duplicate,
+                    'updated_at' => now(),
+                ]);
+
+            $ingestionMessage->forceFill([
+                'status' => IngestionStatus::Duplicate,
+            ]);
+        }
+
+        return [
+            'message' => $ingestionMessage,
+            'should_continue' => false,
+        ];
     }
 }

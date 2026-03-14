@@ -9,6 +9,8 @@ use Illuminate\Support\Collection;
 
 interface TriggerMatcher
 {
+    public function hasCandidateTelemetryTriggers(DeviceTelemetryLog $telemetryLog): bool;
+
     /**
      * @return Collection<int, int>
      */

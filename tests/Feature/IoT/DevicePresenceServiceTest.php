@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Event;
 uses(RefreshDatabase::class);
 
 beforeEach(function (): void {
+    config()->set('cache.default', 'array');
     $this->service = app(DevicePresenceService::class);
 });
 

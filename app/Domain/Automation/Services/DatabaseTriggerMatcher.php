@@ -7,6 +7,7 @@ namespace App\Domain\Automation\Services;
 use App\Domain\Automation\Contracts\TriggerMatcher;
 use App\Domain\Automation\Enums\AutomationWorkflowStatus;
 use App\Domain\Automation\Models\AutomationTelemetryTrigger;
+use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceSchema\Services\JsonLogicEvaluator;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use Illuminate\Cache\CacheManager;
@@ -24,6 +25,17 @@ class DatabaseTriggerMatcher implements TriggerMatcher
         private readonly LogManager $logManager,
     ) {}
 
+    public function hasCandidateTelemetryTriggers(DeviceTelemetryLog $telemetryLog): bool
+    {
+        $device = $telemetryLog->device;
+
+        if (! $device instanceof Device) {
+            return false;
+        }
+
+        return $this->candidateTriggerRows($telemetryLog, $device)->isNotEmpty();
+    }
+
     public function matchTelemetryTriggers(DeviceTelemetryLog $telemetryLog): Collection
     {
         $telemetryLogId = $this->resolveKeyAsString($telemetryLog->getKey());
@@ -40,19 +52,7 @@ class DatabaseTriggerMatcher implements TriggerMatcher
             return collect();
         }
 
-        $candidates = collect($this->resolveOrganizationTriggersFromCache((int) $device->organization_id))
-            ->filter(function (array $triggerRow) use ($device, $telemetryLog): bool {
-                $triggerDeviceId = $this->resolveNullableInt(Arr::get($triggerRow, 'device_id'));
-                $triggerDeviceTypeId = $this->resolveNullableInt(Arr::get($triggerRow, 'device_type_id'));
-                $triggerTopicId = $this->resolveNullableInt(Arr::get($triggerRow, 'schema_version_topic_id'));
-
-                $deviceMatches = $triggerDeviceId === null || $triggerDeviceId === (int) $device->id;
-                $deviceTypeMatches = $triggerDeviceTypeId === null || $triggerDeviceTypeId === (int) $device->device_type_id;
-                $topicMatches = $triggerTopicId === null || $triggerTopicId === (int) $telemetryLog->schema_version_topic_id;
-
-                return $deviceMatches && $deviceTypeMatches && $topicMatches;
-            })
-            ->values();
+        $candidates = $this->candidateTriggerRows($telemetryLog, $device);
 
         $matchedWorkflowVersionIds = $candidates
             ->filter(function (array $triggerRow) use ($telemetryLog): bool {
@@ -86,15 +86,33 @@ class DatabaseTriggerMatcher implements TriggerMatcher
             ->unique()
             ->values();
 
-        $this->log()->debug('Automation trigger matcher evaluated telemetry triggers.', [
-            ...$baseLogContext,
-            'organization_id' => $device->organization_id,
-            'candidate_count' => $candidates->count(),
-            'matched_count' => $matchedWorkflowVersionIds->count(),
-            'matched_workflow_version_ids' => $matchedWorkflowVersionIds->all(),
-        ]);
-
         return $matchedWorkflowVersionIds;
+    }
+
+    /**
+     * @return Collection<int, array{
+     *     workflow_version_id: int,
+     *     device_id: int|null,
+     *     device_type_id: int|null,
+     *     schema_version_topic_id: int|null,
+     *     filter_expression: array<string, mixed>|null
+     * }>
+     */
+    private function candidateTriggerRows(DeviceTelemetryLog $telemetryLog, Device $device): Collection
+    {
+        return collect($this->resolveOrganizationTriggersFromCache((int) $device->organization_id))
+            ->filter(function (array $triggerRow) use ($device, $telemetryLog): bool {
+                $triggerDeviceId = $this->resolveNullableInt(Arr::get($triggerRow, 'device_id'));
+                $triggerDeviceTypeId = $this->resolveNullableInt(Arr::get($triggerRow, 'device_type_id'));
+                $triggerTopicId = $this->resolveNullableInt(Arr::get($triggerRow, 'schema_version_topic_id'));
+
+                $deviceMatches = $triggerDeviceId === null || $triggerDeviceId === (int) $device->id;
+                $deviceTypeMatches = $triggerDeviceTypeId === null || $triggerDeviceTypeId === (int) $device->device_type_id;
+                $topicMatches = $triggerTopicId === null || $triggerTopicId === (int) $telemetryLog->schema_version_topic_id;
+
+                return $deviceMatches && $deviceTypeMatches && $topicMatches;
+            })
+            ->values();
     }
 
     /**

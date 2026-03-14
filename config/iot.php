@@ -43,4 +43,12 @@ return [
         'heartbeat_timeout_seconds' => (int) env('IOT_HEARTBEAT_TIMEOUT_SECONDS', 300),
         'write_throttle_seconds' => (int) env('IOT_PRESENCE_WRITE_THROTTLE_SECONDS', 15),
     ],
+
+    'broadcast' => [
+        'raw_telemetry' => (bool) env('IOT_BROADCAST_RAW_TELEMETRY', false),
+    ],
+
+    'temporary_devices' => [
+        'default_ttl_hours' => 24,
+    ],
 ];

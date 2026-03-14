@@ -11,13 +11,12 @@ use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
 use App\Domain\Telemetry\Enums\ValidationStatus;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
-use App\Events\TelemetryReceived;
 use Illuminate\Support\Carbon;
 
 class TelemetryPersistenceService
 {
     public function __construct(
-        private DevicePresenceService $presenceService,
+        private readonly DevicePresenceService $presenceService,
     ) {}
 
     /**
@@ -60,8 +59,7 @@ class TelemetryPersistenceService
 
         $this->presenceService->markOnline($device, $resolvedReceivedAt);
 
-        $telemetryLog->loadMissing('device');
-        event(new TelemetryReceived($telemetryLog));
+        $telemetryLog->setRelation('device', $device);
 
         return $telemetryLog;
     }

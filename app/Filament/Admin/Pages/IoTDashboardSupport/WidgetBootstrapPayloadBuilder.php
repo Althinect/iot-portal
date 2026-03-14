@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Filament\Admin\Pages\IoTDashboardSupport;
 
+use App\Domain\IoTDashboard\Application\RealtimeStreamChannel;
 use App\Domain\IoTDashboard\Application\WidgetRegistry;
+use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
 
@@ -22,6 +24,8 @@ class WidgetBootstrapPayloadBuilder
         return $dashboard->widgets
             ->map(function (IoTDashboardWidget $widget) use ($dashboard): array {
                 $definition = $this->widgetRegistry->forWidget($widget);
+                $widgetConfig = $definition->makeConfig($widget->configArray());
+                $realtimeChannel = RealtimeStreamChannel::forWidget($widget);
 
                 return [
                     'id' => (int) $widget->id,
@@ -37,6 +41,12 @@ class WidgetBootstrapPayloadBuilder
                         'uuid' => $widget->device?->uuid,
                         'name' => $widget->device?->name,
                     ],
+                    'realtime' => $realtimeChannel === null || ! $widgetConfig->useWebsocket()
+                        ? null
+                        : [
+                            'channel' => $realtimeChannel,
+                            'sample_window_seconds' => $this->sampleWindowSecondsFor($widget),
+                        ],
                     ...$definition->bootstrapPayload($widget),
                     'snapshot_url' => route('admin.iot-dashboard.dashboards.snapshots', [
                         'dashboard' => $dashboard,
@@ -51,5 +61,14 @@ class WidgetBootstrapPayloadBuilder
             })
             ->values()
             ->all();
+    }
+
+    private function sampleWindowSecondsFor(IoTDashboardWidget $widget): int
+    {
+        return match ($widget->widgetType()) {
+            WidgetType::LineChart => 2,
+            WidgetType::GaugeChart => 1,
+            WidgetType::BarChart => 0,
+        };
     }
 }

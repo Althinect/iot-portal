@@ -73,7 +73,7 @@ final class SimulatePublishingActions
                 $topicSelection = $data['schema_version_topic_id'] ?? 'all';
                 $schemaVersionTopicId = is_numeric($topicSelection) ? (int) $topicSelection : null;
 
-                SimulateDevicePublishingJob::dispatch(
+                SimulateDevicePublishingJob::dispatchIterations(
                     deviceId: $record->id,
                     count: $count,
                     intervalSeconds: $interval,
@@ -137,7 +137,7 @@ final class SimulatePublishingActions
                         continue;
                     }
 
-                    SimulateDevicePublishingJob::dispatch(
+                    SimulateDevicePublishingJob::dispatchIterations(
                         deviceId: $record->id,
                         count: $count,
                         intervalSeconds: $interval,

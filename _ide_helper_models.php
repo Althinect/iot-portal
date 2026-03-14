@@ -469,6 +469,8 @@ namespace App\Domain\DeviceManagement\Models{
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property \Illuminate\Support\Carbon|null $deleted_at
  * @property array<array-key, mixed>|null $ingestion_overrides
+ * @property int|null $presence_timeout_seconds
+ * @property \Illuminate\Support\Carbon|null $offline_deadline_at
  * @property-read \App\Domain\DeviceManagement\Models\DeviceCertificate|null $activeCertificate
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\DeviceManagement\Models\DeviceCertificate> $certificates
  * @property-read int|null $certificates_count
@@ -482,6 +484,7 @@ namespace App\Domain\DeviceManagement\Models{
  * @property-read \App\Domain\DeviceSchema\Models\DeviceSchemaVersion $schemaVersion
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\Telemetry\Models\DeviceTelemetryLog> $telemetryLogs
  * @property-read int|null $telemetry_logs_count
+ * @property-read \App\Domain\DeviceManagement\Models\TemporaryDevice|null $temporaryDevice
  * @method static \Database\Factories\Domain\DeviceManagement\Models\DeviceFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device newQuery()
@@ -492,6 +495,7 @@ namespace App\Domain\DeviceManagement\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereDeletedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereDeviceSchemaVersionId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereDeviceTypeId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereEffectiveConnectionState(string $state, ?\Illuminate\Support\Carbon $now = null)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereExternalId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereIngestionOverrides($value)
@@ -499,7 +503,9 @@ namespace App\Domain\DeviceManagement\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereLastSeenAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereMetadata($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereName($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereOfflineDeadlineAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereOrganizationId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Device wherePresenceTimeoutSeconds($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereUpdatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereUuid($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device withTrashed(bool $withTrashed = true)
@@ -579,6 +585,28 @@ namespace App\Domain\DeviceManagement\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceType whereUpdatedAt($value)
  */
 	class DeviceType extends \Eloquent {}
+}
+
+namespace App\Domain\DeviceManagement\Models{
+/**
+ * @property int $id
+ * @property int $device_id
+ * @property \Illuminate\Support\Carbon $expires_at
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read \App\Domain\DeviceManagement\Models\Device $device
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|TemporaryDevice expired(?\Illuminate\Support\Carbon $now = null)
+ * @method static \Database\Factories\Domain\DeviceManagement\Models\TemporaryDeviceFactory factory($count = null, $state = [])
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|TemporaryDevice newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|TemporaryDevice newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|TemporaryDevice query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|TemporaryDevice whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|TemporaryDevice whereDeviceId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|TemporaryDevice whereExpiresAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|TemporaryDevice whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|TemporaryDevice whereUpdatedAt($value)
+ */
+	class TemporaryDevice extends \Eloquent {}
 }
 
 namespace App\Domain\DeviceSchema\Models{

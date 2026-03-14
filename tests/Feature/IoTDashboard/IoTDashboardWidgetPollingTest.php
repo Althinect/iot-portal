@@ -286,6 +286,53 @@ it('allows snapshots endpoint access for organization members', function (): voi
     ]))->assertOk();
 });
 
+it('returns only requested widgets when snapshots are fetched in a batch', function (): void {
+    $admin = User::factory()->create(['is_super_admin' => true]);
+    $this->actingAs($admin);
+
+    [, $dashboard, $topic, $lineWidget, $device] = createLineWidgetSnapshotContext();
+
+    $gaugeWidget = IoTDashboardWidget::factory()->create([
+        'iot_dashboard_id' => $dashboard->id,
+        'device_id' => $device->id,
+        'schema_version_topic_id' => $topic->id,
+        'type' => 'gauge_chart',
+        'title' => 'Phase A Gauge',
+        'config' => [
+            'series' => [
+                ['key' => 'A1', 'label' => 'Phase A', 'color' => '#38bdf8'],
+            ],
+            'transport' => [
+                'use_websocket' => true,
+                'use_polling' => true,
+                'polling_interval_seconds' => 10,
+            ],
+            'window' => [
+                'lookback_minutes' => 120,
+                'max_points' => 1,
+            ],
+            'gauge_style' => 'classic',
+            'gauge_min' => 0,
+            'gauge_max' => 100,
+            'gauge_ranges' => [
+                ['from' => 0, 'to' => 60, 'color' => '#22c55e'],
+                ['from' => 60, 'to' => 80, 'color' => '#f59e0b'],
+                ['from' => 80, 'to' => 100, 'color' => '#ef4444'],
+            ],
+        ],
+    ]);
+
+    $response = $this->getJson(route('admin.iot-dashboard.dashboards.snapshots', [
+        'dashboard' => $dashboard,
+        'widgets' => [$gaugeWidget->id],
+    ]));
+
+    $response->assertOk();
+
+    expect(collect($response->json('widgets'))->pluck('id')->all())->toBe([$gaugeWidget->id])
+        ->and(collect($response->json('widgets'))->pluck('id')->all())->not->toContain($lineWidget->id);
+});
+
 it('returns hourly consumption buckets for bar chart widgets', function (): void {
     $admin = User::factory()->create(['is_super_admin' => true]);
     $this->actingAs($admin);

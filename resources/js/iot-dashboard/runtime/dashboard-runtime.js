@@ -55,6 +55,9 @@ class DashboardRuntime {
         this.gridIntegrityObserver = null;
         this.gridIntegrityTimer = null;
         this.lastHydratedWidgets = Array.isArray(config?.widgets) ? config.widgets : [];
+        this.pendingRealtimePayloads = new Map();
+        this.realtimeFlushTimers = new Map();
+        this.lastRealtimeAppliedAt = new Map();
     }
 
     boot() {
@@ -96,6 +99,7 @@ class DashboardRuntime {
 
         this.charts.clear();
         this.widgets.clear();
+        this.clearAllRealtimeBuffers();
     }
 
     updateWidgets(rawWidgets) {
@@ -120,6 +124,7 @@ class DashboardRuntime {
 
     hydrate(rawWidgets) {
         this.pollingManager.stopAll();
+        this.clearAllRealtimeBuffers();
 
         this.widgets.clear();
 
@@ -135,12 +140,12 @@ class DashboardRuntime {
 
             this.widgets.set(widget.id, widget);
             this.renderWidget(widget);
-            this.requestWidgetSnapshot(widget);
         });
 
         this.cleanupOrphanCharts();
+        this.requestInitialSnapshots();
 
-        this.realtimeManager.update(this.config.organization_id, Array.from(this.widgets.values()));
+        this.realtimeManager.update(Array.from(this.widgets.values()));
         this.syncPolling();
 
         this.mountGrid();
@@ -152,7 +157,7 @@ class DashboardRuntime {
         this.pollingManager.sync(
             widgets,
             (widget) => this.realtimeManager.shouldPollWidget(widget),
-            (widget) => this.requestWidgetSnapshot(widget),
+            (widgetIds) => this.requestPollingSnapshots(widgetIds),
         );
     }
 
@@ -254,6 +259,8 @@ class DashboardRuntime {
                 observer.disconnect();
                 this.resizeObservers.delete(widgetId);
             }
+
+            this.clearRealtimeBufferForWidget(widgetId);
         });
     }
 
@@ -347,6 +354,69 @@ class DashboardRuntime {
         chart.setOption(buildChartOption(widget, widget.seriesData), true);
     }
 
+    requestInitialSnapshots() {
+        this.requestSnapshotsForWidgetIds(Array.from(this.widgets.keys()));
+    }
+
+    requestPollingSnapshots(widgetIds) {
+        this.requestSnapshotsForWidgetIds(widgetIds);
+    }
+
+    requestSnapshotsForWidgetIds(widgetIds) {
+        const normalizedWidgetIds = Array.from(new Set(
+            (Array.isArray(widgetIds) ? widgetIds : [])
+                .map((widgetId) => Number(widgetId))
+                .filter((widgetId) => Number.isInteger(widgetId) && widgetId > 0),
+        ));
+
+        if (!window.axios || normalizedWidgetIds.length === 0) {
+            return;
+        }
+
+        const dashboardSnapshotUrl = this.resolveDashboardSnapshotUrl(normalizedWidgetIds);
+
+        if (!dashboardSnapshotUrl) {
+            normalizedWidgetIds.forEach((widgetId) => {
+                const widget = this.widgets.get(widgetId);
+
+                if (widget) {
+                    this.requestWidgetSnapshot(widget);
+                }
+            });
+
+            return;
+        }
+
+        window.axios
+            .get(dashboardSnapshotUrl)
+            .then((response) => {
+                this.applySnapshotBatch(response.data);
+            })
+            .catch((error) => {
+                console.error('IoT dashboard polling failed', error);
+            });
+    }
+
+    resolveDashboardSnapshotUrl(widgetIds) {
+        if (typeof this.config?.snapshot_url !== 'string' || this.config.snapshot_url.trim() === '') {
+            return null;
+        }
+
+        const url = new URL(this.config.snapshot_url, window.location.origin);
+        const activeWidgetIds = Array.from(this.widgets.keys()).sort((left, right) => left - right);
+        const requestedWidgetIds = [...widgetIds].sort((left, right) => left - right);
+        const requestsAllWidgets = activeWidgetIds.length === requestedWidgetIds.length
+            && activeWidgetIds.every((widgetId, index) => widgetId === requestedWidgetIds[index]);
+
+        if (!requestsAllWidgets) {
+            requestedWidgetIds.forEach((widgetId) => {
+                url.searchParams.append('widgets[]', String(widgetId));
+            });
+        }
+
+        return url.toString();
+    }
+
     requestWidgetSnapshot(widget) {
         if (!window.axios || typeof widget.snapshot_url !== 'string' || widget.snapshot_url.trim() === '') {
             return;
@@ -362,11 +432,37 @@ class DashboardRuntime {
             });
     }
 
+    applySnapshotBatch(payload) {
+        if (!Array.isArray(payload?.widgets)) {
+            return;
+        }
+
+        payload.widgets.forEach((snapshot) => {
+            const widgetId = Number(snapshot?.id ?? 0);
+
+            if (!Number.isInteger(widgetId) || widgetId <= 0) {
+                return;
+            }
+
+            const widget = this.widgets.get(widgetId);
+
+            if (!widget) {
+                return;
+            }
+
+            this.applySnapshotEntry(widget, snapshot);
+        });
+    }
+
     applySnapshotResponse(widget, payload) {
         const snapshot = Array.isArray(payload?.widgets)
             ? payload.widgets.find((item) => Number(item?.id) === Number(widget.id))
             : payload;
 
+        this.applySnapshotEntry(widget, snapshot);
+    }
+
+    applySnapshotEntry(widget, snapshot) {
         if (!snapshot || !Array.isArray(snapshot.series)) {
             return;
         }
@@ -410,18 +506,148 @@ class DashboardRuntime {
         this.renderWidget(widget);
     }
 
-    appendRealtimePayload(payload) {
-        const topicId = Number(payload?.schema_version_topic_id ?? 0);
-        const organizationId = Number(payload?.organization_id ?? 0);
+    clearAllRealtimeBuffers() {
+        Array.from(this.realtimeFlushTimers.keys()).forEach((widgetId) => {
+            this.clearRealtimeBufferForWidget(widgetId);
+        });
 
-        if (!Number.isInteger(topicId) || topicId <= 0) {
+        this.pendingRealtimePayloads.clear();
+        this.realtimeFlushTimers.clear();
+        this.lastRealtimeAppliedAt.clear();
+    }
+
+    clearRealtimeBufferForWidget(widgetId, preserveLastApplied = false) {
+        const timerId = this.realtimeFlushTimers.get(widgetId);
+
+        if (timerId !== undefined) {
+            clearTimeout(timerId);
+        }
+
+        this.realtimeFlushTimers.delete(widgetId);
+        this.pendingRealtimePayloads.delete(widgetId);
+
+        if (!preserveLastApplied) {
+            this.lastRealtimeAppliedAt.delete(widgetId);
+        }
+    }
+
+    resolveRealtimeSampleWindowMilliseconds(widget) {
+        const sampleWindowSeconds = Number(widget?.realtime?.sample_window_seconds ?? 0);
+
+        if (!Number.isFinite(sampleWindowSeconds) || sampleWindowSeconds <= 0) {
+            return 0;
+        }
+
+        return Math.round(sampleWindowSeconds * 1000);
+    }
+
+    extractRealtimeSeriesValues(widget, transformedValues) {
+        const seriesValues = {};
+        let hasValues = false;
+
+        widget.seriesData.forEach((series) => {
+            const value = normalizeNumericValue(transformedValues[series.key]);
+
+            if (value === null) {
+                return;
+            }
+
+            hasValues = true;
+            seriesValues[series.key] = value;
+        });
+
+        return hasValues ? seriesValues : null;
+    }
+
+    scheduleRealtimePayload(widget, recordedAt, seriesValues, waitMilliseconds) {
+        this.pendingRealtimePayloads.set(widget.id, {
+            recordedAt,
+            seriesValues,
+        });
+
+        if (this.realtimeFlushTimers.has(widget.id)) {
             return;
         }
 
-        if (Number.isInteger(this.config.organization_id) && this.config.organization_id > 0 && organizationId > 0) {
-            if (organizationId !== Number(this.config.organization_id)) {
+        const timerId = window.setTimeout(() => {
+            this.realtimeFlushTimers.delete(widget.id);
+
+            const pendingPayload = this.pendingRealtimePayloads.get(widget.id);
+            const currentWidget = this.widgets.get(widget.id);
+
+            this.pendingRealtimePayloads.delete(widget.id);
+
+            if (!pendingPayload || !currentWidget) {
                 return;
             }
+
+            this.applyRealtimeSeriesValues(currentWidget, pendingPayload.recordedAt, pendingPayload.seriesValues);
+        }, waitMilliseconds);
+
+        this.realtimeFlushTimers.set(widget.id, timerId);
+    }
+
+    applyRealtimeSeriesValues(widget, recordedAt, seriesValues) {
+        this.clearRealtimeBufferForWidget(widget.id, true);
+
+        widget.seriesData = widget.seriesData.map((series) => {
+            if (!Object.prototype.hasOwnProperty.call(seriesValues, series.key)) {
+                return series;
+            }
+
+            const nextPoints = [...series.points, {
+                timestamp: recordedAt,
+                value: seriesValues[series.key],
+            }];
+
+            const minPoints = widget?.type === WIDGET_TYPES.gaugeChart ? 1 : 20;
+            const maxPoints = Math.max(minPoints, Number(widget.max_points || 240));
+
+            if (nextPoints.length > maxPoints) {
+                nextPoints.splice(0, nextPoints.length - maxPoints);
+            }
+
+            return {
+                ...series,
+                points: nextPoints,
+            };
+        });
+
+        this.lastRealtimeAppliedAt.set(widget.id, Date.now());
+        this.renderWidget(widget);
+    }
+
+    handleRealtimeSeriesValues(widget, recordedAt, seriesValues) {
+        const sampleWindowMilliseconds = this.resolveRealtimeSampleWindowMilliseconds(widget);
+
+        if (sampleWindowMilliseconds <= 0) {
+            this.applyRealtimeSeriesValues(widget, recordedAt, seriesValues);
+
+            return;
+        }
+
+        const now = Date.now();
+        const lastAppliedAt = this.lastRealtimeAppliedAt.get(widget.id) ?? 0;
+
+        if (lastAppliedAt === 0 || now - lastAppliedAt >= sampleWindowMilliseconds) {
+            this.applyRealtimeSeriesValues(widget, recordedAt, seriesValues);
+
+            return;
+        }
+
+        this.scheduleRealtimePayload(
+            widget,
+            recordedAt,
+            seriesValues,
+            Math.max(0, sampleWindowMilliseconds - (now - lastAppliedAt)),
+        );
+    }
+
+    appendRealtimePayload(payload) {
+        const topicId = Number(payload?.schema_version_topic_id ?? 0);
+
+        if (!Number.isInteger(topicId) || topicId <= 0) {
+            return;
         }
 
         const deviceUuid = typeof payload?.device_uuid === 'string'
@@ -447,32 +673,13 @@ class DashboardRuntime {
                 return;
             }
 
-            widget.seriesData = widget.seriesData.map((series) => {
-                const value = normalizeNumericValue(transformedValues[series.key]);
+            const seriesValues = this.extractRealtimeSeriesValues(widget, transformedValues);
 
-                if (value === null) {
-                    return series;
-                }
+            if (!seriesValues) {
+                return;
+            }
 
-                const nextPoints = [...series.points, {
-                    timestamp: recordedAt,
-                    value,
-                }];
-
-                const minPoints = widget?.type === WIDGET_TYPES.gaugeChart ? 1 : 20;
-                const maxPoints = Math.max(minPoints, Number(widget.max_points || 240));
-
-                if (nextPoints.length > maxPoints) {
-                    nextPoints.splice(0, nextPoints.length - maxPoints);
-                }
-
-                return {
-                    ...series,
-                    points: nextPoints,
-                };
-            });
-
-            this.renderWidget(widget);
+            this.handleRealtimeSeriesValues(widget, recordedAt, seriesValues);
         });
     }
 

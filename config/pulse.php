@@ -1,8 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 use Laravel\Pulse\Http\Middleware\Authorize;
 use Laravel\Pulse\Pulse;
 use Laravel\Pulse\Recorders;
+use Laravel\Reverb\Pulse\Recorders\ReverbConnections;
+use Laravel\Reverb\Pulse\Recorders\ReverbMessages;
 
 return [
 
@@ -103,7 +107,7 @@ return [
     |
     */
 
-    'cache' => env('PULSE_CACHE_DRIVER'),
+    'cache' => env('PULSE_CACHE_DRIVER', env('CACHE_STORE')),
 
     /*
     |--------------------------------------------------------------------------
@@ -160,6 +164,16 @@ return [
             'ignore' => [
                 // '/^Package\\\\Jobs\\\\/',
             ],
+        ],
+
+        ReverbConnections::class => [
+            'enabled' => env('PULSE_REVERB_CONNECTIONS_ENABLED', true),
+            'sample_rate' => env('PULSE_REVERB_CONNECTIONS_SAMPLE_RATE', 1),
+        ],
+
+        ReverbMessages::class => [
+            'enabled' => env('PULSE_REVERB_MESSAGES_ENABLED', true),
+            'sample_rate' => env('PULSE_REVERB_MESSAGES_SAMPLE_RATE', 1),
         ],
 
         Recorders\Servers::class => [

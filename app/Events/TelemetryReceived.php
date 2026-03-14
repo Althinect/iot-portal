@@ -4,42 +4,61 @@ declare(strict_types=1);
 
 namespace App\Events;
 
+use App\Domain\DataIngestion\Concerns\InteractsWithTelemetrySideEffectsQueue;
+use App\Domain\IoTDashboard\Application\RealtimeStreamChannel;
+use App\Domain\Shared\Services\RuntimeSettingManager;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
 
-class TelemetryReceived implements ShouldBroadcastNow
+class TelemetryReceived implements ShouldBroadcast
 {
     use InteractsWithSockets;
+    use InteractsWithTelemetrySideEffectsQueue;
     use SerializesModels;
+
+    public string $connection;
+
+    public string $queue;
 
     public function __construct(
         public DeviceTelemetryLog $telemetryLog,
-    ) {}
+    ) {
+        $this->connection = $this->resolveTelemetrySideEffectsConnection();
+        $this->queue = $this->resolveTelemetrySideEffectsQueue();
+    }
 
     /**
      * @return array<int, PrivateChannel>
      */
     public function broadcastOn(): array
     {
-        $this->telemetryLog->loadMissing('device:id,uuid,external_id,organization_id');
-        $organizationId = $this->telemetryLog->device?->organization_id;
+        if (! app(RuntimeSettingManager::class)->booleanValue('ingestion.pipeline.broadcast_realtime', $this->telemetryLog->device?->organization_id)) {
+            return [];
+        }
 
-        if (! is_numeric($organizationId)) {
+        $channelName = RealtimeStreamChannel::forTelemetryLog($this->telemetryLog);
+
+        if (! is_string($channelName)) {
             return [];
         }
 
         return [
-            new PrivateChannel('iot-dashboard.organization.'.(int) $organizationId),
+            new PrivateChannel($channelName),
         ];
     }
 
     public function broadcastAs(): string
     {
         return 'telemetry.received';
+    }
+
+    public function broadcastQueue(): string
+    {
+        return $this->queue;
     }
 
     /**

@@ -42,7 +42,8 @@ it('queues simulation jobs for selected devices', function (): void {
             'interval' => 1,
         ]);
 
-    Queue::assertPushed(SimulateDevicePublishingJob::class, 2);
+    Queue::assertPushedTimes(SimulateDevicePublishingJob::class, 10);
+    Queue::assertPushed(SimulateDevicePublishingJob::class, fn (SimulateDevicePublishingJob $job): bool => $job->count === 1 && $job->intervalSeconds === 0);
 });
 
 it('can replicate a device from the list table', function (): void {

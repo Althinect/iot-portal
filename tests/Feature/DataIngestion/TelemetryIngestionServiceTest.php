@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-use App\Domain\DataIngestion\Contracts\AnalyticsPublisher;
-use App\Domain\DataIngestion\Contracts\HotStateStore;
 use App\Domain\DataIngestion\DTO\IncomingTelemetryEnvelope;
 use App\Domain\DataIngestion\Enums\IngestionStatus;
 use App\Domain\DataIngestion\Models\IngestionMessage;
+use App\Domain\DataIngestion\Services\DeviceTelemetryTopicResolver;
 use App\Domain\DataIngestion\Services\TelemetryIngestionService;
+use App\Domain\DataIngestion\Services\TelemetrySchemaMetadataCache;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceSchema\Enums\ParameterDataType;
@@ -15,13 +15,19 @@ use App\Domain\DeviceSchema\Models\DerivedParameterDefinition;
 use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
 use App\Domain\DeviceSchema\Models\ParameterDefinition;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\Shared\Services\RuntimeSettingManager;
+use App\Events\TelemetryReceived;
+use Illuminate\Events\Dispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 
 uses(RefreshDatabase::class);
 
 beforeEach(function (): void {
     config([
         'broadcasting.default' => 'null',
+        'cache.default' => 'array',
         'ingestion.enabled' => true,
         'ingestion.driver' => 'laravel',
         'ingestion.publish_analytics' => true,
@@ -32,54 +38,7 @@ beforeEach(function (): void {
         'ingestion.capture_success_stage_snapshots' => false,
         'iot.presence.write_throttle_seconds' => 0,
     ]);
-
-    $this->fakeHotStateStore = new class implements HotStateStore
-    {
-        /** @var array<int, array<string, mixed>> */
-        public array $writes = [];
-
-        public function store(Device $device, SchemaVersionTopic $topic, array $finalValues, IngestionMessage $ingestionMessage): void
-        {
-            $this->writes[] = [
-                'device_uuid' => $device->uuid,
-                'topic_key' => $topic->key,
-                'values' => $finalValues,
-                'ingestion_message_id' => $ingestionMessage->id,
-            ];
-        }
-    };
-
-    $this->fakePublisher = new class implements AnalyticsPublisher
-    {
-        /** @var array<int, array<string, mixed>> */
-        public array $telemetryPublishes = [];
-
-        /** @var array<int, array<string, mixed>> */
-        public array $invalidPublishes = [];
-
-        public function publishTelemetry(Device $device, SchemaVersionTopic $topic, array $finalValues, IngestionMessage $ingestionMessage): void
-        {
-            $this->telemetryPublishes[] = [
-                'device_uuid' => $device->uuid,
-                'topic_key' => $topic->key,
-                'values' => $finalValues,
-                'ingestion_message_id' => $ingestionMessage->id,
-            ];
-        }
-
-        public function publishInvalid(Device $device, SchemaVersionTopic $topic, array $validationErrors, IngestionMessage $ingestionMessage): void
-        {
-            $this->invalidPublishes[] = [
-                'device_uuid' => $device->uuid,
-                'topic_key' => $topic->key,
-                'errors' => $validationErrors,
-                'ingestion_message_id' => $ingestionMessage->id,
-            ];
-        }
-    };
-
-    app()->instance(HotStateStore::class, $this->fakeHotStateStore);
-    app()->instance(AnalyticsPublisher::class, $this->fakePublisher);
+    Event::fake([TelemetryReceived::class]);
 });
 
 /**
@@ -192,9 +151,31 @@ it('processes valid telemetry without persisting successful stage logs by defaul
             'temp_f' => 53.6,
         ]);
 
-    expect($this->fakeHotStateStore->writes)->toHaveCount(1)
-        ->and($this->fakePublisher->telemetryPublishes)->toHaveCount(1)
-        ->and($this->fakePublisher->invalidPublishes)->toHaveCount(0);
+    Event::assertDispatched(TelemetryReceived::class, 1);
+});
+
+it('persists telemetry and still dispatches downstream side effects when analytics publishing is disabled', function (): void {
+    app(RuntimeSettingManager::class)->setGlobalOverrides([
+        'ingestion.pipeline.publish_analytics' => false,
+    ]);
+
+    $context = buildTelemetryContext(true);
+
+    /** @var TelemetryIngestionService $service */
+    $service = app(TelemetryIngestionService::class);
+
+    $message = $service->ingest(new IncomingTelemetryEnvelope(
+        sourceSubject: str_replace('/', '.', $context['mqtt_topic']),
+        mqttTopic: $context['mqtt_topic'],
+        payload: ['temp_c' => 10],
+        deviceExternalId: 'sensor-01',
+        receivedAt: now(),
+    ));
+
+    expect($message)->toBeInstanceOf(IngestionMessage::class)
+        ->and($message?->status)->toBe(IngestionStatus::Completed);
+
+    Event::assertDispatched(TelemetryReceived::class, 1);
 });
 
 it('halts processing on validation failure and publishes invalid telemetry event', function (): void {
@@ -235,9 +216,7 @@ it('halts processing on validation failure and publishes invalid telemetry event
         ->and($telemetryLog?->validation_errors)->toHaveKey('temp_c')
         ->and($telemetryLog?->mutated_values)->toBeNull();
 
-    expect($this->fakeHotStateStore->writes)->toHaveCount(0)
-        ->and($this->fakePublisher->telemetryPublishes)->toHaveCount(0)
-        ->and($this->fakePublisher->invalidPublishes)->toHaveCount(1);
+    Event::assertDispatched(TelemetryReceived::class, 1);
 });
 
 it('records inactive device telemetry but skips post-validation processing', function (): void {
@@ -267,9 +246,7 @@ it('records inactive device telemetry but skips post-validation processing', fun
         ->and($telemetryLog?->processing_state)->toBe('inactive_skipped')
         ->and($telemetryLog?->mutated_values)->toBeNull();
 
-    expect($this->fakeHotStateStore->writes)->toHaveCount(0)
-        ->and($this->fakePublisher->telemetryPublishes)->toHaveCount(0)
-        ->and($this->fakePublisher->invalidPublishes)->toHaveCount(0);
+    Event::assertDispatched(TelemetryReceived::class, 1);
 });
 
 it('marks duplicate envelopes and prevents duplicate downstream writes', function (): void {
@@ -299,9 +276,99 @@ it('marks duplicate envelopes and prevents duplicate downstream writes', functio
     $telemetryLogCount = $first?->telemetryLog()->count() ?? 0;
 
     expect($count)->toBe(1)
-        ->and($telemetryLogCount)->toBe(1)
-        ->and($this->fakeHotStateStore->writes)->toHaveCount(1)
-        ->and($this->fakePublisher->telemetryPublishes)->toHaveCount(1);
+        ->and($telemetryLogCount)->toBe(1);
+
+    Event::assertDispatched(TelemetryReceived::class, 1);
+});
+
+it('keeps happy-path ingestion within the expected query budget', function (): void {
+    $context = buildTelemetryContext(true);
+    $topicResolver = app(DeviceTelemetryTopicResolver::class);
+    $topic = $context['topic']->fresh();
+    $schemaVersion = $context['device']->schemaVersion()->firstOrFail();
+
+    app(TelemetrySchemaMetadataCache::class)->activeParametersFor($topic);
+    app(TelemetrySchemaMetadataCache::class)->derivedParametersFor($schemaVersion);
+    $topicResolver->resolve($context['mqtt_topic']);
+
+    /** @var TelemetryIngestionService $service */
+    $service = app(TelemetryIngestionService::class);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $message = $service->ingest(new IncomingTelemetryEnvelope(
+        sourceSubject: str_replace('/', '.', $context['mqtt_topic']),
+        mqttTopic: $context['mqtt_topic'],
+        payload: ['temp_c' => 10],
+        messageId: 'query-budget-1',
+        deviceExternalId: 'sensor-01',
+        receivedAt: now(),
+    ));
+
+    expect($message)->toBeInstanceOf(IngestionMessage::class)
+        ->and($message?->status)->toBe(IngestionStatus::Completed);
+
+    expect(count(DB::getQueryLog()))->toBeLessThanOrEqual(7);
+});
+
+it('skips presence writes within the heartbeat throttle window', function (): void {
+    config()->set('iot.presence.write_throttle_seconds', 30);
+
+    $context = buildTelemetryContext(true);
+
+    /** @var TelemetryIngestionService $service */
+    $service = app(TelemetryIngestionService::class);
+
+    $service->ingest(new IncomingTelemetryEnvelope(
+        sourceSubject: str_replace('/', '.', $context['mqtt_topic']),
+        mqttTopic: $context['mqtt_topic'],
+        payload: ['temp_c' => 10],
+        messageId: 'query-budget-2',
+        deviceExternalId: 'sensor-01',
+        receivedAt: now(),
+    ));
+
+    $this->expectsDatabaseQueryCount(3);
+
+    $message = $service->ingest(new IncomingTelemetryEnvelope(
+        sourceSubject: str_replace('/', '.', $context['mqtt_topic']),
+        mqttTopic: $context['mqtt_topic'],
+        payload: ['temp_c' => 11],
+        messageId: 'query-budget-3',
+        deviceExternalId: 'sensor-01',
+        receivedAt: now()->addSeconds(10),
+    ));
+
+    expect($message)->toBeInstanceOf(IngestionMessage::class)
+        ->and($message?->status)->toBe(IngestionStatus::Completed);
+});
+
+it('handles duplicate envelopes with the conflict-first query budget', function (): void {
+    Event::fake([TelemetryReceived::class]);
+
+    $context = buildTelemetryContext(true);
+
+    /** @var TelemetryIngestionService $service */
+    $service = app(TelemetryIngestionService::class);
+
+    $envelope = new IncomingTelemetryEnvelope(
+        sourceSubject: str_replace('/', '.', $context['mqtt_topic']),
+        mqttTopic: $context['mqtt_topic'],
+        payload: ['temp_c' => 10],
+        messageId: 'query-budget-duplicate',
+        deviceExternalId: 'sensor-01',
+        receivedAt: now(),
+    );
+
+    $service->ingest($envelope);
+
+    $this->expectsDatabaseQueryCount(3);
+
+    $message = $service->ingest($envelope);
+
+    expect($message)->toBeInstanceOf(IngestionMessage::class)
+        ->and($message?->status)->toBe(IngestionStatus::Duplicate);
 });
 
 it('does not deduplicate repeated payloads when transport message id is absent', function (): void {
@@ -331,9 +398,9 @@ it('does not deduplicate repeated payloads when transport message id is absent',
         ->and($first?->id)->not->toBe($second?->id)
         ->and($first?->status)->toBe(IngestionStatus::Completed)
         ->and($second?->status)->toBe(IngestionStatus::Completed)
-        ->and(IngestionMessage::query()->count())->toBe(2)
-        ->and($this->fakeHotStateStore->writes)->toHaveCount(2)
-        ->and($this->fakePublisher->telemetryPublishes)->toHaveCount(2);
+        ->and(IngestionMessage::query()->count())->toBe(2);
+
+    Event::assertDispatchedTimes(TelemetryReceived::class, 2);
 });
 
 it('skips ingestion when the pipeline feature is disabled', function (): void {
@@ -352,20 +419,22 @@ it('skips ingestion when the pipeline feature is disabled', function (): void {
     ));
 
     expect($message)->toBeNull()
-        ->and(IngestionMessage::query()->count())->toBe(0)
-        ->and($this->fakeHotStateStore->writes)->toHaveCount(0)
-        ->and($this->fakePublisher->telemetryPublishes)->toHaveCount(0)
-        ->and($this->fakePublisher->invalidPublishes)->toHaveCount(0);
+        ->and(IngestionMessage::query()->count())->toBe(0);
+
+    Event::assertNotDispatched(TelemetryReceived::class);
 });
 
-it('marks ingestion as failed terminal when post-persist publish side effects fail', function (): void {
+it('keeps ingestion completed and records a failed publish stage when downstream dispatch throws', function (): void {
     $context = buildTelemetryContext(true);
-
-    app()->instance(HotStateStore::class, new class implements HotStateStore
+    Event::swap(new class(app()) extends Dispatcher
     {
-        public function store(Device $device, SchemaVersionTopic $topic, array $finalValues, IngestionMessage $ingestionMessage): void
+        public function dispatch($event, $payload = [], $halt = false): ?array
         {
-            throw new RuntimeException('kv_write_failed');
+            if ($event instanceof TelemetryReceived) {
+                throw new RuntimeException('side_effect_dispatch_failed');
+            }
+
+            return parent::dispatch($event, $payload, $halt);
         }
     });
 
@@ -381,24 +450,22 @@ it('marks ingestion as failed terminal when post-persist publish side effects fa
     ));
 
     expect($message)->toBeInstanceOf(IngestionMessage::class)
-        ->and($message?->status)->toBe(IngestionStatus::FailedTerminal);
+        ->and($message?->status)->toBe(IngestionStatus::Completed);
 
     $message->refresh();
 
-    expect($message->error_summary)->toMatchArray([
-        'reason' => 'publish_failed',
-    ])->and($message->error_summary['errors'] ?? [])->toHaveKey('hot_state');
+    expect($message->error_summary)->toBeNull();
 
     $telemetryLog = $message->telemetryLog()->first();
 
     expect($telemetryLog)->not->toBeNull()
-        ->and($telemetryLog?->processing_state)->toBe('publish_failed');
+        ->and($telemetryLog?->processing_state)->toBe('processed');
 
     $publishStage = $message->stageLogs()->where('stage', 'publish')->latest('id')->first();
 
     expect($publishStage)->not->toBeNull()
         ->and($publishStage?->status)->toBe(IngestionStatus::FailedTerminal)
-        ->and($publishStage?->errors)->toHaveKey('hot_state');
+        ->and($publishStage?->errors)->toHaveKey('side_effect_dispatch');
 });
 
 it('persists successful stage logs when stage log mode is all', function (): void {
