@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\DeviceManagement\Models;
 
+use App\Domain\DataIngestion\Models\DeviceSignalBinding;
 use App\Domain\DeviceControl\Models\DeviceCommandLog;
 use App\Domain\DeviceControl\Models\DeviceDesiredState;
 use App\Domain\DeviceControl\Models\DeviceDesiredTopicState;
@@ -25,7 +26,7 @@ use Illuminate\Support\Str;
 
 class Device extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\DeviceManagement\Models\DeviceFactory> */
+    /** @use HasFactory<DeviceFactory> */
     use HasFactory;
 
     use SoftDeletes;
@@ -106,6 +107,22 @@ class Device extends Model
     }
 
     /**
+     * @return BelongsTo<self, $this>
+     */
+    public function parentDevice(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_device_id');
+    }
+
+    /**
+     * @return HasMany<self, $this>
+     */
+    public function childDevices(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_device_id');
+    }
+
+    /**
      * @return HasMany<DeviceTelemetryLog, $this>
      */
     public function telemetryLogs(): HasMany
@@ -114,9 +131,17 @@ class Device extends Model
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Relations\HasOne<DeviceDesiredState, $this>
+     * @return HasMany<DeviceSignalBinding, $this>
      */
-    public function desiredState(): \Illuminate\Database\Eloquent\Relations\HasOne
+    public function signalBindings(): HasMany
+    {
+        return $this->hasMany(DeviceSignalBinding::class);
+    }
+
+    /**
+     * @return HasOne<DeviceDesiredState, $this>
+     */
+    public function desiredState(): HasOne
     {
         return $this->hasOne(DeviceDesiredState::class);
     }
@@ -166,6 +191,16 @@ class Device extends Model
     public function temporaryDevice(): HasOne
     {
         return $this->hasOne(TemporaryDevice::class);
+    }
+
+    public function isHub(): bool
+    {
+        return $this->childDevices()->exists();
+    }
+
+    public function isChildDevice(): bool
+    {
+        return $this->parent_device_id !== null;
     }
 
     public function canBeControlled(): bool

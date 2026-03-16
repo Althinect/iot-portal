@@ -13,7 +13,7 @@ use Illuminate\Support\Carbon;
 
 class TemporaryDevice extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\DeviceManagement\Models\TemporaryDeviceFactory> */
+    /** @use HasFactory<TemporaryDeviceFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];

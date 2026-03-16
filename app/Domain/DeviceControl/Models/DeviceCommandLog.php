@@ -8,13 +8,14 @@ use App\Domain\DeviceControl\Enums\CommandStatus;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
 use App\Domain\Shared\Models\User;
+use Database\Factories\Domain\DeviceControl\Models\DeviceCommandLogFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DeviceCommandLog extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\DeviceControl\Models\DeviceCommandLogFactory> */
+    /** @use HasFactory<DeviceCommandLogFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];

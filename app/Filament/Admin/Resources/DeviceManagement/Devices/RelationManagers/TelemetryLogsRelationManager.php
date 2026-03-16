@@ -20,6 +20,10 @@ class TelemetryLogsRelationManager extends RelationManager
 
     public function table(Table $table): Table
     {
-        return DeviceTelemetryLogsTable::configure($table);
+        return DeviceTelemetryLogsTable::configure(
+            $table,
+            showDeviceContext: false,
+            useValuesModal: true,
+        );
     }
 }

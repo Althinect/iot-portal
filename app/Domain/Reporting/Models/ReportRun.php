@@ -45,7 +45,7 @@ use Illuminate\Support\Carbon;
  */
 class ReportRun extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\Reporting\Models\ReportRunFactory> */
+    /** @use HasFactory<ReportRunFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];

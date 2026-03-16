@@ -24,7 +24,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class OrganizationReportSetting extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\Reporting\Models\OrganizationReportSettingFactory> */
+    /** @use HasFactory<OrganizationReportSettingFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];

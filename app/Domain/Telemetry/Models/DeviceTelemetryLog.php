@@ -24,7 +24,7 @@ use Illuminate\Support\Carbon;
  */
 class DeviceTelemetryLog extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\Telemetry\Models\DeviceTelemetryLogFactory> */
+    /** @use HasFactory<DeviceTelemetryLogFactory> */
     use HasFactory;
 
     use HasUuids;

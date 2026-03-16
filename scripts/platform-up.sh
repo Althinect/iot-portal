@@ -13,6 +13,7 @@ Starts the full Docker platform stack defined in compose.yaml:
 - pgsql (TimescaleDB)
 - redis
 - nats
+- node-red
 - mailpit
 - reverb
 - iot-listen-states

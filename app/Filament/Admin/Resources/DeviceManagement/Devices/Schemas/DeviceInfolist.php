@@ -36,6 +36,10 @@ class DeviceInfolist
                             ->label('External ID')
                             ->placeholder('None'),
 
+                        TextEntry::make('parentDevice.name')
+                            ->label('Parent Hub')
+                            ->placeholder('None'),
+
                         TextEntry::make('organization.name')
                             ->label('Organization')
                             ->url(fn (Device $record): ?string => $record->organization_id
@@ -90,6 +94,10 @@ class DeviceInfolist
                             ->state(fn (Device $record) => $record->resolvedOfflineDeadlineAt())
                             ->dateTime()
                             ->placeholder('Pending first signal'),
+
+                        TextEntry::make('child_devices_count')
+                            ->label('Child Devices')
+                            ->state(fn (Device $record): int => $record->childDevices()->count()),
                     ])
                     ->columns(2),
 
@@ -138,6 +146,7 @@ class DeviceInfolist
                 Section::make('Metadata')
                     ->schema([
                         KeyValueEntry::make('metadata')
+                            ->state(fn (Device $record): array => self::normalizeMetadataForDisplay($record->getAttribute('metadata')))
                             ->columnSpanFull(),
                     ]),
 
@@ -204,5 +213,25 @@ class DeviceInfolist
                             ->visible(fn (Device $record): bool => $record->getAttribute('device_schema_version_id') !== null),
                     ]),
             ]);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function normalizeMetadataForDisplay(mixed $metadata): array
+    {
+        if (! is_array($metadata)) {
+            return [];
+        }
+
+        return collect($metadata)
+            ->map(fn (mixed $value): string => match (true) {
+                is_array($value) => json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '[]',
+                is_bool($value) => $value ? 'true' : 'false',
+                $value === null => 'null',
+                is_scalar($value) => (string) $value,
+                default => json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: get_debug_type($value),
+            })
+            ->all();
     }
 }

@@ -10,6 +10,7 @@ use App\Domain\DeviceManagement\ValueObjects\Protocol\ProtocolConfigInterface;
 use App\Domain\DeviceSchema\Models\DeviceSchema;
 use App\Domain\Shared\Models\Organization;
 use Database\Factories\Domain\DeviceManagement\Models\DeviceTypeFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -21,7 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class DeviceType extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\DeviceManagement\Models\DeviceTypeFactory> */
+    /** @use HasFactory<DeviceTypeFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];
@@ -79,8 +80,8 @@ class DeviceType extends Model
     /**
      * Scope to only global catalog entries.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<self>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<self>
+     * @param  Builder<self>  $query
+     * @return Builder<self>
      */
     public function scopeGlobal($query)
     {
@@ -90,8 +91,8 @@ class DeviceType extends Model
     /**
      * Scope to organization-specific entries.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<self>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<self>
+     * @param  Builder<self>  $query
+     * @return Builder<self>
      */
     public function scopeForOrganization($query, int|Organization $organization)
     {

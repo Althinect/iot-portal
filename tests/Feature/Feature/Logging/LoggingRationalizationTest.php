@@ -32,7 +32,7 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     Carbon::setTestNow();
-    \Mockery::close();
+    Mockery::close();
 });
 
 final class RecordingLogger implements LoggerInterface
@@ -106,7 +106,7 @@ final class RecordingLogger implements LoggerInterface
 
 function bindRecordingLogManager(RecordingLogger $logger): void
 {
-    $manager = \Mockery::mock(LogManager::class);
+    $manager = Mockery::mock(LogManager::class);
     $manager->shouldReceive('channel')->andReturn($logger);
 
     app()->instance(LogManager::class, $manager);

@@ -80,13 +80,13 @@ return new class extends Migration
         $type = WidgetType::tryFrom((string) $widget->type);
 
         if (! $type instanceof WidgetType) {
-            throw new \RuntimeException("Widget [{$widget->id}] has unsupported type [{$widget->type}].");
+            throw new RuntimeException("Widget [{$widget->id}] has unsupported type [{$widget->type}].");
         }
 
         $series = $this->normalizeSeries($this->decodeJson($widget->series_config));
 
         if ($series === []) {
-            throw new \RuntimeException("Widget [{$widget->id}] has an empty series definition and cannot be migrated.");
+            throw new RuntimeException("Widget [{$widget->id}] has an empty series definition and cannot be migrated.");
         }
 
         $options = $this->decodeJson($widget->options);

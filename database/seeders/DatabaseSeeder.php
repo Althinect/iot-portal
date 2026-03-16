@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use Database\Factories\UserFactory;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Artisan;
@@ -30,15 +29,12 @@ class DatabaseSeeder extends Seeder
 
         Storage::disk('public')->deleteDirectory('logos');
 
-        UserFactory::new()->create([
-            'name' => 'Admin',
-            'email' => 'admin@admin.com',
-            'is_super_admin' => true,
-        ]);
-
         $this->call([
+            UserSeeder::class,
             OrganizationSeeder::class,
             DeviceSchemaSeeder::class,
+            MigrationRehearsalSeeder::class,
+            WitcoMigrationSeeder::class,
             DeviceControlSeeder::class,
             DeviceTelemetrySeeder::class,
             AutomationSeeder::class,

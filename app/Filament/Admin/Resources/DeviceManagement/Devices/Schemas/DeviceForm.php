@@ -102,6 +102,14 @@ class DeviceForm
                             ->disabled(fn (Get $get) => ! $get('device_type_id'))
                             ->helperText('Only active schema versions for the selected device type are shown'),
 
+                        Select::make('parent_device_id')
+                            ->label('Parent Hub')
+                            ->options(fn (Get $get, ?Device $record): array => self::parentDeviceOptions($get, $record))
+                            ->searchable()
+                            ->preload()
+                            ->placeholder('No parent hub')
+                            ->helperText('Assign this device to a hub for migration rehearsal visibility and health tracking.'),
+
                         Placeholder::make('onboarding_hint')
                             ->label('Onboarding Hint')
                             ->content(function (Get $get): string {
@@ -252,5 +260,47 @@ class DeviceForm
         }
 
         return (int) $schemaVersion->id;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function parentDeviceOptions(Get $get, ?Device $record): array
+    {
+        $organizationId = $get('organization_id');
+
+        if (! is_numeric($organizationId) && $record?->organization_id === null) {
+            return [];
+        }
+
+        $resolvedOrganizationId = is_numeric($organizationId)
+            ? (int) $organizationId
+            : $record?->organization_id;
+
+        if (! is_int($resolvedOrganizationId)) {
+            return [];
+        }
+
+        $query = Device::query()
+            ->where('organization_id', $resolvedOrganizationId)
+            ->whereNull('parent_device_id')
+            ->orderBy('name');
+
+        if ($record !== null) {
+            $query->whereKeyNot($record->getKey());
+        }
+
+        return $query
+            ->get(['id', 'name', 'external_id'])
+            ->mapWithKeys(function (Device $device): array {
+                $externalId = is_string($device->external_id) && trim($device->external_id) !== ''
+                    ? " · {$device->external_id}"
+                    : '';
+
+                return [
+                    (int) $device->id => "{$device->name}{$externalId}",
+                ];
+            })
+            ->all();
     }
 }

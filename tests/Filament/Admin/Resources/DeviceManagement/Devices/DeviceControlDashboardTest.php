@@ -321,17 +321,17 @@ it('handles NATS failure gracefully on mount', function (): void {
 
         public function getLastState(string $deviceUuid, string $host = '127.0.0.1', int $port = 4223): ?array
         {
-            throw new \RuntimeException('NATS connection refused');
+            throw new RuntimeException('NATS connection refused');
         }
 
         public function getAllStates(string $deviceUuid, string $host = '127.0.0.1', int $port = 4223): array
         {
-            throw new \RuntimeException('NATS connection refused');
+            throw new RuntimeException('NATS connection refused');
         }
 
         public function getStateByTopic(string $deviceUuid, string $topic, string $host = '127.0.0.1', int $port = 4223): ?array
         {
-            throw new \RuntimeException('NATS connection refused');
+            throw new RuntimeException('NATS connection refused');
         }
     };
 

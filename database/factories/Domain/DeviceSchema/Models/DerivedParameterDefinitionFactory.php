@@ -10,7 +10,7 @@ use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Domain\DeviceSchema\Models\DerivedParameterDefinition>
+ * @extends Factory<DerivedParameterDefinition>
  */
 class DerivedParameterDefinitionFactory extends Factory
 {

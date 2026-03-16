@@ -14,6 +14,7 @@ use App\Domain\Reporting\Models\ReportRun;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Shared\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
@@ -58,7 +59,7 @@ it('creates a report run through the DDD action and internal API client', functi
 
     expect($resolved->is($reportRun))->toBeTrue();
 
-    Http::assertSent(function (\Illuminate\Http\Client\Request $request) use ($user): bool {
+    Http::assertSent(function (Request $request) use ($user): bool {
         return $request->url() === 'https://reporting.local/api/internal/reporting/report-runs'
             && $request->method() === 'POST'
             && $request->hasHeader('X-Reporting-Token', 'reporting-token')
@@ -88,7 +89,7 @@ it('updates organization report settings through the DDD action', function (): v
 
     expect($resolved->is($settings))->toBeTrue();
 
-    Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
+    Http::assertSent(function (Request $request): bool {
         return $request->url() === 'https://reporting.local/api/internal/reporting/organization-report-settings'
             && $request->method() === 'PUT';
     });
@@ -117,7 +118,7 @@ it('deletes a report run through the DDD action', function (): void {
 
     app(DeleteReportRunAction::class)($reportRun);
 
-    Http::assertSent(function (\Illuminate\Http\Client\Request $request) use ($reportRun): bool {
+    Http::assertSent(function (Request $request) use ($reportRun): bool {
         return $request->method() === 'DELETE'
             && $request->url() === "https://reporting.local/api/internal/reporting/report-runs/{$reportRun->id}"
             && (int) data_get($request->data(), 'organization_id') === (int) $reportRun->organization_id;

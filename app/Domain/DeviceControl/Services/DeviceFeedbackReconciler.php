@@ -16,6 +16,7 @@ use App\Events\CommandCompleted;
 use App\Events\DeviceStateReceived;
 use Illuminate\Log\LogManager;
 use Illuminate\Support\Carbon;
+use Psr\Log\LoggerInterface;
 
 class DeviceFeedbackReconciler
 {
@@ -474,7 +475,7 @@ class DeviceFeedbackReconciler
             || str_starts_with($mqttTopic, '$SYS/');
     }
 
-    private function log(): \Psr\Log\LoggerInterface
+    private function log(): LoggerInterface
     {
         return $this->logManager->channel('device_control');
     }

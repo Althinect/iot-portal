@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace App\Domain\DeviceSchema\Models;
 
+use App\Domain\DataIngestion\Models\DeviceSignalBinding;
 use App\Domain\DeviceSchema\Enums\ControlWidgetType;
 use App\Domain\DeviceSchema\Enums\ParameterCategory;
 use App\Domain\DeviceSchema\Enums\ParameterDataType;
 use App\Domain\DeviceSchema\Services\JsonLogicEvaluator;
+use Database\Factories\Domain\DeviceSchema\Models\ParameterDefinitionFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property string $key
@@ -23,7 +26,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class ParameterDefinition extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\DeviceSchema\Models\ParameterDefinitionFactory> */
+    /** @use HasFactory<ParameterDefinitionFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];
@@ -52,6 +55,14 @@ class ParameterDefinition extends Model
     public function topic(): BelongsTo
     {
         return $this->belongsTo(SchemaVersionTopic::class, 'schema_version_topic_id');
+    }
+
+    /**
+     * @return HasMany<DeviceSignalBinding, $this>
+     */
+    public function signalBindings(): HasMany
+    {
+        return $this->hasMany(DeviceSignalBinding::class);
     }
 
     /**

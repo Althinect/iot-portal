@@ -9,7 +9,7 @@ use App\Domain\Shared\Models\Organization;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Domain\Reporting\Models\OrganizationReportSetting>
+ * @extends Factory<OrganizationReportSetting>
  */
 class OrganizationReportSettingFactory extends Factory
 {

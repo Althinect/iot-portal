@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class IngestionStageLog extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\DataIngestion\Models\IngestionStageLogFactory> */
+    /** @use HasFactory<IngestionStageLogFactory> */
     use HasFactory;
 
     public const UPDATED_AT = null;

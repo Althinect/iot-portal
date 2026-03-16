@@ -14,6 +14,7 @@ use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Utilities\Get;
 
@@ -25,7 +26,7 @@ class WidgetFormSchemaFactory
     ) {}
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     public function lineSchema(IoTDashboard $dashboard): array
     {
@@ -48,7 +49,7 @@ class WidgetFormSchemaFactory
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     public function barSchema(IoTDashboard $dashboard): array
     {
@@ -74,7 +75,7 @@ class WidgetFormSchemaFactory
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     public function gaugeSchema(IoTDashboard $dashboard): array
     {
@@ -122,7 +123,7 @@ class WidgetFormSchemaFactory
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     public function editSchema(IoTDashboard $dashboard): array
     {
@@ -185,7 +186,7 @@ class WidgetFormSchemaFactory
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     private function baseScopeSchema(IoTDashboard $dashboard): array
     {
@@ -206,7 +207,7 @@ class WidgetFormSchemaFactory
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     private function transportSchema(
         bool $defaultWebsocket,
@@ -246,7 +247,7 @@ class WidgetFormSchemaFactory
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     private function layoutSchema(): array
     {

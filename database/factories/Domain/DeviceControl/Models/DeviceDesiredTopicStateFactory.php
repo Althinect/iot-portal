@@ -10,7 +10,7 @@ use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Domain\DeviceControl\Models\DeviceDesiredTopicState>
+ * @extends Factory<DeviceDesiredTopicState>
  */
 class DeviceDesiredTopicStateFactory extends Factory
 {

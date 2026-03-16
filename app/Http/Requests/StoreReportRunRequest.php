@@ -7,6 +7,7 @@ namespace App\Http\Requests;
 use App\Domain\Reporting\Enums\ReportGrouping;
 use App\Domain\Reporting\Enums\ReportType;
 use App\Domain\Reporting\Models\OrganizationReportSetting;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
@@ -25,7 +26,7 @@ class StoreReportRunRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {

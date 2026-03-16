@@ -14,6 +14,7 @@ use App\Events\CommandDispatched;
 use App\Events\CommandSent;
 use Illuminate\Log\LogManager;
 use Illuminate\Support\Str;
+use Psr\Log\LoggerInterface;
 
 final readonly class DeviceCommandDispatcher
 {
@@ -257,7 +258,7 @@ final readonly class DeviceCommandDispatcher
             || str_contains($errorMessage, 'reset by peer');
     }
 
-    private function log(): \Psr\Log\LoggerInterface
+    private function log(): LoggerInterface
     {
         return $this->logManager->channel('device_control');
     }

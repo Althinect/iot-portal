@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class OrganizationIngestionProfile extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\DataIngestion\Models\OrganizationIngestionProfileFactory> */
+    /** @use HasFactory<OrganizationIngestionProfileFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];

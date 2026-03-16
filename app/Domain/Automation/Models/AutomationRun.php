@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class AutomationRun extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\Automation\Models\AutomationRunFactory> */
+    /** @use HasFactory<AutomationRunFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];

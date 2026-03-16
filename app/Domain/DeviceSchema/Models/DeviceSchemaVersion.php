@@ -7,6 +7,7 @@ namespace App\Domain\DeviceSchema\Models;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\ValueObjects\Protocol\MqttProtocolConfig;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
+use Database\Factories\Domain\DeviceSchema\Models\DeviceSchemaVersionFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class DeviceSchemaVersion extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\DeviceSchema\Models\DeviceSchemaVersionFactory> */
+    /** @use HasFactory<DeviceSchemaVersionFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];

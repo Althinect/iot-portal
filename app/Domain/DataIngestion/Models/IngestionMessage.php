@@ -20,7 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class IngestionMessage extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\DataIngestion\Models\IngestionMessageFactory> */
+    /** @use HasFactory<IngestionMessageFactory> */
     use HasFactory;
 
     use HasUuids;

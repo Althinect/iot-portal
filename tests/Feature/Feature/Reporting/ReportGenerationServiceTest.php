@@ -19,6 +19,7 @@ use App\Domain\Shared\Models\Organization;
 use App\Domain\Shared\Models\User;
 use App\Domain\Telemetry\Enums\ValidationStatus;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
@@ -361,9 +362,9 @@ it('marks a report run as failed when writing the CSV to storage fails', functio
     ]);
 
     // Simulate Storage disk write failure
-    $adapter = Mockery::mock(\Illuminate\Filesystem\FilesystemAdapter::class);
+    $adapter = Mockery::mock(FilesystemAdapter::class);
     $adapter->shouldReceive('put')->andReturnFalse();
-    \Illuminate\Support\Facades\Storage::shouldReceive('disk')->with('local')->andReturn($adapter);
+    Storage::shouldReceive('disk')->with('local')->andReturn($adapter);
 
     app(ReportGenerationService::class)->generate($reportRun);
 

@@ -12,7 +12,7 @@ use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Domain\Telemetry\Models\DeviceTelemetryLog>
+ * @extends Factory<DeviceTelemetryLog>
  */
 class DeviceTelemetryLogFactory extends Factory
 {

@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
 
 class IoTDashboard extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\IoTDashboard\Models\IoTDashboardFactory> */
+    /** @use HasFactory<IoTDashboardFactory> */
     use HasFactory;
 
     protected $table = 'iot_dashboards';

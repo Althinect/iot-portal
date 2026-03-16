@@ -10,6 +10,7 @@ use App\Domain\DataIngestion\Enums\IngestionStatus;
 use App\Domain\DataIngestion\Models\IngestionMessage;
 use App\Domain\DataIngestion\Models\IngestionStageLog;
 use App\Domain\DeviceManagement\Models\Device;
+use App\Domain\DeviceSchema\Models\ParameterDefinition;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
 use App\Domain\Shared\Services\RuntimeSettingManager;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
@@ -328,7 +329,7 @@ class TelemetryIngestionService
     }
 
     /**
-     * @return Collection<int, \App\Domain\DeviceSchema\Models\ParameterDefinition>
+     * @return Collection<int, ParameterDefinition>
      */
     private function resolveActiveParameters(SchemaVersionTopic $topic): Collection
     {

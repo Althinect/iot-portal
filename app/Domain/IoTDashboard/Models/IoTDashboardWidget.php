@@ -20,7 +20,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class IoTDashboardWidget extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\IoTDashboard\Models\IoTDashboardWidgetFactory> */
+    /** @use HasFactory<IoTDashboardWidgetFactory> */
     use HasFactory;
 
     protected $table = 'iot_dashboard_widgets';

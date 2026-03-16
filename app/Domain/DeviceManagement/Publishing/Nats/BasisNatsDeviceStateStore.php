@@ -6,6 +6,7 @@ namespace App\Domain\DeviceManagement\Publishing\Nats;
 
 use Basis\Nats\Client;
 use Basis\Nats\Configuration;
+use Basis\Nats\KeyValue\Bucket;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -14,14 +15,14 @@ final class BasisNatsDeviceStateStore implements NatsDeviceStateStore
     private const string BUCKET_NAME = 'device-states';
 
     /**
-     * @var array<string, \Basis\Nats\KeyValue\Bucket>
+     * @var array<string, Bucket>
      */
     private static array $buckets = [];
 
     public function store(string $deviceUuid, string $topic, array $payload, string $host = '127.0.0.1', int $port = 4223): void
     {
         try {
-            $this->withBucket($host, $port, function (\Basis\Nats\KeyValue\Bucket $bucket) use ($deviceUuid, $topic, $payload): void {
+            $this->withBucket($host, $port, function (Bucket $bucket) use ($deviceUuid, $topic, $payload): void {
                 $document = $this->normalizeDocument($bucket->get($deviceUuid));
                 $document['topics'][$topic] = [
                     'topic' => $topic,
@@ -65,7 +66,7 @@ final class BasisNatsDeviceStateStore implements NatsDeviceStateStore
     public function getAllStates(string $deviceUuid, string $host = '127.0.0.1', int $port = 4223): array
     {
         try {
-            $value = $this->withBucket($host, $port, function (\Basis\Nats\KeyValue\Bucket $bucket) use ($deviceUuid): mixed {
+            $value = $this->withBucket($host, $port, function (Bucket $bucket) use ($deviceUuid): mixed {
                 return $bucket->get($deviceUuid);
             });
         } catch (Throwable $exception) {
@@ -92,7 +93,7 @@ final class BasisNatsDeviceStateStore implements NatsDeviceStateStore
     public function getStateByTopic(string $deviceUuid, string $topic, string $host = '127.0.0.1', int $port = 4223): ?array
     {
         try {
-            $value = $this->withBucket($host, $port, function (\Basis\Nats\KeyValue\Bucket $bucket) use ($deviceUuid): mixed {
+            $value = $this->withBucket($host, $port, function (Bucket $bucket) use ($deviceUuid): mixed {
                 return $bucket->get($deviceUuid);
             });
         } catch (Throwable $exception) {
@@ -108,7 +109,7 @@ final class BasisNatsDeviceStateStore implements NatsDeviceStateStore
         return $document['topics'][$topic] ?? null;
     }
 
-    private function getBucket(string $host, int $port): \Basis\Nats\KeyValue\Bucket
+    private function getBucket(string $host, int $port): Bucket
     {
         $key = "{$host}:{$port}";
 
@@ -129,7 +130,7 @@ final class BasisNatsDeviceStateStore implements NatsDeviceStateStore
     /**
      * @template TValue
      *
-     * @param  callable(\Basis\Nats\KeyValue\Bucket): TValue  $operation
+     * @param  callable(Bucket): TValue  $operation
      * @return TValue
      */
     private function withBucket(string $host, int $port, callable $operation): mixed

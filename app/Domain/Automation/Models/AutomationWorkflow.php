@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class AutomationWorkflow extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\Automation\Models\AutomationWorkflowFactory> */
+    /** @use HasFactory<AutomationWorkflowFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];
