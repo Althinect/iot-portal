@@ -11,6 +11,7 @@ use App\Domain\DeviceSchema\Enums\TopicDirection;
 use App\Domain\DeviceSchema\Enums\TopicLinkType;
 use App\Domain\DeviceSchema\Enums\TopicPurpose;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
+use Database\Factories\Domain\DeviceSchema\Models\SchemaVersionTopicFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -22,7 +23,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class SchemaVersionTopic extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\DeviceSchema\Models\SchemaVersionTopicFactory> */
+    /** @use HasFactory<SchemaVersionTopicFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];

@@ -1,5 +1,7 @@
 <?php
 
+use App\Domain\Shared\Models\User;
+
 return [
 
     /*
@@ -68,7 +70,7 @@ return [
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', default: \App\Domain\Shared\Models\User::class),
+            'model' => env('AUTH_MODEL', default: User::class),
         ],
 
         // 'users' => [

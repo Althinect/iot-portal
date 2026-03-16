@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\IoTDashboard\Contracts;
 
+use App\Domain\IoTDashboard\Application\DashboardHistoryRange;
 use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
 
@@ -19,7 +20,7 @@ interface WidgetDefinition
     /**
      * @return array<string, mixed>
      */
-    public function resolveSnapshot(IoTDashboardWidget $widget): array;
+    public function resolveSnapshot(IoTDashboardWidget $widget, ?DashboardHistoryRange $historyRange = null): array;
 
     /**
      * @return array<string, mixed>

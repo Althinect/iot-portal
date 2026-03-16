@@ -6,13 +6,14 @@ namespace App\Domain\DeviceControl\Models;
 
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use Database\Factories\Domain\DeviceControl\Models\DeviceDesiredTopicStateFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DeviceDesiredTopicState extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\DeviceControl\Models\DeviceDesiredTopicStateFactory> */
+    /** @use HasFactory<DeviceDesiredTopicStateFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];

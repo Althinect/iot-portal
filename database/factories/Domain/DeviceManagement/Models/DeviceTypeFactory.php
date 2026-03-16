@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Domain\DeviceManagement\Models\DeviceType>
+ * @extends Factory<DeviceType>
  */
 class DeviceTypeFactory extends Factory
 {

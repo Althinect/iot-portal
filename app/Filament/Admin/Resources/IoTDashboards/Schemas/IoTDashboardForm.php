@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Admin\Resources\IoTDashboards\Schemas;
 
+use App\Domain\IoTDashboard\Enums\DashboardHistoryPreset;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -76,6 +77,12 @@ class IoTDashboardForm
                             ->minValue(2)
                             ->maxValue(300)
                             ->default(10)
+                            ->required(),
+
+                        Select::make('default_history_preset')
+                            ->label('Default history range')
+                            ->options(DashboardHistoryPreset::class)
+                            ->default(DashboardHistoryPreset::Last6Hours->value)
                             ->required(),
 
                         Toggle::make('is_active')

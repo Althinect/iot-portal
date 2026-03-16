@@ -8,11 +8,12 @@ use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UpdateIoTDashboardWidgetLayoutRequest;
+use Illuminate\Http\JsonResponse;
 
 class IoTDashboardWidgetLayoutController extends Controller
 {
     /**
-     * @return \Illuminate\Http\JsonResponse
+     * @return JsonResponse
      */
     public function __invoke(
         UpdateIoTDashboardWidgetLayoutRequest $request,

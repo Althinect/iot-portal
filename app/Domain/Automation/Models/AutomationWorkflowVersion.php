@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class AutomationWorkflowVersion extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\Automation\Models\AutomationWorkflowVersionFactory> */
+    /** @use HasFactory<AutomationWorkflowVersionFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];

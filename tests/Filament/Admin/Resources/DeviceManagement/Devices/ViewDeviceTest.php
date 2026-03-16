@@ -25,6 +25,20 @@ it('can render the view device page', function (): void {
         ->assertSuccessful();
 });
 
+it('can render nested metadata on the view device page', function (): void {
+    $device = Device::factory()->create([
+        'metadata' => [
+            'migration_tenant' => 'witco',
+            'legacy_parameter_mappings' => [
+                'status' => 'peripheralDataArr.iMoni_LITE.2.3',
+            ],
+        ],
+    ]);
+
+    livewire(ViewDevice::class, ['record' => $device->id])
+        ->assertSuccessful();
+});
+
 it('shows the firmware viewer action on the device view page', function (): void {
     $deviceType = DeviceType::factory()->mqtt()->create();
     $schema = DeviceSchema::factory()->forDeviceType($deviceType)->create();

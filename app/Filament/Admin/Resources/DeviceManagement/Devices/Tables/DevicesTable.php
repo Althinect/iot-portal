@@ -20,6 +20,7 @@ use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Grouping\Group;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -87,6 +88,16 @@ class DevicesTable
                     ->label('External ID')
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->placeholder('—'),
+
+                TextColumn::make('parentDevice.name')
+                    ->label('Parent Hub')
+                    ->placeholder('—')
+                    ->toggleable(),
+
+                TextColumn::make('child_devices_count')
+                    ->label('Children')
+                    ->counts('childDevices')
+                    ->toggleable(),
 
                 TextColumn::make('temporaryDevice.expires_at')
                     ->label('Temporary Expires')
@@ -156,6 +167,12 @@ class DevicesTable
                     SimulatePublishingActions::bulkAction(),
                     Actions\DeleteBulkAction::make(),
                 ]),
+            ])
+            ->groups([
+                Group::make('parent_device_id')
+                    ->label('Parent Device')
+                    ->getTitleFromRecordUsing(fn (Device $record): string => $record->parentDevice->name ?? 'No Parent Device')
+                    ->collapsible(),
             ])
             ->defaultSort('created_at', 'desc')
             ->poll('30s');

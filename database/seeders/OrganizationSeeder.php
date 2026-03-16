@@ -47,7 +47,11 @@ class OrganizationSeeder extends Seeder
 
             $organization->users()->syncWithoutDetaching([$adminUser->id]);
 
-            $superAdmin = User::query()->find(1);
+            /** @var User|null $superAdmin */
+            $superAdmin = User::query()
+                ->where('email', UserSeeder::DEFAULT_SUPER_ADMIN_EMAIL)
+                ->first();
+
             if ($superAdmin instanceof User) {
                 $organization->users()->syncWithoutDetaching([$superAdmin->id]);
             }

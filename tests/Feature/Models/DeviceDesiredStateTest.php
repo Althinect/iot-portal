@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Domain\DeviceControl\Models\DeviceCommandLog;
 use App\Domain\DeviceControl\Models\DeviceDesiredState;
 use App\Domain\DeviceManagement\Models\Device;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -64,13 +66,13 @@ test('unique device_id constraint prevents duplicates', function (): void {
     DeviceDesiredState::factory()->create(['device_id' => $device->id]);
 
     expect(fn () => DeviceDesiredState::factory()->create(['device_id' => $device->id]))
-        ->toThrow(\Illuminate\Database\QueryException::class);
+        ->toThrow(QueryException::class);
 });
 
 test('device has many command logs', function (): void {
     $device = Device::factory()->create();
 
-    \App\Domain\DeviceControl\Models\DeviceCommandLog::factory()->count(3)->create([
+    DeviceCommandLog::factory()->count(3)->create([
         'device_id' => $device->id,
     ]);
 

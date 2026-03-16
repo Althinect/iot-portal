@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\DeviceManagement\Services;
 
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 
 final class DevicePresenceMessageHandler
@@ -29,7 +30,7 @@ final class DevicePresenceMessageHandler
             return false;
         }
 
-        $normalizedBody = trim($body);
+        $normalizedBody = $this->normalizePayload($body);
 
         Log::channel('device_control')->debug('Presence message received', [
             'subject' => $subject,
@@ -86,5 +87,24 @@ final class DevicePresenceMessageHandler
     private function normalizeSubjectFragment(string $fragment): string
     {
         return str_replace('/', '.', trim($fragment));
+    }
+
+    private function normalizePayload(string $body): string
+    {
+        $normalizedBody = trim($body);
+
+        if ($normalizedBody === '') {
+            return $normalizedBody;
+        }
+
+        $decoded = json_decode($normalizedBody, true);
+
+        if (! is_array($decoded)) {
+            return $normalizedBody;
+        }
+
+        $status = Arr::get($decoded, 'status');
+
+        return is_string($status) ? trim($status) : $normalizedBody;
     }
 }

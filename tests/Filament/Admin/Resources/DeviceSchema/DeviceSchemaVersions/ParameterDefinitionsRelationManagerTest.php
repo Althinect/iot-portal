@@ -13,6 +13,7 @@ use App\Domain\Shared\Models\User;
 use App\Filament\Admin\Resources\DeviceSchema\DeviceSchemaVersions\Pages\EditDeviceSchemaVersion;
 use App\Filament\Admin\Resources\DeviceSchema\DeviceSchemaVersions\Pages\ViewDeviceSchemaVersion;
 use App\Filament\Admin\Resources\DeviceSchema\DeviceSchemaVersions\RelationManagers\ParameterDefinitionsRelationManager;
+use Filament\Actions\Action;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -113,7 +114,7 @@ it('uses a slide over modal for the edit action', function (): void {
     ])
         ->assertTableActionExists(
             'edit',
-            fn (\Filament\Actions\Action $action): bool => $action->isModalSlideOver(),
+            fn (Action $action): bool => $action->isModalSlideOver(),
             $parameter,
         );
 });

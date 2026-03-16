@@ -12,7 +12,7 @@ use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Domain\DeviceSchema\Models\ParameterDefinition>
+ * @extends Factory<ParameterDefinition>
  */
 class ParameterDefinitionFactory extends Factory
 {

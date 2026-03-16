@@ -159,7 +159,7 @@ it('marks command as failed when MQTT publish throws', function (): void {
         {
             $this->attempts++;
 
-            throw new \RuntimeException('MQTT connection refused');
+            throw new RuntimeException('MQTT connection refused');
         }
     };
 
@@ -196,7 +196,7 @@ it('retries transient MQTT publish failures once and sends successfully', functi
             $this->attempts++;
 
             if ($this->attempts === 1) {
-                throw new \RuntimeException('MQTT socket read failed or connection closed');
+                throw new RuntimeException('MQTT socket read failed or connection closed');
             }
         }
     };

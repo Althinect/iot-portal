@@ -1,9 +1,14 @@
 import { initializeEcho } from '../bootstrap';
+import { DashboardHistoryRangeController } from './history-range-controller';
+import { historySelectionFromLocation } from './history-range-state';
 import {
     bootDashboardRuntime,
     destroyDashboardRuntime,
+    updateDashboardRuntimeHistoryRange,
     updateDashboardRuntimeWidgets,
 } from './runtime/dashboard-runtime';
+
+let historyRangeController = null;
 
 function normalizeDashboardConfig(rawConfig) {
     const dashboardId = Number(rawConfig?.dashboard_id ?? 0);
@@ -17,6 +22,9 @@ function normalizeDashboardConfig(rawConfig) {
     return {
         dashboard_id: dashboardId,
         organization_id: Number.isInteger(organizationId) && organizationId > 0 ? organizationId : null,
+        default_history_preset: typeof rawConfig?.default_history_preset === 'string' && rawConfig.default_history_preset.trim() !== ''
+            ? rawConfig.default_history_preset
+            : '6h',
         snapshot_url: typeof rawConfig?.snapshot_url === 'string' && rawConfig.snapshot_url.trim() !== ''
             ? rawConfig.snapshot_url
             : null,
@@ -28,13 +36,32 @@ function bootDashboardPage() {
     const config = normalizeDashboardConfig(window.iotDashboardConfig);
 
     if (!config) {
+        if (historyRangeController) {
+            historyRangeController.destroy();
+            historyRangeController = null;
+        }
+
         destroyDashboardRuntime();
 
         return;
     }
 
+    config.history_range = historySelectionFromLocation(config.default_history_preset);
     initializeEcho(true);
     bootDashboardRuntime(config);
+
+    if (historyRangeController) {
+        historyRangeController.destroy();
+    }
+
+    historyRangeController = new DashboardHistoryRangeController(config, (historySelection) => {
+        if (window.iotDashboardConfig && typeof window.iotDashboardConfig === 'object') {
+            window.iotDashboardConfig.history_range = historySelection;
+        }
+
+        updateDashboardRuntimeHistoryRange(historySelection);
+    });
+    historyRangeController.boot();
 }
 
 function handleWidgetsUpdated(event) {
@@ -46,6 +73,7 @@ function handleWidgetsUpdated(event) {
         window.iotDashboardConfig = {
             dashboard_id: null,
             organization_id: null,
+            default_history_preset: '6h',
             snapshot_url: null,
             widgets,
         };
@@ -67,6 +95,11 @@ if (!window.__iotDashboardPageBooted) {
 
     document.addEventListener('livewire:navigated', bootDashboardPage);
     window.addEventListener('beforeunload', () => {
+        if (historyRangeController) {
+            historyRangeController.destroy();
+            historyRangeController = null;
+        }
+
         destroyDashboardRuntime();
     });
     window.addEventListener('iot-dashboard-widgets-updated', handleWidgetsUpdated);

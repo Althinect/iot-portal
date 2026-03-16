@@ -9,6 +9,7 @@ use App\Domain\DeviceManagement\Enums\ProtocolType;
 use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceManagement\ValueObjects\Protocol\HttpProtocolConfig;
 use App\Domain\DeviceManagement\ValueObjects\Protocol\MqttProtocolConfig;
+use App\Domain\Shared\Models\Organization;
 use Illuminate\Database\Seeder;
 
 class DeviceTypeSeeder extends Seeder
@@ -22,7 +23,7 @@ class DeviceTypeSeeder extends Seeder
         $this->createGlobalTypes();
 
         // Organization-specific override example (if organizations exist)
-        if (\App\Domain\Shared\Models\Organization::count() > 0) {
+        if (Organization::count() > 0) {
             $this->createOrgSpecificTypes();
         }
     }
@@ -124,7 +125,7 @@ class DeviceTypeSeeder extends Seeder
      */
     protected function createOrgSpecificTypes(): void
     {
-        $firstOrg = \App\Domain\Shared\Models\Organization::first();
+        $firstOrg = Organization::first();
 
         if ($firstOrg) {
             // Organization-specific override of energy meter with custom MQTT broker

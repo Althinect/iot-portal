@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domain\DataIngestion\Contracts\AnalyticsPublisher;
 use App\Domain\DataIngestion\Contracts\HotStateStore;
+use App\Domain\DataIngestion\Enums\IngestionStatus;
 use App\Domain\DataIngestion\Listeners\QueueTelemetryAnalyticsPublishes;
 use App\Domain\DataIngestion\Listeners\QueueTelemetryHotStateWrites;
 use App\Domain\DataIngestion\Models\IngestionMessage;
@@ -112,7 +113,7 @@ function buildTelemetrySideEffectContext(string $processingState = 'processed', 
         'device_id' => $device->id,
         'device_schema_version_id' => $schemaVersion->id,
         'schema_version_topic_id' => $topic->id,
-        'status' => \App\Domain\DataIngestion\Enums\IngestionStatus::Completed,
+        'status' => IngestionStatus::Completed,
     ]);
 
     $telemetryLog = DeviceTelemetryLog::factory()

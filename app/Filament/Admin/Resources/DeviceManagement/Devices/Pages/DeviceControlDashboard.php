@@ -37,6 +37,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
+use Illuminate\Support\Collection;
 
 class DeviceControlDashboard extends Page implements HasForms, HasTable
 {
@@ -447,9 +448,9 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, SchemaVersionTopic>
+     * @return Collection<int, SchemaVersionTopic>
      */
-    private function getSubscribeTopics(): \Illuminate\Support\Collection
+    private function getSubscribeTopics(): Collection
     {
         /** @var Device $device */
         $device = $this->getRecord();

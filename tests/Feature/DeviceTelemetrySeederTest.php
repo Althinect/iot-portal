@@ -85,7 +85,7 @@ it('temporarily disables broadcasting while generating telemetry history', funct
 
     $broadcastConnections = [];
 
-    $recorder = \Mockery::mock(TelemetryLogRecorder::class);
+    $recorder = Mockery::mock(TelemetryLogRecorder::class);
     $recorder->shouldReceive('record')
         ->atLeast()
         ->once()

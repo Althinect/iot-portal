@@ -8,12 +8,14 @@ use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Widgets\BarChart\BarInterval;
 use App\Domain\IoTDashboard\Widgets\GaugeChart\GaugeStyle;
+use App\Domain\IoTDashboard\Widgets\StateCard\StateCardStyle;
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Utilities\Get;
 
@@ -25,7 +27,7 @@ class WidgetFormSchemaFactory
     ) {}
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     public function lineSchema(IoTDashboard $dashboard): array
     {
@@ -48,7 +50,7 @@ class WidgetFormSchemaFactory
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     public function barSchema(IoTDashboard $dashboard): array
     {
@@ -74,7 +76,7 @@ class WidgetFormSchemaFactory
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     public function gaugeSchema(IoTDashboard $dashboard): array
     {
@@ -122,7 +124,56 @@ class WidgetFormSchemaFactory
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
+     */
+    public function stateCardSchema(IoTDashboard $dashboard): array
+    {
+        return [
+            TextInput::make('title')
+                ->label('Widget title')
+                ->required()
+                ->default('State Card')
+                ->maxLength(255),
+            ...$this->baseScopeSchema($dashboard),
+            Select::make('parameter_key')
+                ->label('State parameter')
+                ->options(fn (Get $get): array => $this->optionsService->stateParameterOptions($get('schema_version_topic_id')))
+                ->required(),
+            Select::make('display_style')
+                ->label('Display style')
+                ->options(StateCardStyle::class)
+                ->default(StateCardStyle::Toggle->value)
+                ->required(),
+            ...$this->stateMappingsSchema(),
+            ...$this->transportSchema(true, true, 10, 1440, 1),
+            ...$this->layoutSchema(),
+        ];
+    }
+
+    /**
+     * @return array<int, Component>
+     */
+    public function stateTimelineSchema(IoTDashboard $dashboard): array
+    {
+        return [
+            TextInput::make('title')
+                ->label('Widget title')
+                ->required()
+                ->default('State Timeline')
+                ->maxLength(255),
+            ...$this->baseScopeSchema($dashboard),
+            Select::make('parameter_key')
+                ->label('State parameter')
+                ->options(fn (Get $get): array => $this->optionsService->stateParameterOptions($get('schema_version_topic_id')))
+                ->required(),
+            ...$this->stateMappingsSchema(),
+            ...$this->transportSchema(true, true, 10, 360, 240),
+            ...$this->layoutSchema(),
+        ];
+    }
+
+    /**
+     * @return array<int, Component>
      */
     public function editSchema(IoTDashboard $dashboard): array
     {
@@ -146,10 +197,24 @@ class WidgetFormSchemaFactory
                         return $this->optionsService->counterParameterOptions($topicId);
                     }
 
+                    if (in_array($type, [WidgetType::StateCard->value, WidgetType::StateTimeline->value], true)) {
+                        return $this->optionsService->stateParameterOptions($topicId);
+                    }
+
                     return $this->optionsService->numericParameterOptions($topicId);
                 })
-                ->visible(fn (Get $get): bool => in_array($get('widget_type'), [WidgetType::BarChart->value, WidgetType::GaugeChart->value], true))
-                ->required(fn (Get $get): bool => in_array($get('widget_type'), [WidgetType::BarChart->value, WidgetType::GaugeChart->value], true)),
+                ->visible(fn (Get $get): bool => in_array($get('widget_type'), [
+                    WidgetType::BarChart->value,
+                    WidgetType::GaugeChart->value,
+                    WidgetType::StateCard->value,
+                    WidgetType::StateTimeline->value,
+                ], true))
+                ->required(fn (Get $get): bool => in_array($get('widget_type'), [
+                    WidgetType::BarChart->value,
+                    WidgetType::GaugeChart->value,
+                    WidgetType::StateCard->value,
+                    WidgetType::StateTimeline->value,
+                ], true)),
             Select::make('bar_interval')
                 ->label('Aggregation interval')
                 ->options(BarInterval::class)
@@ -179,13 +244,33 @@ class WidgetFormSchemaFactory
                 ->columns(3)
                 ->columnSpanFull()
                 ->visible(fn (Get $get): bool => $get('widget_type') === WidgetType::GaugeChart->value),
+            Select::make('display_style')
+                ->label('Display style')
+                ->options(StateCardStyle::class)
+                ->visible(fn (Get $get): bool => $get('widget_type') === WidgetType::StateCard->value)
+                ->required(fn (Get $get): bool => $get('widget_type') === WidgetType::StateCard->value),
+            Repeater::make('state_mappings')
+                ->label('State mappings')
+                ->default($this->defaultStateMappings())
+                ->minItems(1)
+                ->maxItems(12)
+                ->reorderable()
+                ->schema([
+                    TextInput::make('value')->required(),
+                    TextInput::make('label')->required(),
+                    ColorPicker::make('color')->required(),
+                ])
+                ->columns(3)
+                ->helperText('Map stored state values to labels and colors. You can override schema defaults per widget.')
+                ->columnSpanFull()
+                ->visible(fn (Get $get): bool => in_array($get('widget_type'), [WidgetType::StateCard->value, WidgetType::StateTimeline->value], true)),
             ...$this->transportSchema(true, true, 10, 120, 240),
             ...$this->layoutSchema(),
         ];
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     private function baseScopeSchema(IoTDashboard $dashboard): array
     {
@@ -206,7 +291,7 @@ class WidgetFormSchemaFactory
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     private function transportSchema(
         bool $defaultWebsocket,
@@ -246,7 +331,7 @@ class WidgetFormSchemaFactory
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     private function layoutSchema(): array
     {
@@ -266,6 +351,40 @@ class WidgetFormSchemaFactory
                         ->default(360)
                         ->required(),
                 ]),
+        ];
+    }
+
+    /**
+     * @return array<int, Component>
+     */
+    private function stateMappingsSchema(): array
+    {
+        return [
+            Repeater::make('state_mappings')
+                ->label('State mappings')
+                ->default($this->defaultStateMappings())
+                ->minItems(1)
+                ->maxItems(12)
+                ->reorderable()
+                ->schema([
+                    TextInput::make('value')->required(),
+                    TextInput::make('label')->required(),
+                    ColorPicker::make('color')->required(),
+                ])
+                ->columns(3)
+                ->helperText('Map stored state values to labels and colors. You can override schema defaults per widget.')
+                ->columnSpanFull(),
+        ];
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string, color: string}>
+     */
+    private function defaultStateMappings(): array
+    {
+        return [
+            ['value' => '0', 'label' => 'OFF', 'color' => '#ef4444'],
+            ['value' => '1', 'label' => 'ON', 'color' => '#22c55e'],
         ];
     }
 }

@@ -9,6 +9,7 @@ use App\Events\DeviceConnectionChanged;
 use Illuminate\Cache\CacheManager;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class DevicePresenceService
 {
@@ -178,7 +179,7 @@ class DevicePresenceService
 
     private function resolveDeviceByIdentifier(string $identifier): ?Device
     {
-        if (\Illuminate\Support\Str::isUuid($identifier)) {
+        if (Str::isUuid($identifier)) {
             $device = Device::query()->where('uuid', $identifier)->first();
 
             if ($device !== null) {

@@ -22,6 +22,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Cache\CacheManager;
 use Illuminate\Log\LogManager;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
@@ -1226,10 +1227,10 @@ class WorkflowRunExecutor
         $captureSnapshots = $this->shouldCaptureStepSnapshots($finalStatus);
         $timestamp = now();
         $rows = array_map(function (array $stepRecord) use ($captureSnapshots, $timestamp): array {
-            $startedAt = $stepRecord['started_at'] instanceof \Illuminate\Support\Carbon
+            $startedAt = $stepRecord['started_at'] instanceof Carbon
                 ? $stepRecord['started_at']
                 : $timestamp;
-            $finishedAt = $stepRecord['finished_at'] instanceof \Illuminate\Support\Carbon
+            $finishedAt = $stepRecord['finished_at'] instanceof Carbon
                 ? $stepRecord['finished_at']
                 : $timestamp;
 

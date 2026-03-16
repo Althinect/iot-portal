@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\DataIngestion\Jobs;
 
 use App\Domain\DataIngestion\DTO\IncomingTelemetryEnvelope;
+use App\Domain\DataIngestion\Services\DeviceSignalBindingResolver;
 use App\Domain\DataIngestion\Services\TelemetryIngestionService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -32,8 +33,21 @@ class ProcessInboundTelemetryJob implements ShouldQueue
         $this->onQueue(is_string($queue) && $queue !== '' ? $queue : 'ingestion');
     }
 
-    public function handle(TelemetryIngestionService $ingestionService): void
-    {
-        $ingestionService->ingest(IncomingTelemetryEnvelope::fromArray($this->envelope));
+    public function handle(
+        TelemetryIngestionService $ingestionService,
+        DeviceSignalBindingResolver $bindingResolver,
+    ): void {
+        $incomingEnvelope = IncomingTelemetryEnvelope::fromArray($this->envelope);
+        $expandedEnvelopes = $bindingResolver->expand($incomingEnvelope);
+
+        if ($expandedEnvelopes->isNotEmpty()) {
+            $expandedEnvelopes->each(function (IncomingTelemetryEnvelope $resolvedEnvelope) use ($ingestionService): void {
+                $ingestionService->ingest($resolvedEnvelope);
+            });
+
+            return;
+        }
+
+        $ingestionService->ingest($incomingEnvelope);
     }
 }

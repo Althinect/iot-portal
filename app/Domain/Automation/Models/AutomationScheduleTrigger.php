@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AutomationScheduleTrigger extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\Automation\Models\AutomationScheduleTriggerFactory> */
+    /** @use HasFactory<AutomationScheduleTriggerFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];

@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AutomationRunStep extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\Automation\Models\AutomationRunStepFactory> */
+    /** @use HasFactory<AutomationRunStepFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];

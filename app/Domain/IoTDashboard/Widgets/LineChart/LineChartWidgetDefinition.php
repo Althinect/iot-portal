@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\IoTDashboard\Widgets\LineChart;
 
+use App\Domain\IoTDashboard\Application\DashboardHistoryRange;
 use App\Domain\IoTDashboard\Contracts\WidgetConfig;
 use App\Domain\IoTDashboard\Contracts\WidgetDefinition;
 use App\Domain\IoTDashboard\Enums\WidgetType;
@@ -25,9 +26,9 @@ class LineChartWidgetDefinition implements WidgetDefinition
         return LineChartConfig::fromArray($config);
     }
 
-    public function resolveSnapshot(IoTDashboardWidget $widget): array
+    public function resolveSnapshot(IoTDashboardWidget $widget, ?DashboardHistoryRange $historyRange = null): array
     {
-        return $this->snapshotResolver->resolve($widget, $this->makeConfig($widget->configArray()));
+        return $this->snapshotResolver->resolve($widget, $this->makeConfig($widget->configArray()), $historyRange);
     }
 
     public function bootstrapPayload(IoTDashboardWidget $widget): array

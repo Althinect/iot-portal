@@ -3,6 +3,7 @@
 namespace App\Filament\Admin\Resources\Authorization\Roles\RelationManagers;
 
 use App\Filament\Admin\Resources\Authorization\Permissions\Tables\PermissionTable;
+use Filament\Actions\Action;
 use Filament\Actions\AttachAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -43,7 +44,7 @@ class PermissionsRelation extends RelationManager
                     ->preloadRecordSelect()
                     ->recordSelectSearchColumns(['name', 'group'])
                     ->label(__('Attach Permission')),
-                \Filament\Actions\Action::make('toggle_view')
+                Action::make('toggle_view')
                     ->label(fn () => $this->viewType === 'grid' ? __('Table View') : __('Grid View'))
                     ->icon(fn () => $this->viewType === 'grid' ? 'heroicon-o-table-cells' : 'heroicon-o-squares-2x2')
                     ->action(function (): void {

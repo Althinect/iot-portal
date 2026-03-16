@@ -18,7 +18,7 @@ use Illuminate\Support\Str;
 
 class Organization extends Model implements HasAvatar
 {
-    /** @use HasFactory<\Database\Factories\OrganizationFactory> */
+    /** @use HasFactory<OrganizationFactory> */
     use HasFactory;
 
     use SoftDeletes;

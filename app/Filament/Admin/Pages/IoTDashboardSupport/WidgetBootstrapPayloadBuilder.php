@@ -41,6 +41,8 @@ class WidgetBootstrapPayloadBuilder
                         'uuid' => $widget->device?->uuid,
                         'name' => $widget->device?->name,
                     ],
+                    'device_connection_state' => $widget->device?->effectiveConnectionState(),
+                    'device_last_seen_at' => $widget->device?->lastSeenAt()?->toIso8601String(),
                     'realtime' => $realtimeChannel === null || ! $widgetConfig->useWebsocket()
                         ? null
                         : [
@@ -69,6 +71,8 @@ class WidgetBootstrapPayloadBuilder
             WidgetType::LineChart => 2,
             WidgetType::GaugeChart => 1,
             WidgetType::BarChart => 0,
+            WidgetType::StateCard => 1,
+            WidgetType::StateTimeline => 2,
         };
     }
 }

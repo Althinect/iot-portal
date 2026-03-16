@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\IoTDashboard\Models;
 
+use App\Domain\IoTDashboard\Enums\DashboardHistoryPreset;
 use App\Domain\Shared\Models\Organization;
 use Database\Factories\Domain\IoTDashboard\Models\IoTDashboardFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -14,7 +15,7 @@ use Illuminate\Support\Str;
 
 class IoTDashboard extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\IoTDashboard\Models\IoTDashboardFactory> */
+    /** @use HasFactory<IoTDashboardFactory> */
     use HasFactory;
 
     protected $table = 'iot_dashboards';
@@ -46,6 +47,7 @@ class IoTDashboard extends Model
         return [
             'is_active' => 'bool',
             'refresh_interval_seconds' => 'integer',
+            'default_history_preset' => DashboardHistoryPreset::class,
         ];
     }
 

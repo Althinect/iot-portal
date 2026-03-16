@@ -25,6 +25,8 @@ yarn-error.log
 /storage/platform/*.pid
 /storage/platform/manifest
 /storage/logs/platform/*.log
+/docker/node-red/data/.config*
+/docker/node-red/data/*.backup
 
 /caddy
 frankenphp

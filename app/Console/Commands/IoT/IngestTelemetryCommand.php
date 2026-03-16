@@ -6,6 +6,7 @@ namespace App\Console\Commands\IoT;
 
 use App\Domain\DataIngestion\DTO\IncomingTelemetryEnvelope;
 use App\Domain\DataIngestion\Jobs\ProcessInboundTelemetryJob;
+use App\Domain\DataIngestion\Services\DeviceSignalBindingResolver;
 use App\Domain\DataIngestion\Services\DeviceTelemetryTopicResolver;
 use App\Events\TelemetryIncoming;
 use Basis\Nats\Client;
@@ -53,8 +54,10 @@ class IngestTelemetryCommand extends Command
         $client = new Client($configuration);
         /** @var DeviceTelemetryTopicResolver $topicResolver */
         $topicResolver = app(DeviceTelemetryTopicResolver::class);
+        /** @var DeviceSignalBindingResolver $bindingResolver */
+        $bindingResolver = app(DeviceSignalBindingResolver::class);
 
-        $client->subscribe($subject, function (Payload $payload) use ($queue, $queueConnection, $topicResolver): void {
+        $client->subscribe($subject, function (Payload $payload) use ($bindingResolver, $queue, $queueConnection, $topicResolver): void {
             $sourceSubject = $payload->subject ?? '';
             $mqttTopic = str_replace('.', '/', $sourceSubject);
 
@@ -62,7 +65,7 @@ class IngestTelemetryCommand extends Command
                 return;
             }
 
-            if ($topicResolver->resolve($mqttTopic) === null) {
+            if ($topicResolver->resolve($mqttTopic) === null && ! $bindingResolver->supportsTopic($mqttTopic)) {
                 return;
             }
 

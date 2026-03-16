@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\IoTDashboard\Widgets\GaugeChart;
 
+use App\Domain\IoTDashboard\Application\DashboardHistoryRange;
 use App\Domain\IoTDashboard\Contracts\WidgetConfig;
 use App\Domain\IoTDashboard\Contracts\WidgetSnapshotResolver;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
@@ -17,8 +18,11 @@ class GaugeChartSnapshotResolver implements WidgetSnapshotResolver
     /**
      * @return array<string, mixed>
      */
-    public function resolve(IoTDashboardWidget $widget, WidgetConfig $config): array
-    {
+    public function resolve(
+        IoTDashboardWidget $widget,
+        WidgetConfig $config,
+        ?DashboardHistoryRange $historyRange = null,
+    ): array {
         if (! $config instanceof GaugeChartConfig) {
             throw new InvalidArgumentException('Gauge chart widgets require GaugeChartConfig.');
         }

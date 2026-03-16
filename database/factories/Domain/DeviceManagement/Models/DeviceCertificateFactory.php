@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Str;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<DeviceCertificate>
+ * @extends Factory<DeviceCertificate>
  */
 class DeviceCertificateFactory extends Factory
 {

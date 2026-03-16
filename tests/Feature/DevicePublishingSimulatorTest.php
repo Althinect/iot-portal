@@ -62,6 +62,8 @@ it('simulates publishing and emits TelemetryIncoming events', function (): void 
         'device_type_id' => $deviceType->id,
         'device_schema_version_id' => $schemaVersion->id,
         'external_id' => 'fan-01',
+        'connection_state' => 'offline',
+        'last_seen_at' => null,
     ]);
 
     $published = [];

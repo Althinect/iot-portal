@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Admin\Resources\IoTDashboards\Schemas;
 
+use App\Domain\IoTDashboard\Enums\DashboardHistoryPreset;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
@@ -28,6 +29,19 @@ class IoTDashboardInfolist
                         TextEntry::make('refresh_interval_seconds')
                             ->label('Refresh interval')
                             ->suffix(' seconds'),
+                        TextEntry::make('default_history_preset')
+                            ->label('Default history range')
+                            ->formatStateUsing(function (mixed $state): string {
+                                if ($state instanceof DashboardHistoryPreset) {
+                                    return $state->getLabel();
+                                }
+
+                                if (is_string($state)) {
+                                    return DashboardHistoryPreset::tryFrom($state)?->getLabel() ?? $state;
+                                }
+
+                                return DashboardHistoryPreset::Last6Hours->getLabel();
+                            }),
                         IconEntry::make('is_active')
                             ->label('Active')
                             ->boolean(),

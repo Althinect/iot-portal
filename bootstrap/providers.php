@@ -1,10 +1,17 @@
 <?php
 
+use App\Providers\AppServiceProvider;
+use App\Providers\FeatureServiceProvider;
+use App\Providers\Filament\AdminPanelProvider;
+use App\Providers\Filament\PortalPanelProvider;
+use App\Providers\HorizonServiceProvider;
+use App\Providers\IoTDashboardServiceProvider;
+
 return [
-    App\Providers\AppServiceProvider::class,
-    App\Providers\FeatureServiceProvider::class,
-    App\Providers\IoTDashboardServiceProvider::class,
-    App\Providers\Filament\AdminPanelProvider::class,
-    App\Providers\Filament\PortalPanelProvider::class,
-    App\Providers\HorizonServiceProvider::class,
+    AppServiceProvider::class,
+    FeatureServiceProvider::class,
+    IoTDashboardServiceProvider::class,
+    AdminPanelProvider::class,
+    PortalPanelProvider::class,
+    HorizonServiceProvider::class,
 ];

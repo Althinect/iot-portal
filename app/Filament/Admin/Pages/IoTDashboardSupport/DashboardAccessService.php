@@ -43,7 +43,7 @@ class DashboardAccessService
                 'widgets' => fn ($query) => $query
                     ->with([
                         'topic:id,label,suffix',
-                        'device:id,uuid,name,organization_id,external_id',
+                        'device:id,uuid,name,organization_id,external_id,connection_state,last_seen_at,offline_deadline_at,presence_timeout_seconds',
                     ])
                     ->orderBy('sequence')
                     ->orderBy('id'),

@@ -9,7 +9,7 @@ use App\Domain\DeviceSchema\Models\DeviceSchema;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Domain\DeviceSchema\Models\DeviceSchema>
+ * @extends Factory<DeviceSchema>
  */
 class DeviceSchemaFactory extends Factory
 {

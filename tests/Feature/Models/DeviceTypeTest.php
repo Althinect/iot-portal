@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
+use App\Domain\DeviceManagement\Enums\HttpAuthType;
 use App\Domain\DeviceManagement\Enums\MqttSecurityMode;
 use App\Domain\DeviceManagement\Enums\ProtocolType;
 use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceManagement\ValueObjects\Protocol\HttpProtocolConfig;
 use App\Domain\DeviceManagement\ValueObjects\Protocol\MqttProtocolConfig;
 use App\Domain\Shared\Models\Organization;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -82,7 +84,7 @@ test('device type has unique key constraint for global types', function (): void
     DeviceType::factory()->global()->create(['key' => 'test_key']);
 
     expect(fn () => DeviceType::factory()->global()->create(['key' => 'test_key']))
-        ->toThrow(\Illuminate\Database\QueryException::class);
+        ->toThrow(QueryException::class);
 });
 
 test('device type has unique key constraint per organization', function (): void {
@@ -91,7 +93,7 @@ test('device type has unique key constraint per organization', function (): void
     DeviceType::factory()->forOrganization($org->id)->create(['key' => 'test_key']);
 
     expect(fn () => DeviceType::factory()->forOrganization($org->id)->create(['key' => 'test_key']))
-        ->toThrow(\Illuminate\Database\QueryException::class);
+        ->toThrow(QueryException::class);
 });
 
 test('same key can be used for global and organization types', function (): void {
@@ -109,7 +111,7 @@ test('mqtt protocol config validates broker port range', function (): void {
     expect(fn () => new MqttProtocolConfig(
         brokerHost: 'mqtt.example.com',
         brokerPort: 70000,
-    ))->toThrow(\InvalidArgumentException::class, 'Broker port must be between 1 and 65535');
+    ))->toThrow(InvalidArgumentException::class, 'Broker port must be between 1 and 65535');
 });
 
 test('http protocol config validates url format', function (): void {
@@ -117,9 +119,9 @@ test('http protocol config validates url format', function (): void {
         baseUrl: 'not-a-valid-url',
         telemetryEndpoint: '/telemetry',
         method: 'POST',
-        authType: \App\Domain\DeviceManagement\Enums\HttpAuthType::None,
+        authType: HttpAuthType::None,
         timeout: 30
-    ))->toThrow(\InvalidArgumentException::class, 'Base URL must be a valid URL');
+    ))->toThrow(InvalidArgumentException::class, 'Base URL must be a valid URL');
 });
 
 test('mqtt protocol config supports x509 security mode', function (): void {

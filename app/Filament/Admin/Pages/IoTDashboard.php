@@ -120,6 +120,30 @@ class IoTDashboard extends Page
                     ->action(function (array $data): void {
                         $this->createWidget(WidgetType::GaugeChart, $data);
                     }),
+
+                Action::make('addStateCardWidget')
+                    ->label('Add State Card')
+                    ->icon(Heroicon::OutlinedPresentationChartLine)
+                    ->visible(fn (): bool => $this->selectedDashboard() instanceof IoTDashboardModel)
+                    ->slideOver()
+                    ->schema(fn (): array => $this->selectedDashboard() instanceof IoTDashboardModel
+                        ? $this->widgetFormSchemaFactory()->stateCardSchema($this->selectedDashboard())
+                        : [])
+                    ->action(function (array $data): void {
+                        $this->createWidget(WidgetType::StateCard, $data);
+                    }),
+
+                Action::make('addStateTimelineWidget')
+                    ->label('Add State Timeline')
+                    ->icon(Heroicon::OutlinedPresentationChartLine)
+                    ->visible(fn (): bool => $this->selectedDashboard() instanceof IoTDashboardModel)
+                    ->slideOver()
+                    ->schema(fn (): array => $this->selectedDashboard() instanceof IoTDashboardModel
+                        ? $this->widgetFormSchemaFactory()->stateTimelineSchema($this->selectedDashboard())
+                        : [])
+                    ->action(function (array $data): void {
+                        $this->createWidget(WidgetType::StateTimeline, $data);
+                    }),
             ])
                 ->label('Add Widget')
                 ->icon(Heroicon::OutlinedPlus)

@@ -21,8 +21,8 @@ uses(RefreshDatabase::class);
 /**
  * @return array{
  *     organization: Organization,
- *     temporaryDevices: \Illuminate\Database\Eloquent\Collection<int, Device>,
- *     permanentDevices: \Illuminate\Database\Eloquent\Collection<int, Device>
+ *     temporaryDevices: Illuminate\Database\Eloquent\Collection<int, Device>,
+ *     permanentDevices: Illuminate\Database\Eloquent\Collection<int, Device>
  * }
  */
 function createFleetSimulationFixture(int $temporaryDeviceCount = 2, int $permanentDeviceCount = 1): array

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Models\DeviceType;
+use App\Domain\DeviceSchema\Enums\ParameterCategory;
 use App\Domain\DeviceSchema\Enums\ParameterDataType;
 use App\Domain\DeviceSchema\Models\DeviceSchema;
 use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
@@ -85,6 +86,27 @@ function createDashboardTopicForPageTest(): array
         'is_active' => true,
         'sequence' => 5,
         'validation_rules' => ['category' => 'counter', 'min' => 0],
+        'mutation_expression' => null,
+        'validation_error_code' => null,
+    ]);
+
+    ParameterDefinition::factory()->create([
+        'schema_version_topic_id' => $topic->id,
+        'key' => 'status',
+        'label' => 'Status',
+        'json_path' => '$.status',
+        'type' => ParameterDataType::Integer,
+        'category' => ParameterCategory::State,
+        'required' => false,
+        'is_active' => true,
+        'sequence' => 6,
+        'validation_rules' => ['min' => 0, 'max' => 1],
+        'control_ui' => [
+            'state_mappings' => [
+                ['value' => 0, 'label' => 'OFF', 'color' => '#ef4444'],
+                ['value' => 1, 'label' => 'ON', 'color' => '#22c55e'],
+            ],
+        ],
         'mutation_expression' => null,
         'validation_error_code' => null,
     ]);
@@ -213,6 +235,78 @@ it('adds a gauge widget with style and color ranges', function (): void {
 
     expect(collect(data_get($widget?->configArray(), 'gauge_ranges', []))->pluck('color')->all())
         ->toContain('#22c55e', '#f59e0b');
+});
+
+it('adds a state card widget with custom mappings', function (): void {
+    [$dashboard, $topic, $device] = createDashboardTopicForPageTest();
+
+    livewire(IoTDashboardPage::class)
+        ->set('dashboardId', $dashboard->id)
+        ->callAction('addStateCardWidget', data: [
+            'title' => 'Rear Door Status',
+            'schema_version_topic_id' => (string) $topic->id,
+            'device_id' => (string) $device->id,
+            'parameter_key' => 'status',
+            'display_style' => 'pill',
+            'state_mappings' => [
+                ['value' => '0', 'label' => 'OPEN', 'color' => '#ef4444'],
+                ['value' => '1', 'label' => 'CLOSED', 'color' => '#22c55e'],
+            ],
+            'use_websocket' => true,
+            'use_polling' => true,
+            'polling_interval_seconds' => 10,
+            'lookback_minutes' => 1440,
+            'max_points' => 1,
+            'grid_columns' => '4',
+            'card_height_px' => 320,
+        ])
+        ->assertNotified('State card added');
+
+    $widget = IoTDashboardWidget::query()
+        ->where('iot_dashboard_id', $dashboard->id)
+        ->where('title', 'Rear Door Status')
+        ->first();
+
+    expect($widget)->not->toBeNull()
+        ->and($widget?->type)->toBe('state_card')
+        ->and(data_get($widget?->configArray(), 'display_style'))->toBe('pill')
+        ->and(collect(data_get($widget?->configArray(), 'state_mappings', []))->pluck('label')->all())->not->toBeEmpty()
+        ->and(collect($widget?->resolvedSeriesConfig() ?? [])->pluck('key')->all())->toBe(['status']);
+});
+
+it('adds a state timeline widget with custom mappings', function (): void {
+    [$dashboard, $topic, $device] = createDashboardTopicForPageTest();
+
+    livewire(IoTDashboardPage::class)
+        ->set('dashboardId', $dashboard->id)
+        ->callAction('addStateTimelineWidget', data: [
+            'title' => 'Rear Door History',
+            'schema_version_topic_id' => (string) $topic->id,
+            'device_id' => (string) $device->id,
+            'parameter_key' => 'status',
+            'state_mappings' => [
+                ['value' => '0', 'label' => 'OPEN', 'color' => '#ef4444'],
+                ['value' => '1', 'label' => 'CLOSED', 'color' => '#22c55e'],
+            ],
+            'use_websocket' => true,
+            'use_polling' => true,
+            'polling_interval_seconds' => 10,
+            'lookback_minutes' => 360,
+            'max_points' => 240,
+            'grid_columns' => '12',
+            'card_height_px' => 340,
+        ])
+        ->assertNotified('State timeline added');
+
+    $widget = IoTDashboardWidget::query()
+        ->where('iot_dashboard_id', $dashboard->id)
+        ->where('title', 'Rear Door History')
+        ->first();
+
+    expect($widget)->not->toBeNull()
+        ->and($widget?->type)->toBe('state_timeline')
+        ->and(collect(data_get($widget?->configArray(), 'state_mappings', []))->pluck('label')->all())->not->toBeEmpty()
+        ->and(collect($widget?->resolvedSeriesConfig() ?? [])->pluck('key')->all())->toBe(['status']);
 });
 
 it('renders a newly added widget immediately without a page reload', function (): void {
@@ -413,6 +507,93 @@ it('edits an existing gauge widget using action arguments', function (): void {
         ->and((float) data_get($widget->configArray(), 'gauge_max'))->toBe(120.0)
         ->and(data_get($widget->configArray(), 'gauge_style'))->toBe('minimal')
         ->and(collect($widget->resolvedSeriesConfig())->pluck('key')->all())->toBe(['A1']);
+});
+
+it('edits an existing state card widget using action arguments', function (): void {
+    [$dashboard, $topic, $device] = createDashboardTopicForPageTest();
+
+    $widget = IoTDashboardWidget::factory()->stateCard()->create([
+        'iot_dashboard_id' => $dashboard->id,
+        'device_id' => $device->id,
+        'schema_version_topic_id' => $topic->id,
+        'title' => 'Old Door State',
+    ]);
+
+    livewire(IoTDashboardPage::class)
+        ->set('dashboardId', $dashboard->id)
+        ->callAction(
+            TestAction::make('editWidget')->arguments(['widget' => $widget->id]),
+            data: [
+                'widget_type' => 'state_card',
+                'title' => 'Updated Door State',
+                'device_id' => (string) $device->id,
+                'schema_version_topic_id' => (string) $topic->id,
+                'parameter_key' => 'status',
+                'display_style' => 'pill',
+                'state_mappings' => [
+                    ['value' => '0', 'label' => 'OPEN', 'color' => '#ef4444'],
+                    ['value' => '1', 'label' => 'CLOSED', 'color' => '#22c55e'],
+                ],
+                'use_websocket' => true,
+                'use_polling' => true,
+                'polling_interval_seconds' => 8,
+                'lookback_minutes' => 1440,
+                'max_points' => 1,
+                'grid_columns' => '4',
+                'card_height_px' => 320,
+            ],
+        )
+        ->assertNotified('Widget updated');
+
+    $widget->refresh();
+
+    expect($widget->title)->toBe('Updated Door State')
+        ->and($widget->type)->toBe('state_card')
+        ->and(data_get($widget->configArray(), 'display_style'))->toBe('pill')
+        ->and(collect(data_get($widget->configArray(), 'state_mappings', []))->pluck('label')->all())->not->toBeEmpty();
+});
+
+it('edits an existing state timeline widget using action arguments', function (): void {
+    [$dashboard, $topic, $device] = createDashboardTopicForPageTest();
+
+    $widget = IoTDashboardWidget::factory()->stateTimeline()->create([
+        'iot_dashboard_id' => $dashboard->id,
+        'device_id' => $device->id,
+        'schema_version_topic_id' => $topic->id,
+        'title' => 'Old Door History',
+    ]);
+
+    livewire(IoTDashboardPage::class)
+        ->set('dashboardId', $dashboard->id)
+        ->callAction(
+            TestAction::make('editWidget')->arguments(['widget' => $widget->id]),
+            data: [
+                'widget_type' => 'state_timeline',
+                'title' => 'Updated Door History',
+                'device_id' => (string) $device->id,
+                'schema_version_topic_id' => (string) $topic->id,
+                'parameter_key' => 'status',
+                'state_mappings' => [
+                    ['value' => '0', 'label' => 'OPEN', 'color' => '#ef4444'],
+                    ['value' => '1', 'label' => 'CLOSED', 'color' => '#22c55e'],
+                ],
+                'use_websocket' => true,
+                'use_polling' => true,
+                'polling_interval_seconds' => 10,
+                'lookback_minutes' => 720,
+                'max_points' => 120,
+                'grid_columns' => '12',
+                'card_height_px' => 340,
+            ],
+        )
+        ->assertNotified('Widget updated');
+
+    $widget->refresh();
+
+    expect($widget->title)->toBe('Updated Door History')
+        ->and($widget->type)->toBe('state_timeline')
+        ->and((int) data_get($widget->configArray(), 'window.lookback_minutes'))->toBe(720)
+        ->and(collect(data_get($widget->configArray(), 'state_mappings', []))->pluck('label')->all())->not->toBeEmpty();
 });
 
 it('requires confirmation before deleting a widget', function (): void {

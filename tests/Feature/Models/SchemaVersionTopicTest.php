@@ -12,6 +12,7 @@ use App\Domain\DeviceSchema\Models\DeviceSchema;
 use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
 use App\Domain\DeviceSchema\Models\ParameterDefinition;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -106,7 +107,7 @@ test('unique key constraint per schema version', function (): void {
         'device_schema_version_id' => $version->id,
         'key' => 'telemetry',
         'suffix' => 'telemetry_dup',
-    ]))->toThrow(\Illuminate\Database\QueryException::class);
+    ]))->toThrow(QueryException::class);
 });
 
 test('unique suffix constraint per schema version', function (): void {
@@ -122,7 +123,7 @@ test('unique suffix constraint per schema version', function (): void {
         'device_schema_version_id' => $version->id,
         'key' => 'topic_b',
         'suffix' => 'data',
-    ]))->toThrow(\Illuminate\Database\QueryException::class);
+    ]))->toThrow(QueryException::class);
 });
 
 test('same key can be used across different schema versions', function (): void {

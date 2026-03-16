@@ -9,7 +9,7 @@ use App\Domain\DeviceManagement\Models\TemporaryDevice;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Domain\DeviceManagement\Models\TemporaryDevice>
+ * @extends Factory<TemporaryDevice>
  */
 class TemporaryDeviceFactory extends Factory
 {

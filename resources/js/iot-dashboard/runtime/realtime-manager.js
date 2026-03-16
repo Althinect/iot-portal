@@ -40,6 +40,13 @@ export class RealtimeManager {
     }
 
     shouldPollWidget(widget) {
+        if (
+            widget?.history_mode === 'absolute'
+            && (widget?.type === 'line_chart' || widget?.type === 'state_timeline')
+        ) {
+            return false;
+        }
+
         if (!widget.use_polling) {
             return false;
         }
@@ -69,6 +76,10 @@ export class RealtimeManager {
     canUseRealtime(widget) {
         return Boolean(widget?.use_websocket)
             && widget?.type !== 'bar_chart'
+            && !(
+                widget?.history_mode === 'absolute'
+                && (widget?.type === 'line_chart' || widget?.type === 'state_timeline')
+            )
             && typeof this.resolveRealtimeChannel(widget) === 'string';
     }
 

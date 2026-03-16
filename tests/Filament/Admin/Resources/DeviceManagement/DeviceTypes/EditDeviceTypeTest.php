@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\DeviceManagement\Enums\HttpAuthType;
+use App\Domain\DeviceManagement\Enums\ProtocolType;
 use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceManagement\ValueObjects\Protocol\HttpProtocolConfig;
 use App\Domain\Shared\Models\User;
@@ -55,7 +56,7 @@ it('can update MQTT protocol configuration', function (): void {
 
 it('can update HTTP protocol configuration', function (): void {
     $deviceType = DeviceType::factory()->create([
-        'default_protocol' => \App\Domain\DeviceManagement\Enums\ProtocolType::Http,
+        'default_protocol' => ProtocolType::Http,
         'protocol_config' => (new HttpProtocolConfig(
             baseUrl: 'https://api.example.com',
             telemetryEndpoint: '/telemetry',

@@ -12,6 +12,7 @@ use App\Domain\DeviceSchema\Models\ParameterDefinition;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
 use App\Events\DeviceStateReceived;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\intro;
@@ -97,7 +98,7 @@ class ManualDevicePublishCommand extends Command
 
         $selectedTopic->loadMissing('parameters');
 
-        /** @var \Illuminate\Database\Eloquent\Collection<int, ParameterDefinition> $parameters */
+        /** @var Collection<int, ParameterDefinition> $parameters */
         $parameters = $selectedTopic->parameters
             ->where('is_active', true)
             ->sortBy('sequence');
@@ -231,10 +232,10 @@ class ManualDevicePublishCommand extends Command
     /**
      * Prompt the user for each parameter value using Laravel Prompts form.
      *
-     * @param  \Illuminate\Database\Eloquent\Collection<int, ParameterDefinition>  $parameters
+     * @param  Collection<int, ParameterDefinition>  $parameters
      * @return array<string, mixed>
      */
-    private function collectParameterValues(\Illuminate\Database\Eloquent\Collection $parameters): array
+    private function collectParameterValues(Collection $parameters): array
     {
         if ($parameters->isEmpty()) {
             return [];

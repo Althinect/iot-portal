@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace App\Domain\DeviceSchema\Models;
 
 use App\Domain\DeviceSchema\Enums\TopicLinkType;
+use Database\Factories\Domain\DeviceSchema\Models\SchemaVersionTopicLinkFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SchemaVersionTopicLink extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\DeviceSchema\Models\SchemaVersionTopicLinkFactory> */
+    /** @use HasFactory<SchemaVersionTopicLinkFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];

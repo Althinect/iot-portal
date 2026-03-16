@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AutomationTelemetryTrigger extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\Automation\Models\AutomationTelemetryTriggerFactory> */
+    /** @use HasFactory<AutomationTelemetryTriggerFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];

@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace App\Domain\DeviceControl\Models;
 
 use App\Domain\DeviceManagement\Models\Device;
+use Database\Factories\Domain\DeviceControl\Models\DeviceDesiredStateFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DeviceDesiredState extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\DeviceControl\Models\DeviceDesiredStateFactory> */
+    /** @use HasFactory<DeviceDesiredStateFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];

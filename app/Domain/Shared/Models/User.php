@@ -4,6 +4,7 @@ namespace App\Domain\Shared\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 
+use App\Domain\Authorization\Models\Role;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Models\Contracts\HasTenants;
@@ -21,7 +22,7 @@ use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable implements FilamentUser, HasTenants
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
+    /** @use HasFactory<UserFactory> */
     use HasFactory;
 
     use HasRoles;
@@ -103,12 +104,12 @@ class User extends Authenticatable implements FilamentUser, HasTenants
      *
      * IMPORTANT: This must be a morphToMany relationship so Spatie writes `model_type`.
      *
-     * @return MorphToMany<\App\Domain\Authorization\Models\Role, $this>
+     * @return MorphToMany<Role, $this>
      */
     public function roles(): MorphToMany
     {
         return $this->morphToMany(
-            related: \App\Domain\Authorization\Models\Role::class,
+            related: Role::class,
             name: 'model',
             table: 'model_has_roles',
             foreignPivotKey: 'model_id',

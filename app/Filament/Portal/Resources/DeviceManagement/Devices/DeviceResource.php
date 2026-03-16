@@ -217,6 +217,7 @@ class DeviceResource extends Resource
                 Section::make('Metadata')
                     ->schema([
                         KeyValueEntry::make('metadata')
+                            ->state(fn (Device $record): array => self::normalizeMetadataForDisplay($record->getAttribute('metadata')))
                             ->columnSpanFull(),
                     ])
                     ->columnSpanFull(),
@@ -286,6 +287,26 @@ class DeviceResource extends Resource
                     ])
                     ->columnSpanFull(),
             ]);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function normalizeMetadataForDisplay(mixed $metadata): array
+    {
+        if (! is_array($metadata)) {
+            return [];
+        }
+
+        return collect($metadata)
+            ->map(fn (mixed $value): string => match (true) {
+                is_array($value) => json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '[]',
+                is_bool($value) => $value ? 'true' : 'false',
+                $value === null => 'null',
+                is_scalar($value) => (string) $value,
+                default => json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: get_debug_type($value),
+            })
+            ->all();
     }
 
     public static function table(Table $table): Table

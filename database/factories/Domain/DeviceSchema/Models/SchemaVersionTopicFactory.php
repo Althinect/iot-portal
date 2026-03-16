@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Domain\DeviceSchema\Models\SchemaVersionTopic>
+ * @extends Factory<SchemaVersionTopic>
  */
 class SchemaVersionTopicFactory extends Factory
 {

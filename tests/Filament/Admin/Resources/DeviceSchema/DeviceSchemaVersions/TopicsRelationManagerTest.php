@@ -6,6 +6,7 @@ use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceSchema\Enums\TopicDirection;
 use App\Domain\DeviceSchema\Models\DeviceSchema;
 use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
+use App\Domain\DeviceSchema\Models\ParameterDefinition;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
 use App\Domain\Shared\Models\User;
 use App\Filament\Admin\Resources\DeviceSchema\DeviceSchemaVersions\Pages\EditDeviceSchemaVersion;
@@ -185,7 +186,7 @@ it('shows parameter count in table', function (): void {
         'device_schema_version_id' => $this->version->id,
     ]);
 
-    \App\Domain\DeviceSchema\Models\ParameterDefinition::factory()->count(5)->create([
+    ParameterDefinition::factory()->count(5)->create([
         'schema_version_topic_id' => $topic->id,
     ]);
 

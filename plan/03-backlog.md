@@ -24,6 +24,90 @@ Milestones (phases):
 
 ---
 
+## Migration Rehearsal — Local Node-RED First (P0)
+
+Strategy: Prove the migration compatibility layer locally before production changes. Keep Laravel generic, keep legacy normalization in Node-RED, and validate a single hub-backed rehearsal flow end to end.
+
+### MR-1: Local Node-RED rehearsal stack
+Story: As a migration engineer, I can run Node-RED with the app stack locally so forwarded legacy traffic can be normalized and replayed safely.
+
+Acceptance:
+- Node-RED runs from the repo in Docker beside Laravel and NATS.
+- Local engineers can forward traffic into a stable HTTP endpoint on Node-RED.
+- Node-RED can publish to the local MQTT broker on NATS.
+
+Sub-tasks:
+1. Add `node-red` service to `compose.yaml`
+2. Commit versioned Node-RED flow storage under `docker/node-red/data`
+3. Expose one local port for editor + HTTP ingress
+4. Update local stack scripts and env defaults
+
+### MR-2: Canonical normalized contract
+Story: As a migration engineer, I can publish one hub presence event and one telemetry event per child device using a deterministic topic contract.
+
+Acceptance:
+- Presence publishes to `devices/{hub_external_id}/presence`
+- Child telemetry publishes to schema-resolved topics
+- Payloads include `_meta` traceability fields for forwarded legacy identifiers
+
+Sub-tasks:
+1. Define rehearsal source-to-hub mapping
+2. Define rehearsal child-id-to-topic mapping
+3. Return structured HTTP responses from Node-RED for unknown/malformed sources
+4. Keep decoding/fan-out logic in Node-RED, not Laravel
+
+### MR-3: Minimal hub-child platform support
+Story: As a migration engineer, I can model hubs as real devices with attached child devices so hub health remains visible in the new platform.
+
+Acceptance:
+- Devices support a parent-child relationship
+- Hubs remain visible as devices
+- Children can be grouped under one hub without introducing virtual devices or topology tooling
+
+Sub-tasks:
+1. Add parent-device foreign key to `devices`
+2. Add Eloquent relationships for parent and child devices
+3. Surface parent/child context in the device admin UI
+4. Seed one migration rehearsal org with one hub and simple child devices
+
+### MR-4: Local rehearsal validation
+Story: As a migration engineer, I can validate that forwarded traffic makes the hub online and persists normalized child telemetry locally.
+
+Acceptance:
+- Hub presence transitions to online/offline
+- Child telemetry persists through the existing ingestion pipeline
+- Rehearsal seeding and ingestion are covered by Pest tests
+
+Sub-tasks:
+1. Seed migration rehearsal device types, schemas, and devices
+2. Add Pest coverage for seeded hub-child relationships
+3. Add Pest coverage for ingestion of normalized child telemetry
+4. Use the proven rehearsal flow to drive production hardening later
+
+### MR-5: WITCO tenant onboarding pilot
+Story: As a migration engineer, I can onboard WITCO locally by binding normalized vendor source signals to real physical devices so a full tenant can be validated before harder tenants move.
+
+Acceptance:
+- WITCO hubs are seeded as real parent devices.
+- WITCO customer-facing devices use platform-owned external IDs that represent the physical device, not the raw iMoni peripheral.
+- The default local seed contains only the WITCO pilot plus reusable global migration catalog entities, not rehearsal-only peripheral devices.
+- Node-RED publishes normalized source topics for WITCO iMoni traffic without creating iMoni-shaped user devices.
+- Laravel binds WITCO source slots to physical device parameters through a reusable binding layer.
+- Hub presence and bound physical-device telemetry persist through the existing Laravel ingestion pipeline.
+- WITCO dashboards are seeded against migrated physical devices using reusable global `state_card` and `state_timeline` widgets.
+- State widgets support per-widget label and color mappings so one shared schema can render `OPEN/CLOSED`, `ON/OFF`, or alarm states without tenant-specific widget code.
+
+Sub-tasks:
+1. Seed WITCO hubs and physical child devices from legacy mappings
+2. Add a `device_signal_bindings` model and resolver for normalized source topics
+3. Publish WITCO normalized source topics from Node-RED and bind slot values to physical device parameters in Laravel
+4. Skip empty legacy parameter mappings in the first onboarding pass and track them as follow-up cleanup
+5. Add Pest coverage for WITCO seeding, source-topic binding resolution, and local ingestion
+6. Replace seeded rehearsal-only peripheral catalog entries with global reusable hub and `IMONI Status` catalog entries
+7. Seed `Status Dashboard` and `History Dashboard` for WITCO using global state widgets and per-device state mapping overrides
+
+---
+
 ## Phase 1 — Core Schema + Admin UI (P0)
 
 Strategy: Build complete vertical slices—each story delivers migration + model + factory/seeder + Filament resource + tests. This allows immediate validation of the data model through the UI.

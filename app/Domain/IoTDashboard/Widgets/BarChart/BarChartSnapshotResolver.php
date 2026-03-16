@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\IoTDashboard\Widgets\BarChart;
 
+use App\Domain\IoTDashboard\Application\DashboardHistoryRange;
 use App\Domain\IoTDashboard\Contracts\WidgetConfig;
 use App\Domain\IoTDashboard\Contracts\WidgetSnapshotResolver;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
@@ -17,8 +18,11 @@ class BarChartSnapshotResolver implements WidgetSnapshotResolver
     /**
      * @return array<string, mixed>
      */
-    public function resolve(IoTDashboardWidget $widget, WidgetConfig $config): array
-    {
+    public function resolve(
+        IoTDashboardWidget $widget,
+        WidgetConfig $config,
+        ?DashboardHistoryRange $historyRange = null,
+    ): array {
         if (! $config instanceof BarChartConfig) {
             throw new InvalidArgumentException('Bar chart widgets require BarChartConfig.');
         }
@@ -30,6 +34,7 @@ class BarChartSnapshotResolver implements WidgetSnapshotResolver
                 schemaVersionTopicId: (int) $widget->schema_version_topic_id,
                 deviceId: $deviceId,
                 lookbackMinutes: $config->lookbackMinutes(),
+                historyRange: $historyRange,
             );
 
         $series = [];
@@ -63,11 +68,21 @@ class BarChartSnapshotResolver implements WidgetSnapshotResolver
         int $schemaVersionTopicId,
         int $deviceId,
         int $lookbackMinutes,
+        ?DashboardHistoryRange $historyRange,
     ): Collection {
-        return DeviceTelemetryLog::query()
+        $query = DeviceTelemetryLog::query()
             ->where('schema_version_topic_id', $schemaVersionTopicId)
-            ->where('device_id', $deviceId)
-            ->where('recorded_at', '>=', now()->subMinutes($lookbackMinutes))
+            ->where('device_id', $deviceId);
+
+        if ($historyRange instanceof DashboardHistoryRange) {
+            $query
+                ->where('recorded_at', '>=', $historyRange->fromAt())
+                ->where('recorded_at', '<=', $historyRange->untilAt());
+        } else {
+            $query->where('recorded_at', '>=', now()->subMinutes($lookbackMinutes));
+        }
+
+        return $query
             ->orderBy('recorded_at')
             ->get(['id', 'recorded_at', 'transformed_values']);
     }

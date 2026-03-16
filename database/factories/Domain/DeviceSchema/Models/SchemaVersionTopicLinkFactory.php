@@ -10,7 +10,7 @@ use App\Domain\DeviceSchema\Models\SchemaVersionTopicLink;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Domain\DeviceSchema\Models\SchemaVersionTopicLink>
+ * @extends Factory<SchemaVersionTopicLink>
  */
 class SchemaVersionTopicLinkFactory extends Factory
 {

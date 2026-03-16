@@ -6,13 +6,14 @@ namespace App\Domain\DeviceSchema\Models;
 
 use App\Domain\DeviceSchema\Enums\ParameterDataType;
 use App\Domain\DeviceSchema\Services\JsonLogicEvaluator;
+use Database\Factories\Domain\DeviceSchema\Models\DerivedParameterDefinitionFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DerivedParameterDefinition extends Model
 {
-    /** @use HasFactory<\Database\Factories\Domain\DeviceSchema\Models\DerivedParameterDefinitionFactory> */
+    /** @use HasFactory<DerivedParameterDefinitionFactory> */
     use HasFactory;
 
     protected $guarded = ['id'];
