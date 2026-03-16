@@ -69,6 +69,8 @@ class WidgetBootstrapPayloadBuilder
             WidgetType::LineChart => 2,
             WidgetType::GaugeChart => 1,
             WidgetType::BarChart => 0,
+            WidgetType::StateCard => 1,
+            WidgetType::StateTimeline => 2,
         };
     }
 }

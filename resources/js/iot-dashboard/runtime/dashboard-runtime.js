@@ -5,14 +5,22 @@ import { RealtimeManager } from './realtime-manager';
 import { lineChartOption } from '../widgets/line-chart/renderer';
 import { barChartOption } from '../widgets/bar-chart/renderer';
 import { gaugeChartOption } from '../widgets/gauge-chart/renderer';
+import { renderStateCardMarkup } from '../widgets/state-card/renderer';
+import { stateTimelineOption } from '../widgets/state-timeline/renderer';
 
 const WIDGET_TYPES = Object.freeze({
     lineChart: 'line_chart',
     barChart: 'bar_chart',
     gaugeChart: 'gauge_chart',
+    stateCard: 'state_card',
+    stateTimeline: 'state_timeline',
 });
 
 function buildChartOption(widget, series) {
+    if (widget?.type === WIDGET_TYPES.stateTimeline) {
+        return stateTimelineOption(widget, series);
+    }
+
     if (widget?.type === WIDGET_TYPES.gaugeChart) {
         return gaugeChartOption(widget, series);
     }
@@ -37,6 +45,30 @@ function normalizeSeriesConfiguration(widget) {
             color: typeof entry.color === 'string' && entry.color.trim() !== '' ? entry.color : '#38bdf8',
             points: [],
         }));
+}
+
+function isStateCardWidget(widget) {
+    return widget?.type === WIDGET_TYPES.stateCard;
+}
+
+function isStateWidget(widget) {
+    return widget?.type === WIDGET_TYPES.stateCard || widget?.type === WIDGET_TYPES.stateTimeline;
+}
+
+function normalizeStateValueKey(value) {
+    if (typeof value === 'boolean') {
+        return value ? 'true' : 'false';
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return String(value);
+    }
+
+    if (typeof value === 'string' && value.trim() !== '') {
+        return value.trim();
+    }
+
+    return '';
 }
 
 class DashboardRuntime {
@@ -327,6 +359,8 @@ class DashboardRuntime {
             this.resizeObservers.delete(widgetId);
         }
 
+        target.innerHTML = '';
+
         const chart = window.echarts.init(target);
         this.charts.set(widgetId, chart);
 
@@ -345,6 +379,12 @@ class DashboardRuntime {
     }
 
     renderWidget(widget) {
+        if (isStateCardWidget(widget)) {
+            this.renderStateCardWidget(widget);
+
+            return;
+        }
+
         const chart = this.ensureChart(widget.id);
 
         if (!chart) {
@@ -352,6 +392,18 @@ class DashboardRuntime {
         }
 
         chart.setOption(buildChartOption(widget, widget.seriesData), true);
+    }
+
+    renderStateCardWidget(widget) {
+        this.disposeChart(widget.id);
+
+        const target = document.getElementById(`iot-widget-chart-${widget.id}`);
+
+        if (!target) {
+            return;
+        }
+
+        target.innerHTML = renderStateCardMarkup(widget, widget.seriesData);
     }
 
     requestInitialSnapshots() {
@@ -490,6 +542,10 @@ class DashboardRuntime {
                         return {
                             timestamp: point.timestamp,
                             value,
+                            rawValue: point?.raw_value ?? null,
+                            stateKey: typeof point?.state_key === 'string' ? point.state_key : null,
+                            stateLabel: typeof point?.state_label === 'string' ? point.state_label : null,
+                            stateColor: typeof point?.state_color === 'string' ? point.state_color : null,
                         };
                     })
                     .filter(Boolean)
@@ -546,6 +602,19 @@ class DashboardRuntime {
         let hasValues = false;
 
         widget.seriesData.forEach((series) => {
+            if (isStateWidget(widget)) {
+                const resolvedStateValue = this.resolveRealtimeStateValue(widget, transformedValues[series.key]);
+
+                if (!resolvedStateValue) {
+                    return;
+                }
+
+                hasValues = true;
+                seriesValues[series.key] = resolvedStateValue;
+
+                return;
+            }
+
             const value = normalizeNumericValue(transformedValues[series.key]);
 
             if (value === null) {
@@ -557,6 +626,48 @@ class DashboardRuntime {
         });
 
         return hasValues ? seriesValues : null;
+    }
+
+    resolveRealtimeStateValue(widget, rawValue) {
+        const stateKey = normalizeStateValueKey(rawValue);
+
+        if (stateKey === '') {
+            return null;
+        }
+
+        const stateMappings = Array.isArray(widget?.state_mappings) ? widget.state_mappings : [];
+        const fallbackLabel = rawValue === null || rawValue === undefined || rawValue === ''
+            ? 'Unknown'
+            : String(rawValue);
+        let resolved = {
+            value: 0,
+            rawValue,
+            stateKey,
+            stateLabel: fallbackLabel,
+            stateColor: '#64748b',
+        };
+
+        stateMappings.forEach((mapping, index) => {
+            const mappingKey = normalizeStateValueKey(mapping?.value);
+
+            if (mappingKey !== stateKey) {
+                return;
+            }
+
+            resolved = {
+                value: index + 1,
+                rawValue,
+                stateKey,
+                stateLabel: typeof mapping?.label === 'string' && mapping.label.trim() !== ''
+                    ? mapping.label.trim()
+                    : fallbackLabel,
+                stateColor: typeof mapping?.color === 'string' && mapping.color.trim() !== ''
+                    ? mapping.color.trim()
+                    : '#64748b',
+            };
+        });
+
+        return resolved;
     }
 
     scheduleRealtimePayload(widget, recordedAt, seriesValues, waitMilliseconds) {
@@ -595,12 +706,24 @@ class DashboardRuntime {
                 return series;
             }
 
-            const nextPoints = [...series.points, {
-                timestamp: recordedAt,
-                value: seriesValues[series.key],
-            }];
+            const realtimeValue = seriesValues[series.key];
+            const nextPoint = typeof realtimeValue === 'object' && realtimeValue !== null
+                ? {
+                    timestamp: recordedAt,
+                    value: normalizeNumericValue(realtimeValue.value) ?? 0,
+                    rawValue: realtimeValue.rawValue ?? null,
+                    stateKey: typeof realtimeValue.stateKey === 'string' ? realtimeValue.stateKey : null,
+                    stateLabel: typeof realtimeValue.stateLabel === 'string' ? realtimeValue.stateLabel : null,
+                    stateColor: typeof realtimeValue.stateColor === 'string' ? realtimeValue.stateColor : null,
+                }
+                : {
+                    timestamp: recordedAt,
+                    value: realtimeValue,
+                };
 
-            const minPoints = widget?.type === WIDGET_TYPES.gaugeChart ? 1 : 20;
+            const nextPoints = [...series.points, nextPoint];
+
+            const minPoints = widget?.type === WIDGET_TYPES.gaugeChart || widget?.type === WIDGET_TYPES.stateCard ? 1 : 20;
             const maxPoints = Math.max(minPoints, Number(widget.max_points || 240));
 
             if (nextPoints.length > maxPoints) {
@@ -698,6 +821,23 @@ class DashboardRuntime {
         }
 
         return widgetDeviceUuid === deviceUuid;
+    }
+
+    disposeChart(widgetId) {
+        const chart = this.charts.get(widgetId);
+
+        if (chart && !chart.isDisposed()) {
+            chart.dispose();
+        }
+
+        this.charts.delete(widgetId);
+
+        const observer = this.resizeObservers.get(widgetId);
+
+        if (observer) {
+            observer.disconnect();
+            this.resizeObservers.delete(widgetId);
+        }
     }
 }
 

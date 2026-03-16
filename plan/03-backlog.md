@@ -94,6 +94,8 @@ Acceptance:
 - Node-RED publishes normalized source topics for WITCO iMoni traffic without creating iMoni-shaped user devices.
 - Laravel binds WITCO source slots to physical device parameters through a reusable binding layer.
 - Hub presence and bound physical-device telemetry persist through the existing Laravel ingestion pipeline.
+- WITCO dashboards are seeded against migrated physical devices using reusable global `state_card` and `state_timeline` widgets.
+- State widgets support per-widget label and color mappings so one shared schema can render `OPEN/CLOSED`, `ON/OFF`, or alarm states without tenant-specific widget code.
 
 Sub-tasks:
 1. Seed WITCO hubs and physical child devices from legacy mappings
@@ -102,6 +104,7 @@ Sub-tasks:
 4. Skip empty legacy parameter mappings in the first onboarding pass and track them as follow-up cleanup
 5. Add Pest coverage for WITCO seeding, source-topic binding resolution, and local ingestion
 6. Replace seeded rehearsal-only peripheral catalog entries with global reusable hub and `IMONI Status` catalog entries
+7. Seed `Status Dashboard` and `History Dashboard` for WITCO using global state widgets and per-device state mapping overrides
 
 ---
 

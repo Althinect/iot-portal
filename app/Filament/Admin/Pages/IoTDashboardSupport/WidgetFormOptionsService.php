@@ -150,6 +150,61 @@ class WidgetFormOptionsService
     }
 
     /**
+     * @return array<int|string, string>
+     */
+    public function stateParameterOptions(mixed $topicId): array
+    {
+        if (! is_numeric($topicId)) {
+            return [];
+        }
+
+        return ParameterDefinition::query()
+            ->where('schema_version_topic_id', (int) $topicId)
+            ->where('is_active', true)
+            ->orderBy('sequence')
+            ->get([
+                'key',
+                'label',
+                'type',
+                'category',
+                'validation_rules',
+                'control_ui',
+            ])
+            ->filter(fn (ParameterDefinition $parameter): bool => $parameter->isDashboardStateParameter())
+            ->mapWithKeys(fn (ParameterDefinition $parameter): array => [
+                $parameter->key => "{$parameter->label} ({$parameter->key})",
+            ])
+            ->all();
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string, color: string}>
+     */
+    public function defaultStateMappings(mixed $topicId, mixed $parameterKey): array
+    {
+        if (! is_numeric($topicId) || ! is_string($parameterKey) || trim($parameterKey) === '') {
+            return [];
+        }
+
+        $parameter = ParameterDefinition::query()
+            ->where('schema_version_topic_id', (int) $topicId)
+            ->where('key', trim($parameterKey))
+            ->first([
+                'id',
+                'type',
+                'category',
+                'validation_rules',
+                'control_ui',
+            ]);
+
+        if (! $parameter instanceof ParameterDefinition) {
+            return [];
+        }
+
+        return $parameter->resolvedStateMappings();
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      * @return array{device: Device, topic: SchemaVersionTopic, series: array<int, array{key: string, label: string, color: string}>}|null
      */

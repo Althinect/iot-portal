@@ -10,6 +10,7 @@ use App\Domain\DeviceManagement\Enums\ProtocolType;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceManagement\ValueObjects\Protocol\MqttProtocolConfig;
+use App\Domain\DeviceSchema\Enums\ParameterCategory;
 use App\Domain\DeviceSchema\Enums\ParameterDataType;
 use App\Domain\DeviceSchema\Enums\TopicDirection;
 use App\Domain\DeviceSchema\Enums\TopicPurpose;
@@ -193,10 +194,17 @@ class WitcoMigrationSeeder extends Seeder
                     'label' => 'Status',
                     'json_path' => '$.status',
                     'type' => ParameterDataType::Integer,
+                    'category' => ParameterCategory::State,
                     'required' => false,
                     'validation_rules' => [
                         'min' => 0,
                         'max' => 1,
+                    ],
+                    'control_ui' => [
+                        'state_mappings' => [
+                            ['value' => 0, 'label' => 'OFF', 'color' => '#ef4444'],
+                            ['value' => 1, 'label' => 'ON', 'color' => '#22c55e'],
+                        ],
                     ],
                     'mutation_expression' => [
                         'if' => [
@@ -375,7 +383,9 @@ class WitcoMigrationSeeder extends Seeder
                     'unit' => $parameter['unit'] ?? null,
                     'required' => $parameter['required'] ?? false,
                     'is_critical' => $parameter['is_critical'] ?? false,
+                    'category' => $parameter['category'] ?? ParameterCategory::Measurement,
                     'validation_rules' => $parameter['validation_rules'] ?? null,
+                    'control_ui' => $parameter['control_ui'] ?? null,
                     'mutation_expression' => $parameter['mutation_expression'] ?? null,
                     'sequence' => $parameter['sequence'] ?? 0,
                     'is_active' => true,

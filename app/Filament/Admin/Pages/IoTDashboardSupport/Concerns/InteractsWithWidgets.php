@@ -64,6 +64,8 @@ trait InteractsWithWidgets
                 WidgetType::LineChart => 'Line widget added',
                 WidgetType::BarChart => 'Bar widget added',
                 WidgetType::GaugeChart => 'Gauge widget added',
+                WidgetType::StateCard => 'State card added',
+                WidgetType::StateTimeline => 'State timeline added',
             })
             ->success()
             ->send();
@@ -89,7 +91,29 @@ trait InteractsWithWidgets
         return [
             ...$data,
             'parameter_keys' => $parameterKey === null || $parameterKey === '' ? [] : [$parameterKey],
+            'state_mappings' => in_array($type, [WidgetType::StateCard, WidgetType::StateTimeline], true)
+                ? $this->resolveStateMappingsFromInput($data, $parameterKey)
+                : ($data['state_mappings'] ?? null),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<int, array{value: string, label: string, color: string}>
+     */
+    private function resolveStateMappingsFromInput(array $data, ?string $parameterKey): array
+    {
+        if (is_array($data['state_mappings'] ?? null) && $data['state_mappings'] !== []) {
+            /** @var array<int, array{value: string, label: string, color: string}> $stateMappings */
+            $stateMappings = $data['state_mappings'];
+
+            return $stateMappings;
+        }
+
+        return $this->widgetFormOptionsService()->defaultStateMappings(
+            $data['schema_version_topic_id'] ?? null,
+            $parameterKey,
+        );
     }
 
     /**

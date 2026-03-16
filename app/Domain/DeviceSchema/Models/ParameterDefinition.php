@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Stringable;
 
 /**
  * @property string $key
@@ -151,7 +152,7 @@ class ParameterDefinition extends Model
         $options = [];
 
         foreach ($enum as $value) {
-            if (! is_scalar($value) && ! $value instanceof \Stringable) {
+            if (! is_scalar($value) && ! $value instanceof Stringable) {
                 continue;
             }
 
@@ -160,6 +161,64 @@ class ParameterDefinition extends Model
         }
 
         return $options;
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string, color: string}>
+     */
+    public function resolvedStateMappings(): array
+    {
+        $controlUi = $this->resolvedControlUi();
+        $explicitMappings = $controlUi['state_mappings'] ?? null;
+
+        if (is_array($explicitMappings)) {
+            $normalizedExplicitMappings = $this->normalizeStateMappings(array_values($explicitMappings));
+
+            if ($normalizedExplicitMappings !== []) {
+                return $normalizedExplicitMappings;
+            }
+        }
+
+        $enum = $this->resolvedValidationRules()['enum'] ?? null;
+
+        if (is_array($enum)) {
+            $enumMappings = array_map(
+                static fn (mixed $value): array => [
+                    'value' => $value,
+                    'label' => is_scalar($value) || $value instanceof Stringable ? (string) $value : '',
+                    'color' => '',
+                ],
+                $enum,
+            );
+
+            $normalizedEnumMappings = $this->normalizeStateMappings($enumMappings);
+
+            if ($normalizedEnumMappings !== []) {
+                return $normalizedEnumMappings;
+            }
+        }
+
+        if ($this->type === ParameterDataType::Boolean) {
+            return [
+                ['value' => 'false', 'label' => 'OFF', 'color' => '#ef4444'],
+                ['value' => 'true', 'label' => 'ON', 'color' => '#22c55e'],
+            ];
+        }
+
+        return [];
+    }
+
+    public function isDashboardStateParameter(): bool
+    {
+        if ($this->category === ParameterCategory::State || $this->type === ParameterDataType::Boolean) {
+            return true;
+        }
+
+        if ($this->resolvedStateMappings() !== []) {
+            return true;
+        }
+
+        return is_array($this->resolvedValidationRules()['enum'] ?? null);
     }
 
     /**
@@ -420,5 +479,68 @@ class ParameterDefinition extends Model
         }
 
         return ControlWidgetType::Text;
+    }
+
+    /**
+     * @param  array<int, mixed>  $mappings
+     * @return array<int, array{value: string, label: string, color: string}>
+     */
+    private function normalizeStateMappings(array $mappings): array
+    {
+        $normalized = [];
+        $seen = [];
+        $palette = ['#22c55e', '#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#06b6d4', '#64748b'];
+
+        foreach (array_values($mappings) as $index => $mapping) {
+            if (! is_array($mapping)) {
+                continue;
+            }
+
+            $value = $this->normalizeStateMappingValue($mapping['value'] ?? null);
+
+            if ($value === '' || in_array($value, $seen, true)) {
+                continue;
+            }
+
+            $seen[] = $value;
+            $normalized[] = [
+                'value' => $value,
+                'label' => is_string($mapping['label'] ?? null) && trim((string) $mapping['label']) !== ''
+                    ? trim((string) $mapping['label'])
+                    : $value,
+                'color' => is_string($mapping['color'] ?? null) && trim((string) $mapping['color']) !== ''
+                    ? trim((string) $mapping['color'])
+                    : $palette[$index % count($palette)],
+            ];
+        }
+
+        return $normalized;
+    }
+
+    private function normalizeStateMappingValue(mixed $value): string
+    {
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if (is_int($value)) {
+            return (string) $value;
+        }
+
+        if (is_float($value)) {
+            $normalized = rtrim(rtrim(sprintf('%.12F', $value), '0'), '.');
+
+            return $normalized === '' ? '0' : $normalized;
+        }
+
+        if (is_string($value)) {
+            return trim($value);
+        }
+
+        if ($value instanceof Stringable) {
+            return trim((string) $value);
+        }
+
+        return '';
     }
 }

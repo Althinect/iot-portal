@@ -112,6 +112,27 @@ function createDashboardSnapshotBaseContext(): array
         'validation_error_code' => null,
     ]);
 
+    ParameterDefinition::factory()->create([
+        'schema_version_topic_id' => $topic->id,
+        'key' => 'status',
+        'label' => 'Status',
+        'json_path' => '$.status',
+        'type' => ParameterDataType::Integer,
+        'category' => ParameterCategory::State,
+        'sequence' => 12,
+        'required' => false,
+        'is_active' => true,
+        'validation_rules' => ['min' => 0, 'max' => 1],
+        'control_ui' => [
+            'state_mappings' => [
+                ['value' => 0, 'label' => 'OFF', 'color' => '#ef4444'],
+                ['value' => 1, 'label' => 'ON', 'color' => '#22c55e'],
+            ],
+        ],
+        'mutation_expression' => null,
+        'validation_error_code' => null,
+    ]);
+
     $dashboard = IoTDashboard::factory()->create([
         'organization_id' => $organization->id,
         'name' => 'Energy Meter Polling',
@@ -338,7 +359,6 @@ function createStatusSummaryWidgetSnapshotContext(?array $config = null): array
 
     return [$organization, $dashboard, $topic, $widget, $device];
 }
-
 function createStateCardWidgetSnapshotContext(): array
 {
     [$organization, $dashboard, $topic, $device] = createDashboardSnapshotBaseContext();
@@ -938,7 +958,6 @@ it('rejects invalid absolute history ranges', function (): void {
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['history_until_at']);
 });
-
 it('returns the latest mapped state for state card widgets', function (): void {
     $admin = User::factory()->create(['is_super_admin' => true]);
     $this->actingAs($admin);

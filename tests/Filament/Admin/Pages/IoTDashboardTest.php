@@ -443,7 +443,6 @@ it('adds a status widget with the latest seven energy parameters', function (): 
         ->and(data_get($widget?->configArray(), 'rows.2.tiles.2.source.parameter_key'))->toBe('A3')
         ->and((int) data_get($widget?->configArray(), 'window.max_points'))->toBe(1);
 });
-
 it('adds a state card widget with custom mappings', function (): void {
     [$dashboard, $topic, $device] = createDashboardTopicForPageTest();
 
@@ -1028,7 +1027,6 @@ it('edits a status summary widget with multiple latest parameter tiles', functio
             'latest_parameter',
         ]);
 });
-
 it('edits an existing state timeline widget using action arguments', function (): void {
     [$dashboard, $topic, $device] = createDashboardTopicForPageTest();
 

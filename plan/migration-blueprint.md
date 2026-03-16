@@ -70,6 +70,7 @@ The migration must:
 - Treat Teejay-specific dashboard and report requirements as generic reusable capabilities where possible.
 - Use `WITCO` as the first tenant onboarding pilot after the generic local rehearsal path is stable, and use it to prove real physical devices plus signal bindings rather than iMoni-shaped platform devices.
 - Keep the default local seed focused on the active tenant pilot and reusable global migration catalog entries instead of rehearsal-only peripheral devices.
+- Treat boolean and enum dashboard rendering as reusable platform widgets with per-widget state mappings, not as tenant-specific dashboard code.
 
 ## Principles
 
@@ -95,6 +96,7 @@ The migration must:
 - signal-binding based source-to-device mapping
 - offline alert migration
 - generic reports and generic topology-style dashboards
+- reusable state-card and state-timeline widgets for status and enum parameters
 - staged tenant cutover
 
 ### Out of scope for this plan

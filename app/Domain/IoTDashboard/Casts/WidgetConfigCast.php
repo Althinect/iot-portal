@@ -9,6 +9,8 @@ use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Widgets\BarChart\BarChartConfig;
 use App\Domain\IoTDashboard\Widgets\GaugeChart\GaugeChartConfig;
 use App\Domain\IoTDashboard\Widgets\LineChart\LineChartConfig;
+use App\Domain\IoTDashboard\Widgets\StateCard\StateCardConfig;
+use App\Domain\IoTDashboard\Widgets\StateTimeline\StateTimelineConfig;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
 
@@ -68,6 +70,8 @@ class WidgetConfigCast implements CastsAttributes
             WidgetType::LineChart => LineChartConfig::fromArray($config),
             WidgetType::BarChart => BarChartConfig::fromArray($config),
             WidgetType::GaugeChart => GaugeChartConfig::fromArray($config),
+            WidgetType::StateCard => StateCardConfig::fromArray($config),
+            WidgetType::StateTimeline => StateTimelineConfig::fromArray($config),
         };
     }
 

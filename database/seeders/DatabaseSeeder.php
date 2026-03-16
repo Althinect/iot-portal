@@ -33,6 +33,7 @@ class DatabaseSeeder extends Seeder
             UserSeeder::class,
             OrganizationSeeder::class,
             WitcoMigrationSeeder::class,
+            WitcoDashboardSeeder::class,
         ]);
     }
 }

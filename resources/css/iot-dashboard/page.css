@@ -76,6 +76,121 @@
     width: 100%;
 }
 
+.iot-state-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1rem;
+    padding: 1.25rem 1rem;
+}
+
+.iot-state-card__timestamp {
+    font-size: 0.72rem;
+    line-height: 1rem;
+    color: var(--gray-500);
+}
+
+:is(.dark, .dark *) .iot-state-card__timestamp {
+    color: var(--gray-400);
+}
+
+.iot-state-card__body {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.iot-state-card__empty {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 9rem;
+    min-height: 3.5rem;
+    padding: 0.85rem 1rem;
+    border-radius: 999px;
+    border: 1px dashed var(--gray-300);
+    color: var(--gray-500);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+
+:is(.dark, .dark *) .iot-state-card__empty {
+    border-color: var(--gray-600);
+    color: var(--gray-400);
+}
+
+.iot-state-indicator {
+    --state-color: #64748b;
+}
+
+.iot-state-indicator--toggle {
+    min-width: 11rem;
+    min-height: 4rem;
+    padding: 0.35rem 1.2rem 0.35rem 3.65rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--state-color) 85%, black 15%);
+    color: white;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.95rem;
+    letter-spacing: 0.03em;
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.14);
+}
+
+.iot-state-indicator__thumb {
+    position: absolute;
+    left: 0.35rem;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #ffffff 0%, #d4d4d8 100%);
+    box-shadow: 0 2px 5px rgba(15, 23, 42, 0.25);
+}
+
+.iot-state-indicator--pill {
+    min-width: 8.75rem;
+    min-height: 2.9rem;
+    padding: 0.9rem 1.4rem;
+    border-radius: 999px;
+    background: var(--state-color);
+    color: white;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-weight: 800;
+    font-size: 0.92rem;
+    letter-spacing: 0.04em;
+    box-shadow: 0 12px 24px color-mix(in srgb, var(--state-color) 22%, transparent 78%);
+}
+
+.iot-state-indicator--dot-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.7rem;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--gray-800);
+}
+
+:is(.dark, .dark *) .iot-state-indicator--dot-label {
+    color: var(--gray-100);
+}
+
+.iot-state-indicator__dot {
+    width: 0.9rem;
+    height: 0.9rem;
+    border-radius: 999px;
+    background: var(--state-color);
+    box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--state-color) 18%, transparent 82%);
+}
+
 .iot-empty-state {
     padding: 1.35rem 1rem;
     border: 1px dashed var(--gray-300);

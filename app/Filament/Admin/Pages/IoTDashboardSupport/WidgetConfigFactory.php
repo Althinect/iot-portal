@@ -12,6 +12,9 @@ use App\Domain\IoTDashboard\Widgets\BarChart\BarInterval;
 use App\Domain\IoTDashboard\Widgets\GaugeChart\GaugeChartConfig;
 use App\Domain\IoTDashboard\Widgets\GaugeChart\GaugeStyle;
 use App\Domain\IoTDashboard\Widgets\LineChart\LineChartConfig;
+use App\Domain\IoTDashboard\Widgets\StateCard\StateCardConfig;
+use App\Domain\IoTDashboard\Widgets\StateCard\StateCardStyle;
+use App\Domain\IoTDashboard\Widgets\StateTimeline\StateTimelineConfig;
 use BackedEnum;
 
 class WidgetConfigFactory
@@ -68,6 +71,15 @@ class WidgetConfigFactory
             $data['gauge_min'] = $config->gaugeMinimum();
             $data['gauge_max'] = $config->gaugeMaximum();
             $data['gauge_ranges'] = $config->gaugeRanges();
+        }
+
+        if ($config instanceof StateCardConfig) {
+            $data['display_style'] = $config->displayStyle()->value;
+            $data['state_mappings'] = $config->stateMappings();
+        }
+
+        if ($config instanceof StateTimelineConfig) {
+            $data['state_mappings'] = $config->stateMappings();
         }
 
         return $data;
@@ -128,6 +140,18 @@ class WidgetConfigFactory
                 'gauge_max' => $data['gauge_max'] ?? $current['gauge_max'] ?? 100,
                 'gauge_ranges' => $data['gauge_ranges'] ?? $current['gauge_ranges'] ?? [],
             ]),
+            WidgetType::StateCard => StateCardConfig::fromArray([
+                ...$base,
+                'display_style' => $this->normalizeEnumValue(
+                    $data['display_style'] ?? $current['display_style'] ?? StateCardStyle::Toggle,
+                    StateCardStyle::Toggle->value,
+                ),
+                'state_mappings' => $data['state_mappings'] ?? $current['state_mappings'] ?? [],
+            ]),
+            WidgetType::StateTimeline => StateTimelineConfig::fromArray([
+                ...$base,
+                'state_mappings' => $data['state_mappings'] ?? $current['state_mappings'] ?? [],
+            ]),
         };
     }
 
@@ -147,6 +171,8 @@ class WidgetConfigFactory
             WidgetType::LineChart => 120,
             WidgetType::BarChart => 43200,
             WidgetType::GaugeChart => 180,
+            WidgetType::StateCard => 1440,
+            WidgetType::StateTimeline => 360,
         };
     }
 
@@ -156,6 +182,8 @@ class WidgetConfigFactory
             WidgetType::LineChart => 240,
             WidgetType::BarChart => 31,
             WidgetType::GaugeChart => 1,
+            WidgetType::StateCard => 1,
+            WidgetType::StateTimeline => 240,
         };
     }
 

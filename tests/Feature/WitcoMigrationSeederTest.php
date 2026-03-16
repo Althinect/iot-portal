@@ -10,6 +10,7 @@ use App\Domain\DataIngestion\Services\TelemetryIngestionService;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceManagement\Services\DevicePresenceMessageHandler;
+use App\Domain\DeviceSchema\Enums\ParameterCategory;
 use App\Domain\DeviceSchema\Enums\ParameterDataType;
 use App\Domain\DeviceSchema\Models\DeviceSchema;
 use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
@@ -91,9 +92,14 @@ it('seeds witco hubs with mapped peripheral child devices only', function (): vo
         ->and($statusTopic?->resolvedTopic($statusDevice))->toBe('devices/imoni-status/witco-water-tank-alarm-level/telemetry')
         ->and($statusParameter)->not->toBeNull()
         ->and($statusParameter?->type)->toBe(ParameterDataType::Integer)
+        ->and($statusParameter?->category)->toBe(ParameterCategory::State)
         ->and($statusParameter?->resolvedValidationRules())->toMatchArray([
             'min' => 0,
             'max' => 1,
+        ])
+        ->and($statusParameter?->resolvedStateMappings())->toBe([
+            ['value' => '0', 'label' => 'OFF', 'color' => '#ef4444'],
+            ['value' => '1', 'label' => 'ON', 'color' => '#22c55e'],
         ])
         ->and($statusParameter?->getAttribute('mutation_expression'))->toMatchArray([
             'if' => [
