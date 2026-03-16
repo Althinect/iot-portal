@@ -8,6 +8,7 @@ use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
@@ -53,17 +54,18 @@ it('applies telemetry lifecycle policies and prunes expired ingestion side table
         'created_at' => now()->subDays(20),
     ]);
 
-    $command = $this->artisan('ingestion:apply-storage-lifecycle')
-        ->expectsOutputToContain('Pruned ingestion stage logs: 2')
-        ->expectsOutputToContain('Pruned ingestion messages: 1');
+    $exitCode = Artisan::call('ingestion:apply-storage-lifecycle');
+    $output = Artisan::output();
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('Pruned ingestion stage logs: 2')
+        ->and($output)->toContain('Pruned ingestion messages: 1');
 
     if (DB::getDriverName() === 'pgsql') {
-        $command->expectsOutputToContain('Telemetry lifecycle: chunk interval 1 day, compression after 7 days, retention 90 days');
+        expect($output)->toContain('Telemetry lifecycle: chunk interval 1 day, compression after 7 days, retention 90 days');
     } else {
-        $command->expectsOutputToContain('Telemetry lifecycle: skipped Timescale policies on non-Postgres connection');
+        expect($output)->toContain('Telemetry lifecycle: skipped Timescale policies on non-Postgres connection');
     }
-
-    $command->assertSuccessful();
 
     if (DB::getDriverName() !== 'pgsql') {
         return;

@@ -22,7 +22,7 @@ final class ReplicateDeviceActions
     {
         return ReplicateAction::make()
             ->icon(Heroicon::OutlinedSquare3Stack3d)
-            ->excludeAttributes(['uuid', 'connection_state', 'last_seen_at', 'created_at', 'updated_at', 'deleted_at'])
+            ->excludeAttributes(['uuid', 'connection_state', 'last_seen_at', 'created_at', 'updated_at', 'deleted_at', 'child_devices_count'])
             ->mutateRecordDataUsing(function (array $data): array {
                 $name = isset($data['name']) && is_string($data['name']) ? $data['name'] : 'Device';
 
