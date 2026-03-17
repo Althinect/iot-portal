@@ -81,6 +81,52 @@ class IoTDashboardWidgetFactory extends Factory
         ]);
     }
 
+    public function statusSummary(): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'type' => WidgetType::StatusSummary->value,
+            'config' => [
+                'rows' => [
+                    [
+                        'tiles' => [
+                            [
+                                'key' => 'V1',
+                                'label' => 'V1',
+                                'base_color' => '#22d3ee',
+                                'unit' => 'Volts',
+                                'threshold_ranges' => [],
+                                'source' => [
+                                    'type' => 'latest_parameter',
+                                    'parameter_key' => 'V1',
+                                ],
+                            ],
+                            [
+                                'key' => 'A1',
+                                'label' => 'A1',
+                                'base_color' => '#10b981',
+                                'unit' => 'A',
+                                'threshold_ranges' => [],
+                                'source' => [
+                                    'type' => 'latest_parameter',
+                                    'parameter_key' => 'A1',
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'transport' => [
+                    'use_websocket' => true,
+                    'use_polling' => true,
+                    'polling_interval_seconds' => 10,
+                ],
+                'window' => [
+                    'lookback_minutes' => 180,
+                    'max_points' => 1,
+                ],
+            ],
+        ]);
+    }
+
     public function stateCard(): static
     {
         return $this->state(fn (array $attributes): array => [

@@ -8,7 +8,7 @@ trait NormalizesWidgetConfig
 {
     /**
      * @param  array<int, mixed>|mixed  $series
-     * @return array<int, array{key: string, label: string, color: string}>
+     * @return array<int, array{key: string, label: string, color: string, unit?: string|null}>
      */
     private static function normalizeSeries(mixed $series): array
     {
@@ -41,10 +41,151 @@ trait NormalizesWidgetConfig
                 'color' => is_string($entry['color'] ?? null) && trim((string) $entry['color']) !== ''
                     ? (string) $entry['color']
                     : self::seriesPalette()[$index % count(self::seriesPalette())],
+                'unit' => is_string($entry['unit'] ?? null) && trim((string) $entry['unit']) !== ''
+                    ? trim((string) $entry['unit'])
+                    : null,
             ];
         }
 
         return $normalized;
+    }
+
+    /**
+     * @param  array<int, mixed>|mixed  $rows
+     * @param  array<int, array{key: string, label: string, color: string, unit?: string|null}>  $series
+     * @return array<int, array{parameter_keys: array<int, string>}>
+     */
+    private static function normalizeStatusSummaryRows(mixed $rows, array $series): array
+    {
+        $allowedKeys = array_map(
+            static fn (array $entry): string => $entry['key'],
+            $series,
+        );
+
+        if ($allowedKeys === []) {
+            return [];
+        }
+
+        if (! is_array($rows) || $rows === []) {
+            return self::defaultStatusSummaryRows($series);
+        }
+
+        $normalized = [];
+        $seen = [];
+
+        foreach (array_values($rows) as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $parameterKeys = [];
+
+            foreach (array_values(is_array($row['parameter_keys'] ?? null) ? $row['parameter_keys'] : []) as $parameterKey) {
+                if (! is_string($parameterKey)) {
+                    continue;
+                }
+
+                $parameterKey = trim($parameterKey);
+
+                if (
+                    $parameterKey === ''
+                    || in_array($parameterKey, $seen, true)
+                    || ! in_array($parameterKey, $allowedKeys, true)
+                ) {
+                    continue;
+                }
+
+                $seen[] = $parameterKey;
+                $parameterKeys[] = $parameterKey;
+            }
+
+            if ($parameterKeys === []) {
+                continue;
+            }
+
+            $normalized[] = [
+                'parameter_keys' => $parameterKeys,
+            ];
+        }
+
+        $missingKeys = array_values(array_diff($allowedKeys, $seen));
+
+        if ($missingKeys !== []) {
+            foreach (array_chunk($missingKeys, 3) as $chunk) {
+                $normalized[] = [
+                    'parameter_keys' => $chunk,
+                ];
+            }
+        }
+
+        return $normalized === [] ? self::defaultStatusSummaryRows($series) : $normalized;
+    }
+
+    /**
+     * @param  array<int, array{key: string, label: string, color: string, unit?: string|null}>  $series
+     * @return array<int, array{parameter_keys: array<int, string>}>
+     */
+    private static function defaultStatusSummaryRows(array $series): array
+    {
+        $energyKeys = [];
+        $voltageKeys = [];
+        $currentKeys = [];
+        $otherKeys = [];
+
+        foreach ($series as $entry) {
+            $key = $entry['key'];
+
+            if (str_contains(strtolower($key), 'energy')) {
+                $energyKeys[] = $key;
+
+                continue;
+            }
+
+            if (preg_match('/^V\d+$/i', $key) === 1) {
+                $voltageKeys[] = $key;
+
+                continue;
+            }
+
+            if (preg_match('/^A\d+$/i', $key) === 1) {
+                $currentKeys[] = $key;
+
+                continue;
+            }
+
+            $otherKeys[] = $key;
+        }
+
+        $rows = [];
+
+        foreach ([$energyKeys, $voltageKeys, $currentKeys] as $rowKeys) {
+            if ($rowKeys === []) {
+                continue;
+            }
+
+            $rows[] = [
+                'parameter_keys' => $rowKeys,
+            ];
+        }
+
+        foreach (array_chunk($otherKeys, 3) as $chunk) {
+            $rows[] = [
+                'parameter_keys' => $chunk,
+            ];
+        }
+
+        if ($rows === []) {
+            foreach (array_chunk(array_map(
+                static fn (array $entry): string => $entry['key'],
+                $series,
+            ), 3) as $chunk) {
+                $rows[] = [
+                    'parameter_keys' => $chunk,
+                ];
+            }
+        }
+
+        return $rows;
     }
 
     /**

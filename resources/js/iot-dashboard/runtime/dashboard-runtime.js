@@ -6,6 +6,7 @@ import { historySelectionSnapshotRange, isAbsoluteHistorySelection } from '../hi
 import { lineChartOption } from '../widgets/line-chart/renderer';
 import { barChartOption } from '../widgets/bar-chart/renderer';
 import { gaugeChartOption } from '../widgets/gauge-chart/renderer';
+import { renderStatusSummaryMarkup } from '../widgets/status-summary/renderer';
 import { renderStateCardMarkup } from '../widgets/state-card/renderer';
 import { stateTimelineOption } from '../widgets/state-timeline/renderer';
 
@@ -13,6 +14,7 @@ const WIDGET_TYPES = Object.freeze({
     lineChart: 'line_chart',
     barChart: 'bar_chart',
     gaugeChart: 'gauge_chart',
+    statusSummary: 'status_summary',
     stateCard: 'state_card',
     stateTimeline: 'state_timeline',
 });
@@ -44,12 +46,18 @@ function normalizeSeriesConfiguration(widget) {
             key: entry.key,
             label: typeof entry.label === 'string' && entry.label.trim() !== '' ? entry.label : entry.key,
             color: typeof entry.color === 'string' && entry.color.trim() !== '' ? entry.color : '#38bdf8',
+            unit: typeof entry.unit === 'string' && entry.unit.trim() !== '' ? entry.unit : null,
+            source: entry?.source && typeof entry.source === 'object' ? entry.source : null,
             points: [],
         }));
 }
 
 function isStateCardWidget(widget) {
     return widget?.type === WIDGET_TYPES.stateCard;
+}
+
+function isStatusSummaryWidget(widget) {
+    return widget?.type === WIDGET_TYPES.statusSummary;
 }
 
 function isHistoryChartWidget(widget) {
@@ -401,6 +409,12 @@ class DashboardRuntime {
     }
 
     renderWidget(widget) {
+        if (isStatusSummaryWidget(widget)) {
+            this.renderStatusSummaryWidget(widget);
+
+            return;
+        }
+
         if (isStateCardWidget(widget)) {
             this.renderStateCardWidget(widget);
 
@@ -426,6 +440,18 @@ class DashboardRuntime {
         }
 
         target.innerHTML = renderStateCardMarkup(widget, widget.seriesData);
+    }
+
+    renderStatusSummaryWidget(widget) {
+        this.disposeChart(widget.id);
+
+        const target = document.getElementById(`iot-widget-chart-${widget.id}`);
+
+        if (!target) {
+            return;
+        }
+
+        target.innerHTML = renderStatusSummaryMarkup(widget, widget.seriesData);
     }
 
     requestInitialSnapshots() {
@@ -584,12 +610,20 @@ class DashboardRuntime {
                     .filter(Boolean)
                 : [];
 
-            seriesByKey.set(entry.key, points);
+            seriesByKey.set(entry.key, {
+                points,
+                color: typeof entry?.color === 'string' && entry.color.trim() !== '' ? entry.color.trim() : null,
+                label: typeof entry?.label === 'string' && entry.label.trim() !== '' ? entry.label.trim() : null,
+                unit: typeof entry?.unit === 'string' && entry.unit.trim() !== '' ? entry.unit.trim() : null,
+            });
         });
 
         widget.seriesData = widget.seriesData.map((series) => ({
             ...series,
-            points: seriesByKey.has(series.key) ? seriesByKey.get(series.key) : [],
+            color: seriesByKey.get(series.key)?.color ?? series.color,
+            label: seriesByKey.get(series.key)?.label ?? series.label,
+            unit: seriesByKey.get(series.key)?.unit ?? series.unit,
+            points: seriesByKey.has(series.key) ? (seriesByKey.get(series.key)?.points ?? []) : [],
         }));
 
         this.renderWidget(widget);
@@ -663,7 +697,13 @@ class DashboardRuntime {
                 return;
             }
 
-            const value = normalizeNumericValue(transformedValues[series.key]);
+            const sourceType = typeof series?.source?.type === 'string' ? series.source.type : null;
+            const realtimeParameterKey = sourceType === 'latest_parameter'
+                && typeof series?.source?.parameter_key === 'string'
+                && series.source.parameter_key.trim() !== ''
+                ? series.source.parameter_key.trim()
+                : series.key;
+            const value = normalizeNumericValue(transformedValues[realtimeParameterKey]);
 
             if (value === null) {
                 return;
@@ -771,7 +811,11 @@ class DashboardRuntime {
 
             const nextPoints = [...series.points, nextPoint];
 
-            const minPoints = widget?.type === WIDGET_TYPES.gaugeChart || widget?.type === WIDGET_TYPES.stateCard ? 1 : 20;
+            const minPoints = widget?.type === WIDGET_TYPES.gaugeChart
+                || widget?.type === WIDGET_TYPES.statusSummary
+                || widget?.type === WIDGET_TYPES.stateCard
+                ? 1
+                : 20;
             const maxPoints = Math.max(minPoints, Number(widget.max_points || 240));
 
             if (nextPoints.length > maxPoints) {

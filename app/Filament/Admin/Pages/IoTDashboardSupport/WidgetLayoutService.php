@@ -40,6 +40,40 @@ class WidgetLayoutService
     }
 
     /**
+     * @param  array{x: int, y: int, w: int, h: int, columns?: int, card_height_px?: int}  $sourceLayout
+     * @param  array<int, array{x: int, y: int, w: int, h: int, columns?: int, card_height_px?: int}>  $occupiedLayouts
+     * @return array{x: int, y: int, w: int, h: int, columns: int, card_height_px: int}
+     */
+    public function duplicateLayout(array $sourceLayout, array $occupiedLayouts): array
+    {
+        $source = $this->normalizeLayout($sourceLayout);
+        $occupied = array_map(fn (array $layout): array => $this->normalizeLayout($layout), $occupiedLayouts);
+
+        $rightCandidate = [
+            ...$source,
+            'x' => $source['x'] + $source['w'],
+        ];
+
+        if (
+            ($rightCandidate['x'] + $rightCandidate['w']) <= self::GRID_COLUMNS
+            && ! $this->hasCollision($rightCandidate, $occupied)
+        ) {
+            return $rightCandidate;
+        }
+
+        $belowCandidate = [
+            ...$source,
+            'y' => $source['y'] + $source['h'],
+        ];
+
+        while ($this->hasCollision($belowCandidate, $occupied)) {
+            $belowCandidate['y'] = $this->nextAvailableRow($belowCandidate, $occupied);
+        }
+
+        return $belowCandidate;
+    }
+
+    /**
      * @return array<int|string, string>
      */
     public function gridColumnOptions(): array
@@ -81,5 +115,66 @@ class WidgetLayoutService
     private function normalizeInt(mixed $value, int $default, int $min, int $max): int
     {
         return min(max($this->toInt($value, $default), $min), $max);
+    }
+
+    /**
+     * @param  array{x: int, y: int, w: int, h: int, columns?: int, card_height_px?: int}  $layout
+     * @return array{x: int, y: int, w: int, h: int, columns: int, card_height_px: int}
+     */
+    private function normalizeLayout(array $layout): array
+    {
+        $width = $this->normalizeInt($layout['w'], 6, 1, self::GRID_COLUMNS);
+        $height = $this->normalizeInt($layout['h'], 4, 2, 12);
+
+        return [
+            'x' => max($this->toInt($layout['x'], 0), 0),
+            'y' => max($this->toInt($layout['y'], 0), 0),
+            'w' => $width,
+            'h' => $height,
+            'columns' => self::GRID_COLUMNS,
+            'card_height_px' => $height * self::GRID_CELL_HEIGHT,
+        ];
+    }
+
+    /**
+     * @param  array{x: int, y: int, w: int, h: int, columns: int, card_height_px: int}  $candidate
+     * @param  array<int, array{x: int, y: int, w: int, h: int, columns: int, card_height_px: int}>  $occupiedLayouts
+     */
+    private function hasCollision(array $candidate, array $occupiedLayouts): bool
+    {
+        foreach ($occupiedLayouts as $layout) {
+            if (
+                $candidate['x'] < ($layout['x'] + $layout['w'])
+                && ($candidate['x'] + $candidate['w']) > $layout['x']
+                && $candidate['y'] < ($layout['y'] + $layout['h'])
+                && ($candidate['y'] + $candidate['h']) > $layout['y']
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array{x: int, y: int, w: int, h: int, columns: int, card_height_px: int}  $candidate
+     * @param  array<int, array{x: int, y: int, w: int, h: int, columns: int, card_height_px: int}>  $occupiedLayouts
+     */
+    private function nextAvailableRow(array $candidate, array $occupiedLayouts): int
+    {
+        $nextRow = $candidate['y'] + 1;
+
+        foreach ($occupiedLayouts as $layout) {
+            if (
+                $candidate['x'] < ($layout['x'] + $layout['w'])
+                && ($candidate['x'] + $candidate['w']) > $layout['x']
+                && $candidate['y'] < ($layout['y'] + $layout['h'])
+                && ($candidate['y'] + $candidate['h']) > $layout['y']
+            ) {
+                $nextRow = max($nextRow, $layout['y'] + $layout['h']);
+            }
+        }
+
+        return $nextRow;
     }
 }

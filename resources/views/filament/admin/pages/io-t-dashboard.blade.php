@@ -144,14 +144,6 @@
                                 <header>
                                     <div>
                                         <h3 class="iot-widget-title">{{ $widget->title }}</h3>
-                                        <p class="iot-widget-meta">
-                                            {{ $widget->topic?->label ?? 'Unknown topic' }}
-                                            @if ($widget->topic?->suffix)
-                                                ({{ $widget->topic->suffix }})
-                                            @endif
-                                            ·
-                                            {{ $widget->device?->name ?? 'Unknown device' }}
-                                        </p>
                                     </div>
 
                                     <div class="iot-widget-flags">
@@ -162,8 +154,7 @@
                                         <x-filament::badge :color="(bool) data_get($bootstrapWidget, 'use_polling', true) ? 'info' : 'gray'" size="sm">
                                             Poll
                                         </x-filament::badge>
-                                        {{ ($this->editWidgetAction)(['widget' => $widget->id]) }}
-                                        {{ ($this->deleteWidgetAction)(['widget' => $widget->id]) }}
+                                        {{ $this->widgetHeaderActionGroup((int) $widget->id) }}
                                     </div>
                                 </header>
 

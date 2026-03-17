@@ -24,7 +24,7 @@ class WidgetBootstrapPayloadBuilder
         return $dashboard->widgets
             ->map(function (IoTDashboardWidget $widget) use ($dashboard): array {
                 $definition = $this->widgetRegistry->forWidget($widget);
-                $widgetConfig = $definition->makeConfig($widget->configArray());
+                $bootstrapPayload = $definition->bootstrapPayload($widget);
                 $realtimeChannel = RealtimeStreamChannel::forWidget($widget);
 
                 return [
@@ -43,13 +43,13 @@ class WidgetBootstrapPayloadBuilder
                     ],
                     'device_connection_state' => $widget->device?->effectiveConnectionState(),
                     'device_last_seen_at' => $widget->device?->lastSeenAt()?->toIso8601String(),
-                    'realtime' => $realtimeChannel === null || ! $widgetConfig->useWebsocket()
+                    'realtime' => $realtimeChannel === null || ! (bool) data_get($bootstrapPayload, 'use_websocket')
                         ? null
                         : [
                             'channel' => $realtimeChannel,
                             'sample_window_seconds' => $this->sampleWindowSecondsFor($widget),
                         ],
-                    ...$definition->bootstrapPayload($widget),
+                    ...$bootstrapPayload,
                     'snapshot_url' => route('admin.iot-dashboard.dashboards.snapshots', [
                         'dashboard' => $dashboard,
                         'widget' => $widget->id,
@@ -71,6 +71,7 @@ class WidgetBootstrapPayloadBuilder
             WidgetType::LineChart => 2,
             WidgetType::GaugeChart => 1,
             WidgetType::BarChart => 0,
+            WidgetType::StatusSummary => 1,
             WidgetType::StateCard => 1,
             WidgetType::StateTimeline => 2,
         };

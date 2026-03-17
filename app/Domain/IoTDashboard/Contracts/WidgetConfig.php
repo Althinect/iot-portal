@@ -16,7 +16,7 @@ interface WidgetConfig
     public function type(): WidgetType;
 
     /**
-     * @return array<int, array{key: string, label: string, color: string}>
+     * @return array<int, array{key: string, label: string, color: string, unit?: string|null}>
      */
     public function series(): array;
 

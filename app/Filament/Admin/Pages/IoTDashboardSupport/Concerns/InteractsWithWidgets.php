@@ -42,7 +42,7 @@ trait InteractsWithWidgets
         $config = $this->widgetConfigFactory()->create(
             type: $type,
             data: $normalizedData,
-            series: $resolvedInput['series'],
+            resolvedInput: $resolvedInput,
         );
 
         $maxSequence = $dashboard->widgets()->max('sequence');
@@ -64,9 +64,77 @@ trait InteractsWithWidgets
                 WidgetType::LineChart => 'Line widget added',
                 WidgetType::BarChart => 'Bar widget added',
                 WidgetType::GaugeChart => 'Gauge widget added',
+                WidgetType::StatusSummary => 'Status widget added',
                 WidgetType::StateCard => 'State card added',
                 WidgetType::StateTimeline => 'State timeline added',
             })
+            ->success()
+            ->send();
+
+        $this->refreshDashboardComputedProperties();
+        $this->dispatchWidgetBootstrapEvent();
+    }
+
+    /**
+     * @param  array<string, mixed>  $arguments
+     */
+    private function duplicateWidget(array $arguments): void
+    {
+        $dashboard = $this->selectedDashboard();
+
+        if (! $dashboard instanceof IoTDashboardModel) {
+            $this->warn('Select a dashboard first');
+
+            return;
+        }
+
+        $widget = $this->resolveWidgetFromArguments($arguments);
+
+        if (! $widget instanceof IoTDashboardWidget) {
+            $this->warn('Widget not found');
+
+            return;
+        }
+
+        $duplicateLayout = $this->widgetLayoutService()->duplicateLayout(
+            sourceLayout: $widget->layoutArray(),
+            occupiedLayouts: IoTDashboardWidget::query()
+                ->where('iot_dashboard_id', $dashboard->id)
+                ->where('id', '!=', $widget->id)
+                ->get()
+                ->map(fn (IoTDashboardWidget $dashboardWidget): array => $dashboardWidget->layoutArray())
+                ->all(),
+        );
+        $duplicateSequence = max(0, (int) $widget->sequence) + 1;
+        $duplicateTitle = $this->duplicateWidgetTitle($widget);
+
+        IoTDashboardWidget::query()->getConnection()->transaction(function () use (
+            $dashboard,
+            $widget,
+            $duplicateLayout,
+            $duplicateSequence,
+            $duplicateTitle,
+        ): void {
+            IoTDashboardWidget::query()
+                ->where('iot_dashboard_id', $dashboard->id)
+                ->where('id', '!=', $widget->id)
+                ->where('sequence', '>=', $duplicateSequence)
+                ->increment('sequence');
+
+            IoTDashboardWidget::query()->create([
+                'iot_dashboard_id' => $dashboard->id,
+                'device_id' => $widget->device_id,
+                'schema_version_topic_id' => $widget->schema_version_topic_id,
+                'type' => $widget->type,
+                'title' => $duplicateTitle,
+                'config' => $widget->configArray(),
+                'layout' => $duplicateLayout,
+                'sequence' => $duplicateSequence,
+            ]);
+        });
+
+        Notification::make()
+            ->title('Widget duplicated')
             ->success()
             ->send();
 
@@ -80,8 +148,11 @@ trait InteractsWithWidgets
      */
     private function normalizeWidgetActionInput(WidgetType $type, array $data): array
     {
-        if ($type === WidgetType::LineChart) {
-            return $data;
+        if (in_array($type, [WidgetType::LineChart, WidgetType::StatusSummary], true)) {
+            return [
+                ...$data,
+                'widget_type' => $type->value,
+            ];
         }
 
         $parameterKey = is_string($data['parameter_key'] ?? null)
@@ -90,6 +161,7 @@ trait InteractsWithWidgets
 
         return [
             ...$data,
+            'widget_type' => $type->value,
             'parameter_keys' => $parameterKey === null || $parameterKey === '' ? [] : [$parameterKey],
             'state_mappings' => in_array($type, [WidgetType::StateCard, WidgetType::StateTimeline], true)
                 ? $this->resolveStateMappingsFromInput($data, $parameterKey)
@@ -173,6 +245,34 @@ trait InteractsWithWidgets
         $title = $data['title'] ?? null;
 
         return is_string($title) ? trim($title) : '';
+    }
+
+    private function duplicateWidgetTitle(IoTDashboardWidget $widget): string
+    {
+        $baseTitle = trim((string) $widget->title);
+        $baseTitle = $baseTitle !== '' ? $baseTitle : 'Widget';
+        $copyTitle = "{$baseTitle} Copy";
+
+        if (! $this->dashboardHasWidgetTitle((int) $widget->iot_dashboard_id, $copyTitle)) {
+            return $copyTitle;
+        }
+
+        $copyIndex = 2;
+
+        do {
+            $candidateTitle = "{$copyTitle} {$copyIndex}";
+            $copyIndex++;
+        } while ($this->dashboardHasWidgetTitle((int) $widget->iot_dashboard_id, $candidateTitle));
+
+        return $candidateTitle;
+    }
+
+    private function dashboardHasWidgetTitle(int $dashboardId, string $title): bool
+    {
+        return IoTDashboardWidget::query()
+            ->where('iot_dashboard_id', $dashboardId)
+            ->where('title', $title)
+            ->exists();
     }
 
     private function accessService(): DashboardAccessService

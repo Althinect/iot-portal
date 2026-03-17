@@ -90,6 +90,7 @@ class IoTDashboard extends Page
                     ->icon(Heroicon::OutlinedPresentationChartLine)
                     ->visible(fn (): bool => $this->selectedDashboard() instanceof IoTDashboardModel)
                     ->slideOver()
+                    ->modalWidth('7xl')
                     ->schema(fn (): array => $this->selectedDashboard() instanceof IoTDashboardModel
                         ? $this->widgetFormSchemaFactory()->lineSchema($this->selectedDashboard())
                         : [])
@@ -102,6 +103,7 @@ class IoTDashboard extends Page
                     ->icon(Heroicon::OutlinedPresentationChartLine)
                     ->visible(fn (): bool => $this->selectedDashboard() instanceof IoTDashboardModel)
                     ->slideOver()
+                    ->modalWidth('7xl')
                     ->schema(fn (): array => $this->selectedDashboard() instanceof IoTDashboardModel
                         ? $this->widgetFormSchemaFactory()->barSchema($this->selectedDashboard())
                         : [])
@@ -114,6 +116,7 @@ class IoTDashboard extends Page
                     ->icon(Heroicon::OutlinedPresentationChartLine)
                     ->visible(fn (): bool => $this->selectedDashboard() instanceof IoTDashboardModel)
                     ->slideOver()
+                    ->modalWidth('7xl')
                     ->schema(fn (): array => $this->selectedDashboard() instanceof IoTDashboardModel
                         ? $this->widgetFormSchemaFactory()->gaugeSchema($this->selectedDashboard())
                         : [])
@@ -121,11 +124,25 @@ class IoTDashboard extends Page
                         $this->createWidget(WidgetType::GaugeChart, $data);
                     }),
 
+                Action::make('addStatusSummaryWidget')
+                    ->label('Add Status Widget')
+                    ->icon(Heroicon::OutlinedListBullet)
+                    ->visible(fn (): bool => $this->selectedDashboard() instanceof IoTDashboardModel)
+                    ->slideOver()
+                    ->modalWidth('7xl')
+                    ->schema(fn (): array => $this->selectedDashboard() instanceof IoTDashboardModel
+                        ? $this->widgetFormSchemaFactory()->statusSummarySchema($this->selectedDashboard())
+                        : [])
+                    ->action(function (array $data): void {
+                        $this->createWidget(WidgetType::StatusSummary, $data);
+                    }),
+
                 Action::make('addStateCardWidget')
                     ->label('Add State Card')
                     ->icon(Heroicon::OutlinedPresentationChartLine)
                     ->visible(fn (): bool => $this->selectedDashboard() instanceof IoTDashboardModel)
                     ->slideOver()
+                    ->modalWidth('7xl')
                     ->schema(fn (): array => $this->selectedDashboard() instanceof IoTDashboardModel
                         ? $this->widgetFormSchemaFactory()->stateCardSchema($this->selectedDashboard())
                         : [])
@@ -138,6 +155,7 @@ class IoTDashboard extends Page
                     ->icon(Heroicon::OutlinedPresentationChartLine)
                     ->visible(fn (): bool => $this->selectedDashboard() instanceof IoTDashboardModel)
                     ->slideOver()
+                    ->modalWidth('7xl')
                     ->schema(fn (): array => $this->selectedDashboard() instanceof IoTDashboardModel
                         ? $this->widgetFormSchemaFactory()->stateTimelineSchema($this->selectedDashboard())
                         : [])
@@ -154,11 +172,11 @@ class IoTDashboard extends Page
     public function editWidgetAction(): Action
     {
         return Action::make('editWidget')
+            ->label('Edit widget')
             ->icon(Heroicon::OutlinedPencilSquare)
-            ->iconButton()
             ->color('gray')
-            ->size('sm')
             ->slideOver()
+            ->modalWidth('7xl')
             ->schema(fn (): array => $this->selectedDashboard() instanceof IoTDashboardModel
                 ? $this->widgetFormSchemaFactory()->editSchema($this->selectedDashboard())
                 : [])
@@ -198,7 +216,7 @@ class IoTDashboard extends Page
                 $config = $this->widgetConfigFactory()->update(
                     type: $widget->widgetType(),
                     data: $normalizedData,
-                    series: $resolvedInput['series'],
+                    resolvedInput: $resolvedInput,
                     currentConfig: $widget->configObject(),
                 );
 
@@ -222,10 +240,9 @@ class IoTDashboard extends Page
     public function deleteWidgetAction(): Action
     {
         return Action::make('deleteWidget')
+            ->label('Delete widget')
             ->icon(Heroicon::OutlinedTrash)
-            ->iconButton()
             ->color('danger')
-            ->size('sm')
             ->requiresConfirmation()
             ->modalHeading('Delete widget')
             ->modalDescription('This will remove the widget from the dashboard.')
@@ -246,6 +263,34 @@ class IoTDashboard extends Page
                 $this->refreshDashboardComputedProperties();
                 $this->dispatchWidgetBootstrapEvent();
             });
+    }
+
+    public function duplicateWidgetAction(): Action
+    {
+        return Action::make('duplicateWidget')
+            ->label('Duplicate widget')
+            ->icon(Heroicon::OutlinedSquare2Stack)
+            ->color('gray')
+            ->action(function (array $arguments): void {
+                $this->duplicateWidget($arguments);
+            });
+    }
+
+    public function widgetHeaderActionGroup(int $widgetId): ActionGroup
+    {
+        return ActionGroup::make([
+            ($this->editWidgetAction())(['widget' => $widgetId])->grouped(),
+            ($this->duplicateWidgetAction())(['widget' => $widgetId])->grouped(),
+            ($this->deleteWidgetAction())(['widget' => $widgetId])->grouped(),
+        ])
+            ->label('Widget actions')
+            ->tooltip('Widget actions')
+            ->icon(Heroicon::OutlinedEllipsisVertical)
+            ->iconButton()
+            ->color('gray')
+            ->size('sm')
+            ->dropdownPlacement('bottom-end')
+            ->livewire($this);
     }
 
     public function getSelectedDashboardProperty(): ?IoTDashboardModel

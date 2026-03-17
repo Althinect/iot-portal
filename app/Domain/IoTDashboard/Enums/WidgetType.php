@@ -11,6 +11,7 @@ enum WidgetType: string implements HasLabel
     case LineChart = 'line_chart';
     case BarChart = 'bar_chart';
     case GaugeChart = 'gauge_chart';
+    case StatusSummary = 'status_summary';
     case StateCard = 'state_card';
     case StateTimeline = 'state_timeline';
 
@@ -20,6 +21,7 @@ enum WidgetType: string implements HasLabel
             self::LineChart => 'Line Chart',
             self::BarChart => 'Bar Chart',
             self::GaugeChart => 'Gauge Chart',
+            self::StatusSummary => 'Status Summary',
             self::StateCard => 'State Card',
             self::StateTimeline => 'State Timeline',
         };
