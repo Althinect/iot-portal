@@ -158,6 +158,32 @@ services:
             - 'sail-nats:/data'
         networks:
             - sail
+
+    node-red:
+        image: 'nodered/node-red:4.1.1'
+        ports:
+            - '${FORWARD_NODE_RED_PORT:-1880}:1880'
+        environment:
+            TZ: '${APP_TIMEZONE:-UTC}'
+        volumes:
+            - './docker/node-red/data:/data'
+        networks:
+            - sail
+        depends_on:
+            nats:
+                condition: service_started
+        restart: unless-stopped
+
+    cloudflared:
+        image: 'cloudflare/cloudflared:latest'
+        command: 'tunnel --no-autoupdate run'
+        environment:
+            TUNNEL_TOKEN: '${CLOUDFLARE_TUNNEL_TOKEN}'
+        networks:
+            - sail
+        depends_on:
+            - node-red
+        restart: unless-stopped
 networks:
     sail:
         driver: bridge

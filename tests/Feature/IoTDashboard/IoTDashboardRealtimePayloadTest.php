@@ -115,6 +115,40 @@ it('includes device-topic realtime stream metadata in widget bootstrap payloads'
         ->toBe(2);
 });
 
+it('uses a one second realtime sample window for status summary widgets', function (): void {
+    $schemaVersion = DeviceSchemaVersion::factory()->active()->create();
+    $dashboard = IoTDashboard::factory()->create();
+
+    $topic = SchemaVersionTopic::factory()->publish()->create([
+        'device_schema_version_id' => $schemaVersion->id,
+        'key' => 'telemetry',
+        'suffix' => 'telemetry',
+    ]);
+
+    $device = Device::factory()->create([
+        'organization_id' => $dashboard->organization_id,
+        'device_schema_version_id' => $schemaVersion->id,
+    ]);
+
+    IoTDashboardWidget::factory()->statusSummary()->create([
+        'iot_dashboard_id' => $dashboard->id,
+        'device_id' => $device->id,
+        'schema_version_topic_id' => $topic->id,
+    ]);
+
+    $payload = app(WidgetBootstrapPayloadBuilder::class)->build($dashboard->fresh([
+        'widgets.topic:id,label,suffix',
+        'widgets.device:id,uuid,name,organization_id,external_id',
+    ]));
+
+    expect($payload)->toHaveCount(1)
+        ->and(data_get($payload, '0.type'))->toBe('status_summary')
+        ->and(data_get($payload, '0.realtime.sample_window_seconds'))->toBe(1)
+        ->and(data_get($payload, '0.series.0.unit'))->toBe('Volts')
+        ->and(data_get($payload, '0.series.0.source.parameter_key'))->toBe('V1')
+        ->and(data_get($payload, '0.layout_rows.0.tile_keys'))->toBe(['V1', 'A1']);
+});
+
 it('disables dashboard realtime broadcast channels when the ingestion realtime kill switch is off', function (): void {
     Event::fake([TelemetryReceived::class]);
 

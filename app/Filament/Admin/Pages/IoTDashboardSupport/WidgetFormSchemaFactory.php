@@ -8,14 +8,18 @@ use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Widgets\BarChart\BarInterval;
 use App\Domain\IoTDashboard\Widgets\GaugeChart\GaugeStyle;
+use App\Domain\IoTDashboard\Widgets\StateCard\StateCardStyle;
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Repeater\TableColumn;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 
 class WidgetFormSchemaFactory
 {
@@ -25,7 +29,7 @@ class WidgetFormSchemaFactory
     ) {}
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     public function lineSchema(IoTDashboard $dashboard): array
     {
@@ -48,7 +52,7 @@ class WidgetFormSchemaFactory
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     public function barSchema(IoTDashboard $dashboard): array
     {
@@ -74,7 +78,7 @@ class WidgetFormSchemaFactory
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     public function gaugeSchema(IoTDashboard $dashboard): array
     {
@@ -122,7 +126,74 @@ class WidgetFormSchemaFactory
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
+     */
+    public function statusSummarySchema(IoTDashboard $dashboard): array
+    {
+        return [
+            TextInput::make('title')
+                ->label('Widget title')
+                ->required()
+                ->default('Latest Status')
+                ->maxLength(255),
+            ...$this->statusSummaryScopeSchema($dashboard),
+            ...$this->statusSummaryRowsSchema($dashboard),
+            ...$this->transportSchema(true, true, 10, 180, 1),
+            ...$this->layoutSchema(),
+        ];
+    }
+
+    /**
+     * @return array<int, Component>
+     */
+    public function stateCardSchema(IoTDashboard $dashboard): array
+    {
+        return [
+            TextInput::make('title')
+                ->label('Widget title')
+                ->required()
+                ->default('State Card')
+                ->maxLength(255),
+            ...$this->baseScopeSchema($dashboard),
+            Select::make('parameter_key')
+                ->label('State parameter')
+                ->options(fn (Get $get): array => $this->optionsService->stateParameterOptions($get('schema_version_topic_id')))
+                ->required(),
+            Select::make('display_style')
+                ->label('Display style')
+                ->options(StateCardStyle::class)
+                ->default(StateCardStyle::Toggle->value)
+                ->required(),
+            ...$this->stateMappingsSchema(),
+            ...$this->transportSchema(true, true, 10, 1440, 1),
+            ...$this->layoutSchema(),
+        ];
+    }
+
+    /**
+     * @return array<int, Component>
+     */
+    public function stateTimelineSchema(IoTDashboard $dashboard): array
+    {
+        return [
+            TextInput::make('title')
+                ->label('Widget title')
+                ->required()
+                ->default('State Timeline')
+                ->maxLength(255),
+            ...$this->baseScopeSchema($dashboard),
+            Select::make('parameter_key')
+                ->label('State parameter')
+                ->options(fn (Get $get): array => $this->optionsService->stateParameterOptions($get('schema_version_topic_id')))
+                ->required(),
+            ...$this->stateMappingsSchema(),
+            ...$this->transportSchema(true, true, 10, 360, 240),
+            ...$this->layoutSchema(),
+        ];
+    }
+
+    /**
+     * @return array<int, Component>
      */
     public function editSchema(IoTDashboard $dashboard): array
     {
@@ -146,10 +217,24 @@ class WidgetFormSchemaFactory
                         return $this->optionsService->counterParameterOptions($topicId);
                     }
 
+                    if (in_array($type, [WidgetType::StateCard->value, WidgetType::StateTimeline->value], true)) {
+                        return $this->optionsService->stateParameterOptions($topicId);
+                    }
+
                     return $this->optionsService->numericParameterOptions($topicId);
                 })
-                ->visible(fn (Get $get): bool => in_array($get('widget_type'), [WidgetType::BarChart->value, WidgetType::GaugeChart->value], true))
-                ->required(fn (Get $get): bool => in_array($get('widget_type'), [WidgetType::BarChart->value, WidgetType::GaugeChart->value], true)),
+                ->visible(fn (Get $get): bool => in_array($get('widget_type'), [
+                    WidgetType::BarChart->value,
+                    WidgetType::GaugeChart->value,
+                    WidgetType::StateCard->value,
+                    WidgetType::StateTimeline->value,
+                ], true))
+                ->required(fn (Get $get): bool => in_array($get('widget_type'), [
+                    WidgetType::BarChart->value,
+                    WidgetType::GaugeChart->value,
+                    WidgetType::StateCard->value,
+                    WidgetType::StateTimeline->value,
+                ], true)),
             Select::make('bar_interval')
                 ->label('Aggregation interval')
                 ->options(BarInterval::class)
@@ -179,13 +264,36 @@ class WidgetFormSchemaFactory
                 ->columns(3)
                 ->columnSpanFull()
                 ->visible(fn (Get $get): bool => $get('widget_type') === WidgetType::GaugeChart->value),
+            Select::make('display_style')
+                ->label('Display style')
+                ->options(StateCardStyle::class)
+                ->visible(fn (Get $get): bool => $get('widget_type') === WidgetType::StateCard->value)
+                ->required(fn (Get $get): bool => $get('widget_type') === WidgetType::StateCard->value),
+            Repeater::make('state_mappings')
+                ->label('State mappings')
+                ->default($this->defaultStateMappings())
+                ->minItems(1)
+                ->maxItems(12)
+                ->reorderable()
+                ->schema([
+                    TextInput::make('value')->required(),
+                    TextInput::make('label')->required(),
+                    ColorPicker::make('color')->required(),
+                ])
+                ->columns(3)
+                ->helperText('Map stored state values to labels and colors. You can override schema defaults per widget.')
+                ->columnSpanFull()
+                ->visible(fn (Get $get): bool => in_array($get('widget_type'), [WidgetType::StateCard->value, WidgetType::StateTimeline->value], true)),
+            $this->statusSummaryRowsRepeater($dashboard)
+                ->visible(fn (Get $get): bool => $get('widget_type') === WidgetType::StatusSummary->value)
+                ->required(fn (Get $get): bool => $get('widget_type') === WidgetType::StatusSummary->value),
             ...$this->transportSchema(true, true, 10, 120, 240),
             ...$this->layoutSchema(),
         ];
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     private function baseScopeSchema(IoTDashboard $dashboard): array
     {
@@ -206,7 +314,31 @@ class WidgetFormSchemaFactory
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
+     */
+    private function statusSummaryScopeSchema(IoTDashboard $dashboard): array
+    {
+        return [
+            Select::make('device_id')
+                ->label('Device')
+                ->options(fn (): array => $this->optionsService->deviceOptions($dashboard))
+                ->searchable()
+                ->required()
+                ->live(),
+            Select::make('schema_version_topic_id')
+                ->label('Publish topic')
+                ->options(fn (Get $get): array => $this->optionsService->topicOptions($dashboard, $get('device_id')))
+                ->searchable()
+                ->required()
+                ->live()
+                ->afterStateUpdated(function (Set $set, mixed $state): void {
+                    $set('rows', $this->optionsService->statusSummaryDefaultRows($state));
+                }),
+        ];
+    }
+
+    /**
+     * @return array<int, Component>
      */
     private function transportSchema(
         bool $defaultWebsocket,
@@ -246,7 +378,7 @@ class WidgetFormSchemaFactory
     }
 
     /**
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     private function layoutSchema(): array
     {
@@ -267,5 +399,146 @@ class WidgetFormSchemaFactory
                         ->required(),
                 ]),
         ];
+    }
+
+    /**
+     * @return array<int, Component>
+     */
+    private function statusSummaryRowsSchema(IoTDashboard $dashboard): array
+    {
+        return [
+            $this->statusSummaryRowsRepeater($dashboard)->required(),
+        ];
+    }
+
+    /**
+     * @return array<int, Component>
+     */
+    private function statusSummaryRowFields(IoTDashboard $dashboard): array
+    {
+        return [
+            Repeater::make('tiles')
+                ->label('Tiles')
+                ->minItems(1)
+                ->maxItems(8)
+                ->reorderable()
+                ->grid(4)
+                ->itemLabel(fn (array $state): string => $this->statusSummaryTilePreviewLabel($state))
+                ->schema($this->statusSummaryTileFields($dashboard))
+                ->helperText('Configure each tile in this row. Tiles in the same row share the width equally.')
+                ->columnSpanFull()
+                ->required(),
+        ];
+    }
+
+    /**
+     * @return array<int, Component>
+     */
+    private function stateMappingsSchema(): array
+    {
+        return [
+            Repeater::make('state_mappings')
+                ->label('State mappings')
+                ->default($this->defaultStateMappings())
+                ->minItems(1)
+                ->maxItems(12)
+                ->reorderable()
+                ->schema([
+                    TextInput::make('value')->required(),
+                    TextInput::make('label')->required(),
+                    ColorPicker::make('color')->required(),
+                ])
+                ->columns(3)
+                ->helperText('Map stored state values to labels and colors. You can override schema defaults per widget.')
+                ->columnSpanFull(),
+        ];
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string, color: string}>
+     */
+    private function defaultStateMappings(): array
+    {
+        return [
+            ['value' => '0', 'label' => 'OFF', 'color' => '#ef4444'],
+            ['value' => '1', 'label' => 'ON', 'color' => '#22c55e'],
+        ];
+    }
+
+    private function statusSummaryRowsRepeater(IoTDashboard $dashboard): Repeater
+    {
+        return Repeater::make('rows')
+            ->label('Rows')
+            ->default([['tiles' => []]])
+            ->minItems(1)
+            ->maxItems(8)
+            ->reorderable()
+            ->schema($this->statusSummaryRowFields($dashboard))
+            ->helperText('Add rows and configure tiles inside each row.')
+            ->columnSpanFull();
+    }
+
+    /**
+     * @return array<int, Component>
+     */
+    private function statusSummaryTileFields(IoTDashboard $dashboard): array
+    {
+        return [
+            Hidden::make('source.type')->default('latest_parameter'),
+            Select::make('source.parameter_key')
+                ->label('Metric parameter')
+                ->options(function (Get $get): array {
+                    $topicId = $this->resolveStatusSummaryTopicId($get);
+
+                    return $this->optionsService->statusSummaryMetricOptions($topicId);
+                })
+                ->searchable()
+                ->required(),
+            Repeater::make('threshold_ranges')
+                ->label('Threshold colors')
+                ->default([])
+                ->table([
+                    TableColumn::make('Min'),
+                    TableColumn::make('Max'),
+                    TableColumn::make('Color')->markAsRequired()->width('8rem'),
+                ])
+                ->schema([
+                    TextInput::make('from')
+                        ->numeric()
+                        ->placeholder('Min')
+                        ->hiddenLabel(),
+                    TextInput::make('to')
+                        ->numeric()
+                        ->placeholder('Max')
+                        ->hiddenLabel(),
+                    ColorPicker::make('color')
+                        ->required()
+                        ->hiddenLabel(),
+                ])
+                ->helperText('The first matching range determines the tile color. Leave min or max empty for open-ended ranges.')
+                ->columnSpanFull(),
+        ];
+    }
+
+    private function resolveStatusSummaryTopicId(Get $get): mixed
+    {
+        return $get('schema_version_topic_id')
+            ?? $get('../../schema_version_topic_id')
+            ?? $get('../../../schema_version_topic_id')
+            ?? $get('../../../../schema_version_topic_id');
+    }
+
+    /**
+     * @param  array<string, mixed>  $state
+     */
+    private function statusSummaryTilePreviewLabel(array $state): string
+    {
+        $parameterKey = data_get($state, 'source.parameter_key');
+
+        if (is_string($parameterKey) && trim($parameterKey) !== '') {
+            return trim($parameterKey);
+        }
+
+        return 'Metric';
     }
 }
