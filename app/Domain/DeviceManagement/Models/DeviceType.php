@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 /**
  * @property ProtocolConfigInterface|null $protocol_config
@@ -59,6 +60,19 @@ class DeviceType extends Model
     public function schemas(): HasMany
     {
         return $this->hasMany(DeviceSchema::class, 'device_type_id');
+    }
+
+    /**
+     * @return HasManyThrough<\App\Domain\DeviceSchema\Models\DeviceSchemaVersion, DeviceSchema, $this>
+     */
+    public function schemaVersions(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            \App\Domain\DeviceSchema\Models\DeviceSchemaVersion::class,
+            DeviceSchema::class,
+            'device_type_id',
+            'device_schema_id',
+        );
     }
 
     /**

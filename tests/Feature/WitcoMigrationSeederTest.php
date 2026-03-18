@@ -63,20 +63,20 @@ it('seeds witco hubs with mapped peripheral child devices only', function (): vo
         ->all();
 
     expect($childExternalIds)->toBe([
-        'witco-access-control-system-alarm',
-        'witco-cctv-system-alarm',
-        'witco-fire-alarm-panel',
-        'witco-main-door-status',
-        'witco-rear-door-status',
-        'witco-th-rh-gf-ups-room',
-        'witco-th-rh-input-server-room',
-        'witco-ups-alarm-status',
-        'witco-water-tank-alarm-level',
+        '869244041754866-00-02',
+        '869244041754866-00-03',
+        '869244041759279-00-01',
+        '869244041759279-00-02',
+        '869244041759279-00-03',
+        '869244041759568-00-01',
+        '869244041759568-00-02',
+        '869244041767199-00-01',
+        '869244041767199-00-02',
     ]);
 
     $statusDevice = Device::query()
         ->where('organization_id', $organization?->id)
-        ->where('external_id', 'witco-water-tank-alarm-level')
+        ->where('external_id', '869244041754866-00-02')
         ->first();
 
     $statusTopic = $statusDevice?->schemaVersion?->topics()->where('key', 'telemetry')->first();
@@ -89,7 +89,7 @@ it('seeds witco hubs with mapped peripheral child devices only', function (): vo
         ->and($statusDevice?->deviceType?->organization_id)->toBeNull()
         ->and($statusDevice?->deviceType?->key)->toBe('imoni_status')
         ->and($statusDevice?->schemaVersion?->schema?->name)->toBe('IMONI Status')
-        ->and($statusTopic?->resolvedTopic($statusDevice))->toBe('devices/imoni-status/witco-water-tank-alarm-level/telemetry')
+        ->and($statusTopic?->resolvedTopic($statusDevice))->toBe('devices/imoni-status/869244041754866-00-02/telemetry')
         ->and($statusParameter)->not->toBeNull()
         ->and($statusParameter?->type)->toBe(ParameterDataType::Integer)
         ->and($statusParameter?->category)->toBe(ParameterCategory::State)
@@ -128,8 +128,8 @@ it('marks a witco hub online and ingests source-routed telemetry into physical s
     $this->seed(WitcoMigrationSeeder::class);
 
     $hub = Device::query()->where('external_id', '869244041754866')->firstOrFail();
-    $waterTankAlarm = Device::query()->where('external_id', 'witco-water-tank-alarm-level')->firstOrFail();
-    $serverRoomInput = Device::query()->where('external_id', 'witco-th-rh-input-server-room')->firstOrFail();
+    $waterTankAlarm = Device::query()->where('external_id', '869244041754866-00-02')->firstOrFail();
+    $serverRoomInput = Device::query()->where('external_id', '869244041754866-00-03')->firstOrFail();
 
     /** @var DevicePresenceMessageHandler $presenceHandler */
     $presenceHandler = app(DevicePresenceMessageHandler::class);

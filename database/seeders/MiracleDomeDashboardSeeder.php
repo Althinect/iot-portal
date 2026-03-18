@@ -20,15 +20,15 @@ class MiracleDomeDashboardSeeder extends Seeder
      */
     private const DEVICE_WIDGETS = [
         [
-            'external_id' => 'miracle-dome-video-room-2-energy-meter',
+            'external_id' => '869244041759261-21',
             'title' => 'Video Room 2 Energy Meter',
         ],
         [
-            'external_id' => 'miracle-dome-server-room-2-energy-meter',
+            'external_id' => '869244041759402-21',
             'title' => 'Server Room 2 Energy meter',
         ],
         [
-            'external_id' => 'miracle-dome-bts-energy-meter',
+            'external_id' => '869244041759402-22',
             'title' => 'BTS Energy meter',
         ],
     ];
@@ -103,50 +103,50 @@ class MiracleDomeDashboardSeeder extends Seeder
                         'rows' => [
                             [
                                 'tiles' => [[
-                                    'key' => 'total_energy_kwh',
+                                    'key' => 'TotalEnergy',
                                     'label' => 'Total kWh',
                                     'base_color' => '#0ea5e9',
                                     'unit' => MetricUnit::KilowattHours->value,
                                     'threshold_ranges' => [],
                                     'source' => [
                                         'type' => 'latest_parameter',
-                                        'parameter_key' => 'total_energy_kwh',
+                                        'parameter_key' => 'TotalEnergy',
                                     ],
                                 ]],
                             ],
                             [
                                 'tiles' => [
                                     [
-                                        'key' => 'V1',
-                                        'label' => 'V1',
+                                        'key' => 'PhaseAVoltage',
+                                        'label' => 'Phase A V',
                                         'base_color' => '#22d3ee',
                                         'unit' => MetricUnit::Volts->value,
                                         'threshold_ranges' => [],
                                         'source' => [
                                             'type' => 'latest_parameter',
-                                            'parameter_key' => 'V1',
+                                            'parameter_key' => 'PhaseAVoltage',
                                         ],
                                     ],
                                     [
-                                        'key' => 'V2',
-                                        'label' => 'V2',
+                                        'key' => 'PhaseBVoltage',
+                                        'label' => 'Phase B V',
                                         'base_color' => '#3b82f6',
                                         'unit' => MetricUnit::Volts->value,
                                         'threshold_ranges' => [],
                                         'source' => [
                                             'type' => 'latest_parameter',
-                                            'parameter_key' => 'V2',
+                                            'parameter_key' => 'PhaseBVoltage',
                                         ],
                                     ],
                                     [
-                                        'key' => 'V3',
-                                        'label' => 'V3',
+                                        'key' => 'PhaseCVoltage',
+                                        'label' => 'Phase C V',
                                         'base_color' => '#8b5cf6',
                                         'unit' => MetricUnit::Volts->value,
                                         'threshold_ranges' => [],
                                         'source' => [
                                             'type' => 'latest_parameter',
-                                            'parameter_key' => 'V3',
+                                            'parameter_key' => 'PhaseCVoltage',
                                         ],
                                     ],
                                 ],
@@ -154,36 +154,36 @@ class MiracleDomeDashboardSeeder extends Seeder
                             [
                                 'tiles' => [
                                     [
-                                        'key' => 'A1',
-                                        'label' => 'A1',
+                                        'key' => 'PhaseACurrent',
+                                        'label' => 'Phase A I',
                                         'base_color' => '#10b981',
                                         'unit' => MetricUnit::Amperes->value,
                                         'threshold_ranges' => [],
                                         'source' => [
                                             'type' => 'latest_parameter',
-                                            'parameter_key' => 'A1',
+                                            'parameter_key' => 'PhaseACurrent',
                                         ],
                                     ],
                                     [
-                                        'key' => 'A2',
-                                        'label' => 'A2',
+                                        'key' => 'PhaseBCurrent',
+                                        'label' => 'Phase B I',
                                         'base_color' => '#14b8a6',
                                         'unit' => MetricUnit::Amperes->value,
                                         'threshold_ranges' => [],
                                         'source' => [
                                             'type' => 'latest_parameter',
-                                            'parameter_key' => 'A2',
+                                            'parameter_key' => 'PhaseBCurrent',
                                         ],
                                     ],
                                     [
-                                        'key' => 'A3',
-                                        'label' => 'A3',
+                                        'key' => 'PhaseCCurrent',
+                                        'label' => 'Phase C I',
                                         'base_color' => '#f59e0b',
                                         'unit' => MetricUnit::Amperes->value,
                                         'threshold_ranges' => [],
                                         'source' => [
                                             'type' => 'latest_parameter',
-                                            'parameter_key' => 'A3',
+                                            'parameter_key' => 'PhaseCCurrent',
                                         ],
                                     ],
                                 ],
@@ -222,9 +222,9 @@ class MiracleDomeDashboardSeeder extends Seeder
                     'type' => WidgetType::LineChart->value,
                     'config' => [
                         'series' => [
-                            ['key' => 'V1', 'label' => 'Voltage V1', 'color' => '#22d3ee'],
-                            ['key' => 'V2', 'label' => 'Voltage V2', 'color' => '#3b82f6'],
-                            ['key' => 'V3', 'label' => 'Voltage V3', 'color' => '#8b5cf6'],
+                            ['key' => 'PhaseAVoltage', 'label' => 'Phase A Voltage', 'color' => '#22d3ee'],
+                            ['key' => 'PhaseBVoltage', 'label' => 'Phase B Voltage', 'color' => '#3b82f6'],
+                            ['key' => 'PhaseCVoltage', 'label' => 'Phase C Voltage', 'color' => '#8b5cf6'],
                         ],
                         'transport' => [
                             'use_websocket' => true,
@@ -281,7 +281,7 @@ class MiracleDomeDashboardSeeder extends Seeder
                     'type' => WidgetType::BarChart->value,
                     'config' => [
                         'series' => [
-                            ['key' => 'total_energy_kwh', 'label' => 'Total Energy', 'color' => '#0ea5e9'],
+                            ['key' => 'TotalEnergy', 'label' => 'Total Energy', 'color' => '#0ea5e9'],
                         ],
                         'transport' => [
                             'use_websocket' => false,

@@ -10,7 +10,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-it('seeds only the witco pilot and global migration catalog by default', function (): void {
+it('seeds the witco, miracle dome, and textrip pilots plus the shared migration catalog by default', function (): void {
+    $this->seed(DatabaseSeeder::class);
     $this->seed(DatabaseSeeder::class);
 
     $organizationSlugs = Organization::query()
@@ -30,14 +31,22 @@ it('seeds only the witco pilot and global migration catalog by default', functio
 
     expect($organizationSlugs)->toBe([
         'main-organization',
+        'miracle-dome',
+        'textrip',
         'witco',
     ])->and($deviceTypeKeys)->toBe([
+        'energy_meter',
         'imoni_status',
         'legacy_hub',
+        'tank_level_sensor',
     ])->and(Organization::query()->where('slug', 'migration-rehearsal')->exists())->toBeFalse()
         ->and($allDeviceExternalIds)->not->toContain('869244049087921-00')
         ->and($allDeviceExternalIds)->not->toContain('869244049087921-11')
         ->and($allDeviceExternalIds)->not->toContain('869244049087921-12')
-        ->and(Device::query()->where('external_id', 'witco-water-tank-alarm-level')->exists())->toBeTrue()
-        ->and(Device::query()->where('external_id', '869244041754866')->exists())->toBeTrue();
+        ->and(Device::query()->where('external_id', '869244041754866-00-02')->exists())->toBeTrue()
+        ->and(Device::query()->where('external_id', '869244041754866')->exists())->toBeTrue()
+        ->and(Device::query()->where('external_id', '869244041759402')->exists())->toBeTrue()
+        ->and(Device::query()->where('external_id', '869244041759402-22')->exists())->toBeTrue()
+        ->and(Device::query()->where('external_id', '869244041759394-21')->exists())->toBeTrue()
+        ->and(Device::query()->where('external_id', '869604063866064-51')->exists())->toBeTrue();
 });

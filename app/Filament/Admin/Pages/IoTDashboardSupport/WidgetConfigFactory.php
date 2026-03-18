@@ -233,6 +233,23 @@ class WidgetConfigFactory
         return is_numeric($value) ? (int) round((float) $value) : $default;
     }
 
+    private function stringFromMixed(mixed $value): string
+    {
+        if ($value instanceof BackedEnum) {
+            return (string) $value->value;
+        }
+
+        if (is_string($value)) {
+            return $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (string) $value;
+        }
+
+        return '';
+    }
+
     /**
      * @param  array<int, array{tiles: array<int, array<string, mixed>>}>  $rows
      * @return array<int, array{tiles: array<int, array<string, mixed>>}>
@@ -449,18 +466,19 @@ class WidgetConfigFactory
         }
 
         $type = is_string($window['type'] ?? null) ? trim((string) $window['type']) : 'today';
+        $shiftScheduleId = $this->stringFromMixed($window['shift_schedule_id'] ?? null);
 
         return match ($type) {
             'month_to_date' => 'month_to_date',
             'trailing_duration' => 'trailing_duration_'.$this->toInt($window['minutes'] ?? null, 60).'m',
             'completed_shift' => implode('__', array_filter([
                 'completed_shift',
-                $this->slugStatusSummaryKeySegment((string) ($window['shift_schedule_id'] ?? '')),
+                $this->slugStatusSummaryKeySegment($shiftScheduleId),
                 'offset_'.$this->toInt($window['offset'] ?? null, 0),
             ])),
             'completed_shift_span' => implode('__', array_filter([
                 'completed_shift_span',
-                $this->slugStatusSummaryKeySegment((string) ($window['shift_schedule_id'] ?? '')),
+                $this->slugStatusSummaryKeySegment($shiftScheduleId),
                 'offset_'.$this->toInt($window['offset'] ?? null, 0),
                 'count_'.$this->toInt($window['count'] ?? null, 2),
             ])),

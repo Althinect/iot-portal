@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class DeviceSchema extends Model
@@ -35,5 +36,18 @@ class DeviceSchema extends Model
     public function versions(): HasMany
     {
         return $this->hasMany(DeviceSchemaVersion::class);
+    }
+
+    /**
+     * @return HasManyThrough<SchemaVersionTopic, DeviceSchemaVersion, $this>
+     */
+    public function topics(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            SchemaVersionTopic::class,
+            DeviceSchemaVersion::class,
+            'device_schema_id',
+            'device_schema_version_id',
+        );
     }
 }

@@ -39,11 +39,11 @@ it('expands a source topic payload into bound physical device envelopes', functi
     expect($resolver->supportsTopic($sourceTopic))->toBeTrue()
         ->and($expandedEnvelopes)->toHaveCount(2)
         ->and($payloadsByDevice->keys()->sort()->values()->all())->toBe([
-            'witco-th-rh-input-server-room',
-            'witco-water-tank-alarm-level',
+            '869244041754866-00-02',
+            '869244041754866-00-03',
         ])
-        ->and($payloadsByDevice->get('witco-water-tank-alarm-level'))->toMatchArray([
-            'mqtt_topic' => 'devices/imoni-status/witco-water-tank-alarm-level/telemetry',
+        ->and($payloadsByDevice->get('869244041754866-00-02'))->toMatchArray([
+            'mqtt_topic' => 'devices/imoni-status/869244041754866-00-02/telemetry',
             'payload' => [
                 'status' => 1,
                 '_meta' => [
@@ -54,8 +54,8 @@ it('expands a source topic payload into bound physical device envelopes', functi
                 ],
             ],
         ])
-        ->and($payloadsByDevice->get('witco-th-rh-input-server-room'))->toMatchArray([
-            'mqtt_topic' => 'devices/imoni-status/witco-th-rh-input-server-room/telemetry',
+        ->and($payloadsByDevice->get('869244041754866-00-03'))->toMatchArray([
+            'mqtt_topic' => 'devices/imoni-status/869244041754866-00-03/telemetry',
             'payload' => [
                 'status' => 0,
                 '_meta' => [

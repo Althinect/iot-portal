@@ -38,9 +38,9 @@ it('seeds WITCO status and history dashboards with state widgets for migrated ph
         ->and($statusWidgets->every(fn (IoTDashboardWidget $widget): bool => $widget->type === 'state_card'))->toBeTrue()
         ->and($historyWidgets->every(fn (IoTDashboardWidget $widget): bool => $widget->type === 'state_timeline'))->toBeTrue()
         ->and($statusWidgets->pluck('device.external_id')->all())->toContain(
-            'witco-main-door-status',
-            'witco-rear-door-status',
-            'witco-fire-alarm-panel',
+            '869244041759279-00-02',
+            '869244041759279-00-01',
+            '869244041767199-00-01',
         )
         ->and(data_get($statusWidgets->firstWhere('title', 'Main Door Status')?->configArray(), 'display_style'))->toBe('pill')
         ->and(data_get($statusWidgets->firstWhere('title', 'Main Door Status')?->configArray(), 'state_mappings.0.label'))->toBe('OPEN')

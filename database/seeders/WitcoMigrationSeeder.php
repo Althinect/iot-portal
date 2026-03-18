@@ -21,7 +21,6 @@ use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Str;
 
 class WitcoMigrationSeeder extends Seeder
 {
@@ -151,9 +150,12 @@ class WitcoMigrationSeeder extends Seeder
 
     public function run(): void
     {
-        $organization = Organization::query()->firstOrCreate(
+        $organization = Organization::withTrashed()->updateOrCreate(
             ['slug' => self::ORGANIZATION_SLUG],
-            ['name' => 'WITCO'],
+            [
+                'name' => 'WITCO',
+                'deleted_at' => null,
+            ],
         );
 
         $this->pruneObsoleteSchemaArtifacts();
@@ -428,7 +430,11 @@ class WitcoMigrationSeeder extends Seeder
      */
     private function physicalDeviceExternalId(array $mapping): string
     {
-        return self::ORGANIZATION_SLUG.'-'.Str::slug($mapping['label']);
+        return $mapping['hub_imei']
+            .'-'
+            .self::STATUS_PERIPHERAL_TYPE_HEX
+            .'-'
+            .str_pad((string) $mapping['io_number'], 2, '0', STR_PAD_LEFT);
     }
 
     private function pruneObsoleteSchemaArtifacts(): void

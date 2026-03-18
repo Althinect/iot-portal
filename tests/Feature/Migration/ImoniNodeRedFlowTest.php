@@ -127,7 +127,85 @@ it('normalizes iMoni peripheral payloads into source topics for laravel-side bin
         '00',
         '11',
         '12',
-    ]);
+    ])->and(data_get($childPayloads->first(), 'object_values.1.value'))->toBe(347)
+        ->and(data_get($childPayloads->first(), 'object_values.2.value'))->toBe(350)
+        ->and(data_get($childPayloads->first(), 'object_values.3.value'))->toBe(346)
+        ->and(data_get($childPayloads->first(), 'io_1_value'))->toBe(347)
+        ->and(data_get($childPayloads->first(), 'io_2_value'))->toBe(350)
+        ->and(data_get($childPayloads->first(), 'io_3_value'))->toBe(346);
+});
+
+it('preserves named peripheral object keys in a structured source payload', function (): void {
+    $samplePayload = [
+        'imei' => '869244041759394',
+        'deviceId' => '869244041759394',
+        'type' => 'data',
+        'timestamp' => '2026/03/18 12:25:36',
+        'firmwareVersion' => '96',
+        'packetType' => '13',
+        'packetDescription' => 'PeripheralData',
+        'segmentCount' => '01',
+        'dataLength' => '0020',
+        'peripheralDataArr' => [
+            'AC_energyMate1' => [
+                'TotalEnergy' => ['TotalEnergy', '1B00000001', 'read64bitdata', 451.2],
+                'ActivePowerA' => ['ActivePowerA', '1B00000002', 'read64bitdata', 1820.4],
+                'PhaseAVoltage' => ['PhaseAVoltage', '1B00000003', 'read64bitdata', 230.4],
+            ],
+        ],
+    ];
+
+    $result = runImoniFlow($samplePayload);
+
+    $sourcePayload = data_get($result['published'], '1.payload');
+    $sourceKeys = collect($sourcePayload ?? [])->keys()->filter(
+        fn (string $key): bool => str_starts_with($key, 'io_NaN_'),
+    );
+
+    expect(data_get($result['published'], '1.topic'))->toBe('migration/source/imoni/869244041759394/21/telemetry')
+        ->and(data_get($sourcePayload, 'object_values.TotalEnergy.value'))->toBe(451.2)
+        ->and(data_get($sourcePayload, 'object_values.ActivePowerA.value'))->toBe(1820.4)
+        ->and(data_get($sourcePayload, 'object_values.PhaseAVoltage.value'))->toBe(230.4)
+        ->and(data_get($sourcePayload, 'io_1_value'))->toBeNull()
+        ->and($sourceKeys->all())->toBe([]);
+});
+
+it('publishes both numeric aliases and named object values for mixed peripherals without io_NaN aliases', function (): void {
+    $samplePayload = [
+        'imei' => '869244041759394',
+        'deviceId' => '869244041759394',
+        'type' => 'data',
+        'timestamp' => '2026/03/18 12:25:36',
+        'firmwareVersion' => '96',
+        'packetType' => '13',
+        'packetDescription' => 'PeripheralData',
+        'segmentCount' => '01',
+        'dataLength' => '0020',
+        'peripheralDataArr' => [
+            'AC_energyMate1' => [
+                '1' => [1, '0101015B', 'readAnalogIN', 2300],
+                '2' => [2, '0102015E', 'readAnalogIN', 2310],
+                'TotalEnergy' => ['TotalEnergy', '1B00000001', 'read64bitdata', 451.2],
+                'TotalActivePower' => ['TotalActivePower', '1B00000002', 'read64bitdata', 1820.4],
+            ],
+        ],
+    ];
+
+    $result = runImoniFlow($samplePayload);
+
+    $sourcePayload = data_get($result['published'], '1.payload');
+    $invalidAliasKeys = collect($sourcePayload ?? [])->keys()->filter(
+        fn (string $key): bool => str_starts_with($key, 'io_NaN_'),
+    );
+
+    expect(data_get($result['published'], '1.topic'))->toBe('migration/source/imoni/869244041759394/21/telemetry')
+        ->and(data_get($sourcePayload, 'io_1_value'))->toBe(2300)
+        ->and(data_get($sourcePayload, 'io_2_value'))->toBe(2310)
+        ->and(data_get($sourcePayload, 'object_values.1.value'))->toBe(2300)
+        ->and(data_get($sourcePayload, 'object_values.2.value'))->toBe(2310)
+        ->and(data_get($sourcePayload, 'object_values.TotalEnergy.value'))->toBe(451.2)
+        ->and(data_get($sourcePayload, 'object_values.TotalActivePower.value'))->toBe(1820.4)
+        ->and($invalidAliasKeys->all())->toBe([]);
 });
 
 it('publishes only hub presence for heartbeat payloads', function (): void {
@@ -186,6 +264,8 @@ it('normalizes witco hub traffic into generic source topics for laravel-side bin
     ])->and($sourcePayload)->toBeArray()
         ->and($sourcePayload['io_2_value'] ?? null)->toBe(1)
         ->and($sourcePayload['io_3_value'] ?? null)->toBe(0)
+        ->and(data_get($sourcePayload, 'object_values.2.value'))->toBe(1)
+        ->and(data_get($sourcePayload, 'object_values.3.value'))->toBe(0)
         ->and(data_get($sourcePayload, '_meta.source_key'))->toBe('869244041754866:00')
         ->and(data_get($sourcePayload, '_meta.peripheral_type_hex'))->toBe('00')
         ->and($result['summary'])->toMatchArray([

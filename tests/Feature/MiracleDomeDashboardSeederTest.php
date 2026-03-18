@@ -44,22 +44,22 @@ it('seeds miracle dome realtime and history dashboards for the migrated energy m
         ->and($trendWidgets->every(fn (IoTDashboardWidget $widget): bool => $widget->type === 'line_chart'))->toBeTrue()
         ->and($historyWidgets->every(fn (IoTDashboardWidget $widget): bool => $widget->type === 'bar_chart'))->toBeTrue()
         ->and($energyWidgets->pluck('device.external_id')->all())->toContain(
-            'miracle-dome-video-room-2-energy-meter',
-            'miracle-dome-server-room-2-energy-meter',
-            'miracle-dome-bts-energy-meter',
+            '869244041759261-21',
+            '869244041759402-21',
+            '869244041759402-22',
         )
-        ->and(data_get($statusWidgets->firstWhere('title', 'Video Room 2 Energy Meter Status')?->resolvedSeriesConfig(), '0.key'))->toBe('total_energy_kwh')
-        ->and(data_get($statusWidgets->firstWhere('title', 'Video Room 2 Energy Meter Status')?->resolvedSeriesConfig(), '6.key'))->toBe('A3')
+        ->and(data_get($statusWidgets->firstWhere('title', 'Video Room 2 Energy Meter Status')?->resolvedSeriesConfig(), '0.key'))->toBe('TotalEnergy')
+        ->and(data_get($statusWidgets->firstWhere('title', 'Video Room 2 Energy Meter Status')?->resolvedSeriesConfig(), '6.key'))->toBe('PhaseCCurrent')
         ->and(data_get($statusWidgets->firstWhere('title', 'Video Room 2 Energy Meter Status')?->resolvedSeriesConfig(), '0.unit'))->toBe('kWh')
         ->and(data_get($statusWidgets->firstWhere('title', 'Video Room 2 Energy Meter Status')?->resolvedSeriesConfig(), '1.unit'))->toBe('Volts')
-        ->and(data_get($statusWidgets->firstWhere('title', 'Video Room 2 Energy Meter Status')?->configArray(), 'rows.0.tiles.0.key'))->toBe('total_energy_kwh')
-        ->and(data_get($statusWidgets->firstWhere('title', 'Video Room 2 Energy Meter Status')?->configArray(), 'rows.1.tiles.*.key'))->toBe(['V1', 'V2', 'V3'])
-        ->and(data_get($statusWidgets->firstWhere('title', 'Video Room 2 Energy Meter Status')?->configArray(), 'rows.2.tiles.*.key'))->toBe(['A1', 'A2', 'A3'])
+        ->and(data_get($statusWidgets->firstWhere('title', 'Video Room 2 Energy Meter Status')?->configArray(), 'rows.0.tiles.0.key'))->toBe('TotalEnergy')
+        ->and(data_get($statusWidgets->firstWhere('title', 'Video Room 2 Energy Meter Status')?->configArray(), 'rows.1.tiles.*.key'))->toBe(['PhaseAVoltage', 'PhaseBVoltage', 'PhaseCVoltage'])
+        ->and(data_get($statusWidgets->firstWhere('title', 'Video Room 2 Energy Meter Status')?->configArray(), 'rows.2.tiles.*.key'))->toBe(['PhaseACurrent', 'PhaseBCurrent', 'PhaseCCurrent'])
         ->and(data_get($statusWidgets->firstWhere('title', 'Video Room 2 Energy Meter Status')?->layoutArray(), 'y'))->toBe(0)
-        ->and(data_get($trendWidgets->firstWhere('title', 'Video Room 2 Energy Meter')?->configArray(), 'series.0.key'))->toBe('V1')
-        ->and(data_get($trendWidgets->firstWhere('title', 'Video Room 2 Energy Meter')?->configArray(), 'series.2.key'))->toBe('V3')
+        ->and(data_get($trendWidgets->firstWhere('title', 'Video Room 2 Energy Meter')?->configArray(), 'series.0.key'))->toBe('PhaseAVoltage')
+        ->and(data_get($trendWidgets->firstWhere('title', 'Video Room 2 Energy Meter')?->configArray(), 'series.2.key'))->toBe('PhaseCVoltage')
         ->and(data_get($trendWidgets->firstWhere('title', 'Video Room 2 Energy Meter')?->layoutArray(), 'y'))->toBe(4)
-        ->and(data_get($historyWidgets->firstWhere('title', 'BTS Energy meter Consumption')?->configArray(), 'series.0.key'))->toBe('total_energy_kwh')
+        ->and(data_get($historyWidgets->firstWhere('title', 'BTS Energy meter Consumption')?->configArray(), 'series.0.key'))->toBe('TotalEnergy')
         ->and(data_get($historyWidgets->firstWhere('title', 'BTS Energy meter Consumption')?->configArray(), 'bar_interval'))->toBe('daily')
         ->and(data_get($historyWidgets->firstWhere('title', 'BTS Energy meter Consumption')?->layoutArray(), 'w'))->toBe(8);
 });

@@ -34,6 +34,10 @@ class DatabaseSeeder extends Seeder
             OrganizationSeeder::class,
             WitcoMigrationSeeder::class,
             WitcoDashboardSeeder::class,
+            MiracleDomeMigrationSeeder::class,
+            MiracleDomeDashboardSeeder::class,
+            TextripMigrationSeeder::class,
+            TextripDashboardSeeder::class,
         ]);
     }
 }

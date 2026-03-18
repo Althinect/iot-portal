@@ -6,6 +6,7 @@ namespace App\Domain\DeviceManagement\Services;
 
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 final class DevicePresenceMessageHandler
 {
@@ -91,20 +92,34 @@ final class DevicePresenceMessageHandler
 
     private function normalizePayload(string $body): string
     {
-        $normalizedBody = trim($body);
+        $normalizedBody = Str::lower(trim($body));
 
         if ($normalizedBody === '') {
             return $normalizedBody;
         }
 
-        $decoded = json_decode($normalizedBody, true);
+        if (in_array($normalizedBody, ['online', 'offline'], true)) {
+            return $normalizedBody;
+        }
+
+        $decoded = json_decode($body, true);
+
+        if (is_string($decoded)) {
+            $decodedState = Str::lower(trim($decoded));
+
+            return in_array($decodedState, ['online', 'offline'], true)
+                ? $decodedState
+                : $normalizedBody;
+        }
 
         if (! is_array($decoded)) {
             return $normalizedBody;
         }
 
-        $status = Arr::get($decoded, 'status');
+        $status = Arr::get($decoded, 'status', Arr::get($decoded, 'state'));
 
-        return is_string($status) ? trim($status) : $normalizedBody;
+        return is_string($status)
+            ? Str::lower(trim($status))
+            : $normalizedBody;
     }
 }

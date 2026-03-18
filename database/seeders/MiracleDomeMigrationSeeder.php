@@ -21,7 +21,6 @@ use App\Domain\DeviceSchema\Models\ParameterDefinition;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
 use App\Domain\Shared\Models\Organization;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Str;
 
 class MiracleDomeMigrationSeeder extends Seeder
 {
@@ -41,7 +40,11 @@ class MiracleDomeMigrationSeeder extends Seeder
 
     private const ENERGY_BASE_TOPIC = 'energy';
 
-    private const ENERGY_SCHEMA_NAME = 'Miracle Dome Energy Meter Contract';
+    private const ENERGY_SCHEMA_NAME = 'Energy Meter Contract';
+
+    private const ENERGY_SCHEMA_VERSION = 2;
+
+    private const ENERGY_SCHEMA_VARIANT = 'ac_energy_mate_calibrated';
 
     /**
      * @var array<int, array{imei: string, name: string}>
@@ -62,7 +65,8 @@ class MiracleDomeMigrationSeeder extends Seeder
      *     hub_imei: string,
      *     label: string,
      *     legacy_device_uid: string,
-     *     peripheral_type_hex: string
+     *     peripheral_type_hex: string,
+     *     metadata: array{msisdn: ?string, subNumber: ?string, accountNumber: ?string}
      * }>
      */
     private const ENERGY_DEVICES = [
@@ -71,18 +75,21 @@ class MiracleDomeMigrationSeeder extends Seeder
             'label' => 'Video Room 2 Energy Meter',
             'legacy_device_uid' => '869244041759261-21',
             'peripheral_type_hex' => '21',
+            'metadata' => ['msisdn' => '742475694', 'subNumber' => null, 'accountNumber' => null],
         ],
         [
             'hub_imei' => '869244041759402',
             'label' => 'Server Room 2 Energy meter',
             'legacy_device_uid' => '869244041759402-21',
             'peripheral_type_hex' => '21',
+            'metadata' => ['msisdn' => '742475872', 'subNumber' => null, 'accountNumber' => null],
         ],
         [
             'hub_imei' => '869244041759402',
             'label' => 'BTS Energy meter',
             'legacy_device_uid' => '869244041759402-22',
             'peripheral_type_hex' => '22',
+            'metadata' => ['msisdn' => '742475872', 'subNumber' => null, 'accountNumber' => null],
         ],
     ];
 
@@ -91,91 +98,106 @@ class MiracleDomeMigrationSeeder extends Seeder
      *     key: string,
      *     label: string,
      *     json_path: string,
-     *     unit: string,
+     *     unit?: string,
      *     source_io_number: int,
-     *     divisor: int,
-     *     validation_rules: array<string, int|string>,
+     *     divisor?: int,
+     *     required?: bool,
+     *     category?: ParameterCategory,
+     *     validation_rules?: array<string, int|float|string>,
      *     sequence: int
      * }>
      */
     private const ENERGY_PARAMETERS = [
         [
-            'key' => 'V1',
-            'label' => 'Voltage V1',
-            'json_path' => 'voltages.V1',
-            'unit' => MetricUnit::Volts->value,
-            'source_io_number' => 1,
-            'divisor' => 10,
-            'validation_rules' => ['min' => 1800, 'max' => 2800, 'category' => 'static'],
+            'key' => 'TotalEnergy',
+            'label' => 'Total Energy',
+            'json_path' => 'TotalEnergy',
+            'unit' => MetricUnit::KilowattHours->value,
+            'source_io_number' => 7,
+            'divisor' => 1000,
+            'category' => ParameterCategory::Counter,
+            'validation_rules' => ['min' => 0, 'category' => 'counter'],
             'sequence' => 1,
         ],
         [
-            'key' => 'V2',
-            'label' => 'Voltage V2',
-            'json_path' => 'voltages.V2',
+            'key' => 'PhaseAVoltage',
+            'label' => 'Phase A Voltage',
+            'json_path' => 'PhaseAVoltage',
             'unit' => MetricUnit::Volts->value,
-            'source_io_number' => 2,
+            'source_io_number' => 1,
             'divisor' => 10,
             'validation_rules' => ['min' => 1800, 'max' => 2800, 'category' => 'static'],
             'sequence' => 2,
         ],
         [
-            'key' => 'V3',
-            'label' => 'Voltage V3',
-            'json_path' => 'voltages.V3',
+            'key' => 'PhaseBVoltage',
+            'label' => 'Phase B Voltage',
+            'json_path' => 'PhaseBVoltage',
             'unit' => MetricUnit::Volts->value,
-            'source_io_number' => 3,
+            'source_io_number' => 2,
             'divisor' => 10,
             'validation_rules' => ['min' => 1800, 'max' => 2800, 'category' => 'static'],
             'sequence' => 3,
         ],
         [
-            'key' => 'A1',
-            'label' => 'Current A1',
-            'json_path' => 'currents.A1',
-            'unit' => MetricUnit::Amperes->value,
-            'source_io_number' => 4,
-            'divisor' => 100,
-            'validation_rules' => ['min' => 0, 'max' => 12000, 'category' => 'static'],
+            'key' => 'PhaseCVoltage',
+            'label' => 'Phase C Voltage',
+            'json_path' => 'PhaseCVoltage',
+            'unit' => MetricUnit::Volts->value,
+            'source_io_number' => 3,
+            'divisor' => 10,
+            'validation_rules' => ['min' => 1800, 'max' => 2800, 'category' => 'static'],
             'sequence' => 4,
         ],
         [
-            'key' => 'A2',
-            'label' => 'Current A2',
-            'json_path' => 'currents.A2',
+            'key' => 'PhaseACurrent',
+            'label' => 'Phase A Current',
+            'json_path' => 'PhaseACurrent',
             'unit' => MetricUnit::Amperes->value,
-            'source_io_number' => 5,
+            'source_io_number' => 4,
             'divisor' => 100,
             'validation_rules' => ['min' => 0, 'max' => 12000, 'category' => 'static'],
             'sequence' => 5,
         ],
         [
-            'key' => 'A3',
-            'label' => 'Current A3',
-            'json_path' => 'currents.A3',
+            'key' => 'PhaseBCurrent',
+            'label' => 'Phase B Current',
+            'json_path' => 'PhaseBCurrent',
             'unit' => MetricUnit::Amperes->value,
-            'source_io_number' => 6,
+            'source_io_number' => 5,
             'divisor' => 100,
             'validation_rules' => ['min' => 0, 'max' => 12000, 'category' => 'static'],
             'sequence' => 6,
         ],
         [
-            'key' => 'total_energy_kwh',
-            'label' => 'Total Energy',
-            'json_path' => 'energy.total_energy_kwh',
-            'unit' => MetricUnit::KilowattHours->value,
-            'source_io_number' => 7,
-            'divisor' => 1000,
-            'validation_rules' => ['min' => 0, 'category' => 'counter'],
+            'key' => 'PhaseCCurrent',
+            'label' => 'Phase C Current',
+            'json_path' => 'PhaseCCurrent',
+            'unit' => MetricUnit::Amperes->value,
+            'source_io_number' => 6,
+            'divisor' => 100,
+            'validation_rules' => ['min' => 0, 'max' => 12000, 'category' => 'static'],
             'sequence' => 7,
+        ],
+        [
+            'key' => 'totalPowerFactor',
+            'label' => 'Total Power Factor',
+            'json_path' => 'totalPowerFactor',
+            'source_io_number' => 8,
+            'required' => false,
+            'validation_rules' => ['min' => 0, 'max' => 1],
+            'sequence' => 8,
         ],
     ];
 
     public function run(): void
     {
-        $organization = Organization::query()->firstOrCreate(
+        $organization = Organization::withTrashed()->updateOrCreate(
             ['slug' => self::ORGANIZATION_SLUG],
-            ['name' => 'Miracle Dome'],
+            [
+                'name' => 'Miracle Dome',
+                'deleted_at' => null,
+            ],
         );
 
         $hubSchemaVersion = $this->upsertHubSchemaVersion();
@@ -232,15 +254,19 @@ class MiracleDomeMigrationSeeder extends Seeder
                 organization: $organization,
                 parentDevice: $parentDevice,
                 schemaVersion: $energySchemaVersion,
-                externalId: $this->physicalDeviceExternalId($deviceConfig['label']),
+                externalId: $deviceConfig['legacy_device_uid'],
                 name: $deviceConfig['label'],
                 metadata: [
                     'migration_origin' => self::ORGANIZATION_SLUG,
                     'migration_role' => 'physical_device',
                     'source_adapter' => 'imoni',
+                    'schema_variant' => self::ENERGY_SCHEMA_VARIANT,
                     'legacy_device_uid' => $deviceConfig['legacy_device_uid'],
                     'legacy_hub_imei' => $deviceConfig['hub_imei'],
                     'legacy_peripheral_type_hex' => strtoupper($deviceConfig['peripheral_type_hex']),
+                    'legacy_metadata' => $deviceConfig['metadata'],
+                    'legacy_parameter_map' => $this->legacyEnergyParameterMap($deviceConfig['peripheral_type_hex']),
+                    'legacy_calibrations' => $this->legacyEnergyCalibrations(),
                 ],
             );
 
@@ -272,6 +298,7 @@ class MiracleDomeMigrationSeeder extends Seeder
                         'metadata' => [
                             'migration_origin' => self::ORGANIZATION_SLUG,
                             'legacy_device_uid' => $deviceConfig['legacy_device_uid'],
+                            'legacy_source_path' => $this->legacyEnergyParameterMap($deviceConfig['peripheral_type_hex'])[$parameterConfig['key']] ?? null,
                         ],
                     ],
                 );
@@ -314,16 +341,19 @@ class MiracleDomeMigrationSeeder extends Seeder
                 'label' => $parameter['label'],
                 'json_path' => $parameter['json_path'],
                 'type' => ParameterDataType::Decimal,
-                'unit' => $parameter['unit'],
-                'required' => true,
-                'is_critical' => true,
-                'validation_rules' => $parameter['validation_rules'],
-                'mutation_expression' => [
-                    '/' => [
-                        ['var' => 'val'],
-                        $parameter['divisor'],
-                    ],
-                ],
+                'unit' => $parameter['unit'] ?? null,
+                'required' => $parameter['required'] ?? true,
+                'is_critical' => ($parameter['required'] ?? true) && $parameter['key'] !== 'totalPowerFactor',
+                'category' => $parameter['category'] ?? ParameterCategory::Measurement,
+                'validation_rules' => $parameter['validation_rules'] ?? null,
+                'mutation_expression' => isset($parameter['divisor']) && $parameter['divisor'] !== 1
+                    ? [
+                        '/' => [
+                            ['var' => 'val'],
+                            $parameter['divisor'],
+                        ],
+                    ]
+                    : null,
                 'sequence' => $parameter['sequence'],
             ],
             self::ENERGY_PARAMETERS,
@@ -336,6 +366,9 @@ class MiracleDomeMigrationSeeder extends Seeder
             schemaName: self::ENERGY_SCHEMA_NAME,
             topicLabel: 'Telemetry',
             parameters: $parameters,
+            version: self::ENERGY_SCHEMA_VERSION,
+            status: 'draft',
+            notes: 'Calibrated legacy AC Energy Mate contract recovered from Miracle Dome.',
         );
     }
 
@@ -349,6 +382,9 @@ class MiracleDomeMigrationSeeder extends Seeder
         string $schemaName,
         string $topicLabel,
         array $parameters,
+        int $version = 1,
+        string $status = 'active',
+        string $notes = 'Miracle Dome migration onboarding schema.',
     ): DeviceSchemaVersion {
         $deviceType = DeviceType::query()->updateOrCreate(
             [
@@ -380,18 +416,18 @@ class MiracleDomeMigrationSeeder extends Seeder
         $schemaVersion = DeviceSchemaVersion::query()->firstOrCreate(
             [
                 'device_schema_id' => $schema->id,
-                'version' => 1,
+                'version' => $version,
             ],
             [
-                'status' => 'active',
-                'notes' => 'Miracle Dome migration onboarding schema.',
+                'status' => $status,
+                'notes' => $notes,
             ],
         );
 
-        if ($schemaVersion->status !== 'active') {
+        if ($schemaVersion->status !== $status || $schemaVersion->notes !== $notes) {
             $schemaVersion->update([
-                'status' => 'active',
-                'notes' => 'Miracle Dome migration onboarding schema.',
+                'status' => $status,
+                'notes' => $notes,
             ]);
         }
 
@@ -481,13 +517,43 @@ class MiracleDomeMigrationSeeder extends Seeder
         return $device;
     }
 
-    private function physicalDeviceExternalId(string $label): string
-    {
-        return self::ORGANIZATION_SLUG.'-'.Str::slug($label);
-    }
-
     private function sourceTopicFor(string $hubImei, string $peripheralTypeHex): string
     {
         return 'migration/source/imoni/'.$hubImei.'/'.strtoupper($peripheralTypeHex).'/telemetry';
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function legacyEnergyParameterMap(string $peripheralTypeHex): array
+    {
+        $peripheralName = 'AC_energyMate'.(string) (hexdec($peripheralTypeHex) - 0x20);
+
+        return [
+            'TotalEnergy' => 'peripheralDataArr.'.$peripheralName.'.7.3',
+            'PhaseACurrent' => 'peripheralDataArr.'.$peripheralName.'.4.3',
+            'PhaseAVoltage' => 'peripheralDataArr.'.$peripheralName.'.1.3',
+            'PhaseBCurrent' => 'peripheralDataArr.'.$peripheralName.'.5.3',
+            'PhaseBVoltage' => 'peripheralDataArr.'.$peripheralName.'.2.3',
+            'PhaseCCurrent' => 'peripheralDataArr.'.$peripheralName.'.6.3',
+            'PhaseCVoltage' => 'peripheralDataArr.'.$peripheralName.'.3.3',
+            'totalPowerFactor' => 'peripheralDataArr.'.$peripheralName.'.8.3',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function legacyEnergyCalibrations(): array
+    {
+        return [
+            'TotalEnergy' => 'TotalEnergy/1000',
+            'PhaseACurrent' => 'PhaseACurrent/100',
+            'PhaseAVoltage' => 'PhaseAVoltage/10',
+            'PhaseBCurrent' => 'PhaseBCurrent/100',
+            'PhaseBVoltage' => 'PhaseBVoltage/10',
+            'PhaseCCurrent' => 'PhaseCCurrent/100',
+            'PhaseCVoltage' => 'PhaseCVoltage/10',
+        ];
     }
 }

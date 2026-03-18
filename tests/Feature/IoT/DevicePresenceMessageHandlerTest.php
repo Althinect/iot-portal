@@ -93,6 +93,37 @@ it('marks a device online when a matching presence subject carries a json payloa
     Event::assertDispatched(DeviceConnectionChanged::class, 1);
 });
 
+it('marks a device online when a matching presence subject carries a json state payload with mixed casing', function (): void {
+    Carbon::setTestNow(Carbon::parse('2026-03-07 13:05:00'));
+    config()->set('iot.presence.heartbeat_timeout_seconds', 300);
+
+    $device = Device::factory()->create([
+        'external_id' => 'rgb-led-02',
+        'connection_state' => 'offline',
+        'last_seen_at' => null,
+        'offline_deadline_at' => null,
+    ]);
+
+    Event::fake([DeviceConnectionChanged::class]);
+
+    $handled = $this->handler->handle(
+        subject: 'devices.rgb-led-02.presence',
+        body: json_encode([
+            'state' => ' ONLINE ',
+        ], JSON_THROW_ON_ERROR),
+        prefix: 'devices',
+        suffix: 'presence',
+    );
+
+    $device->refresh();
+
+    expect($handled)->toBeTrue()
+        ->and($device->connection_state)->toBe('online')
+        ->and($device->last_seen_at?->equalTo(now()))->toBeTrue();
+
+    Event::assertDispatched(DeviceConnectionChanged::class, 1);
+});
+
 it('marks a device offline when a matching presence subject uses its uuid', function (): void {
     $lastSeenAt = Carbon::parse('2026-03-07 11:58:00');
     Carbon::setTestNow($lastSeenAt->copy()->addMinute());

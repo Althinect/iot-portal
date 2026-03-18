@@ -55,23 +55,25 @@ it('seeds miracle dome hubs and physical energy meters with normalized source bi
         ->all();
 
     expect($childExternalIds)->toBe([
-        'miracle-dome-bts-energy-meter',
-        'miracle-dome-server-room-2-energy-meter',
-        'miracle-dome-video-room-2-energy-meter',
+        '869244041759261-21',
+        '869244041759402-21',
+        '869244041759402-22',
     ]);
 
     $serverRoomMeter = Device::query()
         ->where('organization_id', $organization?->id)
-        ->where('external_id', 'miracle-dome-server-room-2-energy-meter')
+        ->where('external_id', '869244041759402-21')
         ->first();
 
     $telemetryTopic = $serverRoomMeter?->schemaVersion?->topics()->where('key', 'telemetry')->first();
     $parameterKeys = $telemetryTopic?->parameters()->orderBy('sequence')->pluck('key')->all();
 
     /** @var ParameterDefinition|null $voltageParameter */
-    $voltageParameter = $telemetryTopic?->parameters()->where('key', 'V1')->first();
+    $voltageParameter = $telemetryTopic?->parameters()->where('key', 'PhaseAVoltage')->first();
     /** @var ParameterDefinition|null $energyParameter */
-    $energyParameter = $telemetryTopic?->parameters()->where('key', 'total_energy_kwh')->first();
+    $energyParameter = $telemetryTopic?->parameters()->where('key', 'TotalEnergy')->first();
+    /** @var ParameterDefinition|null $powerFactorParameter */
+    $powerFactorParameter = $telemetryTopic?->parameters()->where('key', 'totalPowerFactor')->first();
 
     $binding = DeviceSignalBinding::query()
         ->where('device_id', $serverRoomMeter?->id)
@@ -80,18 +82,20 @@ it('seeds miracle dome hubs and physical energy meters with normalized source bi
 
     expect($serverRoomMeter)->not->toBeNull()
         ->and($serverRoomMeter?->deviceType?->key)->toBe('energy_meter')
-        ->and($serverRoomMeter?->schemaVersion?->schema?->name)->toBe('Miracle Dome Energy Meter Contract')
-        ->and($telemetryTopic?->resolvedTopic($serverRoomMeter))->toBe('energy/miracle-dome-server-room-2-energy-meter/telemetry')
+        ->and($serverRoomMeter?->schemaVersion?->schema?->name)->toBe('Energy Meter Contract')
+        ->and($serverRoomMeter?->schemaVersion?->version)->toBe(2)
+        ->and($serverRoomMeter?->metadata['schema_variant'] ?? null)->toBe('ac_energy_mate_calibrated')
+        ->and($telemetryTopic?->resolvedTopic($serverRoomMeter))->toBe('energy/869244041759402-21/telemetry')
         ->and($parameterKeys)->toBe([
-            'V1',
-            'V2',
-            'V3',
-            'A1',
-            'A2',
-            'A3',
-            'total_energy_kwh',
+            'TotalEnergy',
+            'PhaseAVoltage',
+            'PhaseBVoltage',
+            'PhaseCVoltage',
+            'PhaseACurrent',
+            'PhaseBCurrent',
+            'PhaseCCurrent',
+            'totalPowerFactor',
         ])
-        ->and($telemetryTopic?->parameters()->where('key', 'power_factor')->exists())->toBeFalse()
         ->and($voltageParameter?->resolvedValidationRules())->toMatchArray([
             'min' => 1800,
             'max' => 2800,
@@ -113,7 +117,13 @@ it('seeds miracle dome hubs and physical energy meters with normalized source bi
                 1000,
             ],
         ])
-        ->and(DeviceSignalBinding::query()->where('device_id', $serverRoomMeter?->id)->count())->toBe(7)
+        ->and($powerFactorParameter?->required)->toBeFalse()
+        ->and($powerFactorParameter?->resolvedValidationRules())->toMatchArray([
+            'min' => 0,
+            'max' => 1,
+        ])
+        ->and($powerFactorParameter?->getAttribute('mutation_expression'))->toBeNull()
+        ->and(DeviceSignalBinding::query()->where('device_id', $serverRoomMeter?->id)->count())->toBe(8)
         ->and($binding)->not->toBeNull()
         ->and($binding?->source_topic)->toBe('migration/source/imoni/869244041759402/21/telemetry')
         ->and($binding?->source_json_path)->toBe('$.io_7_value');
@@ -125,7 +135,7 @@ it('ingests miracle dome raw energy telemetry into one normalized physical devic
     $this->seed(MiracleDomeMigrationSeeder::class);
 
     $hub = Device::query()->where('external_id', '869244041759402')->firstOrFail();
-    $serverRoomMeter = Device::query()->where('external_id', 'miracle-dome-server-room-2-energy-meter')->firstOrFail();
+    $serverRoomMeter = Device::query()->where('external_id', '869244041759402-21')->firstOrFail();
 
     /** @var DevicePresenceMessageHandler $presenceHandler */
     $presenceHandler = app(DevicePresenceMessageHandler::class);
@@ -163,6 +173,7 @@ it('ingests miracle dome raw energy telemetry into one normalized physical devic
             'io_5_value' => 1100,
             'io_6_value' => 1000,
             'io_7_value' => 450000,
+            'io_8_value' => 0.96,
             '_meta' => [
                 'hub_imei' => '869244041759402',
                 'source_key' => '869244041759402:21',
@@ -180,22 +191,24 @@ it('ingests miracle dome raw energy telemetry into one normalized physical devic
     expect($serverRoomMeter->connection_state)->toBe('online')
         ->and($serverRoomMeter->telemetryLogs()->count())->toBe(1)
         ->and($telemetryLog?->transformed_values)->toMatchArray([
-            'V1' => 230.0,
-            'V2' => 231.0,
-            'V3' => 229.0,
-            'A1' => 12.0,
-            'A2' => 11.0,
-            'A3' => 10.0,
-            'total_energy_kwh' => 450.0,
+            'TotalEnergy' => 450.0,
+            'PhaseAVoltage' => 230.0,
+            'PhaseBVoltage' => 231.0,
+            'PhaseCVoltage' => 229.0,
+            'PhaseACurrent' => 12.0,
+            'PhaseBCurrent' => 11.0,
+            'PhaseCCurrent' => 10.0,
+            'totalPowerFactor' => 0.96,
         ])
         ->and($telemetryLog?->mutated_values)->toMatchArray([
-            'V1' => 230.0,
-            'V2' => 231.0,
-            'V3' => 229.0,
-            'A1' => 12.0,
-            'A2' => 11.0,
-            'A3' => 10.0,
-            'total_energy_kwh' => 450.0,
+            'TotalEnergy' => 450.0,
+            'PhaseAVoltage' => 230.0,
+            'PhaseBVoltage' => 231.0,
+            'PhaseCVoltage' => 229.0,
+            'PhaseACurrent' => 12.0,
+            'PhaseBCurrent' => 11.0,
+            'PhaseCCurrent' => 10.0,
+            'totalPowerFactor' => 0.96,
         ]);
 
     Event::assertDispatched(TelemetryReceived::class, 1);

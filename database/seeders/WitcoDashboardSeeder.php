@@ -25,7 +25,7 @@ class WitcoDashboardSeeder extends Seeder
      */
     private const STATUS_WIDGETS = [
         [
-            'external_id' => 'witco-access-control-system-alarm',
+            'external_id' => '869244041759568-00-02',
             'title' => 'Access Control System Alarm',
             'style' => 'toggle',
             'mappings' => [
@@ -34,7 +34,7 @@ class WitcoDashboardSeeder extends Seeder
             ],
         ],
         [
-            'external_id' => 'witco-cctv-system-alarm',
+            'external_id' => '869244041759568-00-01',
             'title' => 'CCTV System Alarm',
             'style' => 'toggle',
             'mappings' => [
@@ -43,7 +43,7 @@ class WitcoDashboardSeeder extends Seeder
             ],
         ],
         [
-            'external_id' => 'witco-fire-alarm-panel',
+            'external_id' => '869244041767199-00-01',
             'title' => 'Fire Alarm Panel',
             'style' => 'toggle',
             'mappings' => [
@@ -52,7 +52,7 @@ class WitcoDashboardSeeder extends Seeder
             ],
         ],
         [
-            'external_id' => 'witco-ups-alarm-status',
+            'external_id' => '869244041767199-00-02',
             'title' => 'UPS Alarm Status',
             'style' => 'toggle',
             'mappings' => [
@@ -61,7 +61,7 @@ class WitcoDashboardSeeder extends Seeder
             ],
         ],
         [
-            'external_id' => 'witco-th-rh-input-server-room',
+            'external_id' => '869244041754866-00-03',
             'title' => 'TH & RH Input - Server room',
             'style' => 'toggle',
             'mappings' => [
@@ -70,7 +70,7 @@ class WitcoDashboardSeeder extends Seeder
             ],
         ],
         [
-            'external_id' => 'witco-water-tank-alarm-level',
+            'external_id' => '869244041754866-00-02',
             'title' => 'Water Tank Alarm Level',
             'style' => 'toggle',
             'mappings' => [
@@ -79,7 +79,7 @@ class WitcoDashboardSeeder extends Seeder
             ],
         ],
         [
-            'external_id' => 'witco-main-door-status',
+            'external_id' => '869244041759279-00-02',
             'title' => 'Main Door Status',
             'style' => 'pill',
             'mappings' => [
@@ -88,7 +88,7 @@ class WitcoDashboardSeeder extends Seeder
             ],
         ],
         [
-            'external_id' => 'witco-rear-door-status',
+            'external_id' => '869244041759279-00-01',
             'title' => 'Rear Door Status',
             'style' => 'pill',
             'mappings' => [
@@ -97,7 +97,7 @@ class WitcoDashboardSeeder extends Seeder
             ],
         ],
         [
-            'external_id' => 'witco-th-rh-gf-ups-room',
+            'external_id' => '869244041759279-00-03',
             'title' => 'TH & RH - GF UPS room',
             'style' => 'toggle',
             'mappings' => [

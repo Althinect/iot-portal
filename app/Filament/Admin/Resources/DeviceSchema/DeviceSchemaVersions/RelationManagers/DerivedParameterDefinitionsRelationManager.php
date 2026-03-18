@@ -101,7 +101,15 @@ class DerivedParameterDefinitionsRelationManager extends RelationManager
                                 $dependencies = [];
                             }
 
-                            $missing = array_values(array_diff($variables, $dependencies));
+                            $dependencyKeys = array_values(array_filter(
+                                array_map(
+                                    static fn (mixed $dependency): ?string => is_string($dependency) ? $dependency : null,
+                                    $dependencies,
+                                ),
+                                static fn (?string $dependency): bool => $dependency !== null && $dependency !== '',
+                            ));
+
+                            $missing = array_values(array_diff($variables, $dependencyKeys));
 
                             if ($missing !== []) {
                                 $fail('Select dependencies for: '.implode(', ', $missing));
@@ -144,7 +152,15 @@ class DerivedParameterDefinitionsRelationManager extends RelationManager
 
                 TextColumn::make('dependencies')
                     ->label('Dependencies')
-                    ->formatStateUsing(fn (mixed $state): string => is_array($state) ? implode(', ', $state) : ''),
+                    ->formatStateUsing(fn (mixed $state): string => is_array($state)
+                        ? implode(', ', array_values(array_filter(
+                            array_map(
+                                static fn (mixed $dependency): ?string => is_string($dependency) ? $dependency : null,
+                                $state,
+                            ),
+                            static fn (?string $dependency): bool => $dependency !== null && $dependency !== '',
+                        )))
+                        : ''),
             ])
             ->headerActions([
                 CreateAction::make(),
