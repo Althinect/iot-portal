@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands\IoT;
 
 use App\Domain\DeviceControl\Services\DeviceFeedbackReconciler;
+use App\Domain\Shared\Services\NatsConnectionHeartbeat;
 use Basis\Nats\Client;
 use Basis\Nats\Configuration;
 use Basis\Nats\Message\Payload;
@@ -40,83 +41,95 @@ class ListenForDeviceStates extends Command
             'host' => $host,
             'port' => $port,
         ]);
-
-        $client = new Client($configuration);
         /** @var DeviceFeedbackReconciler $reconciler */
         $reconciler = app(DeviceFeedbackReconciler::class);
+        $heartbeat = new NatsConnectionHeartbeat($this->resolveHealthCheckInterval());
 
         $natsSubject = '>';
 
         $this->info("Listening on: {$natsSubject}");
         $this->newLine();
 
-        $client->subscribe($natsSubject, function (Payload $payload, ?string $replyTo) use ($host, $port, $reconciler): void {
-            try {
-                $subject = $payload->subject ?? '';
-                $body = $payload->body;
-                $mqttTopic = str_replace('.', '/', $subject);
-
-                $decodedPayload = $this->decodePayload($body);
-
-                if ($decodedPayload === null) {
-                    Log::channel('device_control')->debug('Skipping non-JSON message', [
-                        'subject' => $subject,
-                        'body_length' => strlen($body),
-                    ]);
-
-                    return;
-                }
-
-                Log::channel('device_control')->debug('NATS message received', [
-                    'subject' => $subject,
-                    'mqtt_topic' => $mqttTopic,
-                    'payload' => $decodedPayload,
-                ]);
-
-                $result = $reconciler->reconcileInboundMessage(
-                    mqttTopic: $mqttTopic,
-                    payload: $decodedPayload,
-                    host: $host,
-                    port: $port,
-                );
-
-                if ($result === null) {
-                    return;
-                }
-
-                Log::channel('device_control')->debug('Message reconciled', [
-                    'device_uuid' => $result['device_uuid'],
-                    'device_external_id' => $result['device_external_id'],
-                    'topic' => $result['topic'],
-                    'purpose' => $result['purpose'],
-                    'command_log_id' => $result['command_log_id'],
-                ]);
-            } catch (\Throwable $e) {
-                Log::channel('device_control')->error('Listener processing error', [
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                ]);
-
-                $this->error("  Processing error: {$e->getMessage()}");
-            }
-        });
-
-        $this->info('Device state listener is running. Press Ctrl+C to stop.');
-        $this->newLine();
-
-        Log::channel('device_control')->info('Device state listener is running');
-
-        // Keep the client processing messages
         while (true) { /** @phpstan-ignore while.alwaysTrue */
             try {
-                $client->process(1);
-            } catch (\Throwable $e) {
-                if (str_contains($e->getMessage(), 'No handler')) {
-                    usleep(200_000);
+                $client = new Client($configuration);
 
-                    continue;
+                $client->subscribe($natsSubject, function (Payload $payload, ?string $replyTo) use ($host, $port, $reconciler): void {
+                    try {
+                        $subject = $payload->subject ?? '';
+                        $body = $payload->body;
+                        $mqttTopic = str_replace('.', '/', $subject);
+
+                        $decodedPayload = $this->decodePayload($body);
+
+                        if ($decodedPayload === null) {
+                            Log::channel('device_control')->debug('Skipping non-JSON message', [
+                                'subject' => $subject,
+                                'body_length' => strlen($body),
+                            ]);
+
+                            return;
+                        }
+
+                        Log::channel('device_control')->debug('NATS message received', [
+                            'subject' => $subject,
+                            'mqtt_topic' => $mqttTopic,
+                            'payload' => $decodedPayload,
+                        ]);
+
+                        $result = $reconciler->reconcileInboundMessage(
+                            mqttTopic: $mqttTopic,
+                            payload: $decodedPayload,
+                            host: $host,
+                            port: $port,
+                        );
+
+                        if ($result === null) {
+                            return;
+                        }
+
+                        Log::channel('device_control')->debug('Message reconciled', [
+                            'device_uuid' => $result['device_uuid'],
+                            'device_external_id' => $result['device_external_id'],
+                            'topic' => $result['topic'],
+                            'purpose' => $result['purpose'],
+                            'command_log_id' => $result['command_log_id'],
+                        ]);
+                    } catch (\Throwable $e) {
+                        Log::channel('device_control')->error('Listener processing error', [
+                            'error' => $e->getMessage(),
+                            'trace' => $e->getTraceAsString(),
+                        ]);
+
+                        $this->error("  Processing error: {$e->getMessage()}");
+                    }
+                });
+
+                $this->info('Device state listener is running. Press Ctrl+C to stop.');
+                $this->newLine();
+
+                Log::channel('device_control')->info('Device state listener is running');
+
+                $lastHeartbeatAt = microtime(true);
+
+                while (true) { /** @phpstan-ignore while.alwaysTrue */
+                    try {
+                        $client->process(1);
+                        $lastHeartbeatAt = $heartbeat->maintain(
+                            ping: fn (): bool => $client->ping(),
+                            lastHeartbeatAt: $lastHeartbeatAt,
+                        );
+                    } catch (\Throwable $e) {
+                        if (str_contains($e->getMessage(), 'No handler')) {
+                            usleep(200_000);
+
+                            continue;
+                        }
+
+                        throw $e;
+                    }
                 }
-
+            } catch (\Throwable $e) {
                 Log::channel('device_control')->warning('Listener process loop error', [
                     'error' => $e->getMessage(),
                 ]);
@@ -150,6 +163,13 @@ class ListenForDeviceStates extends Command
         $port = config('iot.nats.port', 4223);
 
         return is_numeric($port) ? (int) $port : 4223;
+    }
+
+    private function resolveHealthCheckInterval(): int
+    {
+        $interval = config('iot.nats.health_check_seconds', 15);
+
+        return is_numeric($interval) ? max(1, (int) $interval) : 15;
     }
 
     /**

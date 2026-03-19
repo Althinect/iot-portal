@@ -276,3 +276,20 @@ it('normalizes witco hub traffic into generic source topics for laravel-side bin
             ],
         ]);
 });
+
+it('uses environment-driven mqtt broker settings for the node-red flow', function (): void {
+    $flow = collect(json_decode(
+        file_get_contents(base_path('docker/node-red/data/flows.json')) ?: '[]',
+        true,
+        512,
+        JSON_THROW_ON_ERROR,
+    ));
+
+    $mqttBrokerNode = $flow->first(
+        fn (array $node): bool => ($node['type'] ?? null) === 'mqtt-broker'
+    );
+
+    expect($mqttBrokerNode)->toBeArray()
+        ->and($mqttBrokerNode['broker'] ?? null)->toBe('${MQTT_BROKER_HOST}')
+        ->and($mqttBrokerNode['port'] ?? null)->toBe('${MQTT_BROKER_PORT}');
+});

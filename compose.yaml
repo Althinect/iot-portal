@@ -165,6 +165,8 @@ services:
             - '${FORWARD_NODE_RED_PORT:-1880}:1880'
         environment:
             TZ: '${APP_TIMEZONE:-UTC}'
+            MQTT_BROKER_HOST: '${NODE_RED_MQTT_BROKER_HOST:-nats}'
+            MQTT_BROKER_PORT: '${NODE_RED_MQTT_BROKER_PORT:-1883}'
         volumes:
             - './docker/node-red/data:/data'
         networks:

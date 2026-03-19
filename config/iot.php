@@ -7,6 +7,7 @@ return [
         'host' => (string) env('IOT_NATS_HOST', (string) env('INGESTION_NATS_HOST', '127.0.0.1')),
         'port' => (int) env('IOT_NATS_PORT', (int) env('INGESTION_NATS_PORT', 4223)),
         'timeout' => (float) env('IOT_NATS_TIMEOUT', (float) env('INGESTION_NATS_TIMEOUT', 5.0)),
+        'health_check_seconds' => (int) env('IOT_NATS_HEALTH_CHECK_SECONDS', (int) env('INGESTION_NATS_HEALTH_CHECK_SECONDS', 15)),
     ],
 
     'mqtt' => [

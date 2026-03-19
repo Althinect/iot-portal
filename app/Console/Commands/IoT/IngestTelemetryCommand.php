@@ -8,6 +8,7 @@ use App\Domain\DataIngestion\DTO\IncomingTelemetryEnvelope;
 use App\Domain\DataIngestion\Jobs\ProcessInboundTelemetryJob;
 use App\Domain\DataIngestion\Services\DeviceSignalBindingResolver;
 use App\Domain\DataIngestion\Services\DeviceTelemetryTopicResolver;
+use App\Domain\Shared\Services\NatsConnectionHeartbeat;
 use App\Events\TelemetryIncoming;
 use Basis\Nats\Client;
 use Basis\Nats\Configuration;
@@ -50,71 +51,84 @@ class IngestTelemetryCommand extends Command
             'host' => $host,
             'port' => $port,
         ]);
-
-        $client = new Client($configuration);
         /** @var DeviceTelemetryTopicResolver $topicResolver */
         $topicResolver = app(DeviceTelemetryTopicResolver::class);
         /** @var DeviceSignalBindingResolver $bindingResolver */
         $bindingResolver = app(DeviceSignalBindingResolver::class);
-
-        $client->subscribe($subject, function (Payload $payload) use ($bindingResolver, $queue, $queueConnection, $topicResolver): void {
-            $sourceSubject = $payload->subject ?? '';
-            $mqttTopic = str_replace('.', '/', $sourceSubject);
-
-            if ($this->shouldIgnoreSubject($sourceSubject)) {
-                return;
-            }
-
-            if ($topicResolver->resolve($mqttTopic) === null && ! $bindingResolver->supportsTopic($mqttTopic)) {
-                return;
-            }
-
-            $decodedPayload = [];
-
-            try {
-                $decoded = json_decode($payload->body, true, flags: JSON_THROW_ON_ERROR);
-                $decodedPayload = is_array($decoded) ? $decoded : [];
-            } catch (\Throwable) {
-                $decodedPayload = [];
-            }
-
-            $envelope = new IncomingTelemetryEnvelope(
-                sourceSubject: $sourceSubject,
-                mqttTopic: $mqttTopic,
-                payload: $decodedPayload,
-                deviceUuid: is_string(Arr::get($decodedPayload, '_meta.device_uuid')) ? Arr::get($decodedPayload, '_meta.device_uuid') : null,
-                deviceExternalId: is_string(Arr::get($decodedPayload, '_meta.device_external_id')) ? Arr::get($decodedPayload, '_meta.device_external_id') : null,
-                messageId: is_string($payload->headers['Nats-Msg-Id'] ?? null) ? $payload->headers['Nats-Msg-Id'] : null,
-                receivedAt: now(),
-            );
-
-            event(new TelemetryIncoming(
-                topic: $mqttTopic,
-                deviceUuid: $envelope->deviceUuid,
-                deviceExternalId: $envelope->deviceExternalId,
-                payload: $decodedPayload,
-                receivedAt: $envelope->resolveReceivedAt(),
-            ));
-
-            try {
-                ProcessInboundTelemetryJob::dispatch($envelope->toArray())
-                    ->onConnection($queueConnection)
-                    ->onQueue($queue);
-            } catch (\Throwable $exception) {
-                $this->error("Queue dispatch failed for {$sourceSubject}: {$exception->getMessage()}");
-            }
-        });
+        $heartbeat = new NatsConnectionHeartbeat($this->resolveHealthCheckInterval());
 
         while (true) { /** @phpstan-ignore while.alwaysTrue */
             try {
-                $client->process(1);
-            } catch (\Throwable $exception) {
-                if (str_contains($exception->getMessage(), 'No handler')) {
-                    usleep(200_000);
+                $client = new Client($configuration);
 
-                    continue;
+                $client->subscribe($subject, function (Payload $payload) use ($bindingResolver, $queue, $queueConnection, $topicResolver): void {
+                    $sourceSubject = $payload->subject ?? '';
+                    $mqttTopic = str_replace('.', '/', $sourceSubject);
+
+                    if ($this->shouldIgnoreSubject($sourceSubject)) {
+                        return;
+                    }
+
+                    if ($topicResolver->resolve($mqttTopic) === null && ! $bindingResolver->supportsTopic($mqttTopic)) {
+                        return;
+                    }
+
+                    $decodedPayload = [];
+
+                    try {
+                        $decoded = json_decode($payload->body, true, flags: JSON_THROW_ON_ERROR);
+                        $decodedPayload = is_array($decoded) ? $decoded : [];
+                    } catch (\Throwable) {
+                        $decodedPayload = [];
+                    }
+
+                    $envelope = new IncomingTelemetryEnvelope(
+                        sourceSubject: $sourceSubject,
+                        mqttTopic: $mqttTopic,
+                        payload: $decodedPayload,
+                        deviceUuid: is_string(Arr::get($decodedPayload, '_meta.device_uuid')) ? Arr::get($decodedPayload, '_meta.device_uuid') : null,
+                        deviceExternalId: is_string(Arr::get($decodedPayload, '_meta.device_external_id')) ? Arr::get($decodedPayload, '_meta.device_external_id') : null,
+                        messageId: is_string($payload->headers['Nats-Msg-Id'] ?? null) ? $payload->headers['Nats-Msg-Id'] : null,
+                        receivedAt: now(),
+                    );
+
+                    event(new TelemetryIncoming(
+                        topic: $mqttTopic,
+                        deviceUuid: $envelope->deviceUuid,
+                        deviceExternalId: $envelope->deviceExternalId,
+                        payload: $decodedPayload,
+                        receivedAt: $envelope->resolveReceivedAt(),
+                    ));
+
+                    try {
+                        ProcessInboundTelemetryJob::dispatch($envelope->toArray())
+                            ->onConnection($queueConnection)
+                            ->onQueue($queue);
+                    } catch (\Throwable $exception) {
+                        $this->error("Queue dispatch failed for {$sourceSubject}: {$exception->getMessage()}");
+                    }
+                });
+
+                $lastHeartbeatAt = microtime(true);
+
+                while (true) { /** @phpstan-ignore while.alwaysTrue */
+                    try {
+                        $client->process(1);
+                        $lastHeartbeatAt = $heartbeat->maintain(
+                            ping: fn (): bool => $client->ping(),
+                            lastHeartbeatAt: $lastHeartbeatAt,
+                        );
+                    } catch (\Throwable $exception) {
+                        if (str_contains($exception->getMessage(), 'No handler')) {
+                            usleep(200_000);
+
+                            continue;
+                        }
+
+                        throw $exception;
+                    }
                 }
-
+            } catch (\Throwable $exception) {
                 $this->error("Processing error: {$exception->getMessage()}");
                 sleep(1);
             }
@@ -171,6 +185,13 @@ class IngestTelemetryCommand extends Command
     private function resolveQueueConnection(): string
     {
         return $this->resolveStringConfig('ingestion.queue_connection', $this->resolveStringConfig('queue.default', 'database'));
+    }
+
+    private function resolveHealthCheckInterval(): int
+    {
+        $interval = config('ingestion.nats.health_check_seconds', config('iot.nats.health_check_seconds', 15));
+
+        return is_numeric($interval) ? max(1, (int) $interval) : 15;
     }
 
     private function shouldIgnoreSubject(string $subject): bool

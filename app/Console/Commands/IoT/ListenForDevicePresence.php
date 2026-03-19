@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands\IoT;
 
 use App\Domain\DeviceManagement\Services\DevicePresenceMessageHandler;
+use App\Domain\Shared\Services\NatsConnectionHeartbeat;
 use Basis\Nats\Client;
 use Basis\Nats\Configuration;
 use Basis\Nats\Message\Payload;
@@ -44,31 +45,44 @@ class ListenForDevicePresence extends Command
             'host' => $host,
             'port' => $port,
         ]);
-
-        $client = new Client($configuration);
-
-        $client->subscribe($natsSubject, function (Payload $payload) use ($messageHandler, $subjectPrefix, $subjectSuffix): void {
-            $messageHandler->handle(
-                subject: $payload->subject ?? '',
-                body: $payload->body,
-                prefix: $subjectPrefix,
-                suffix: $subjectSuffix,
-            );
-        });
-
-        $this->info('Device presence listener is running. Press Ctrl+C to stop.');
-        $this->newLine();
+        $heartbeat = new NatsConnectionHeartbeat($this->resolveHealthCheckInterval());
 
         while (true) { /** @phpstan-ignore while.alwaysTrue */
             try {
-                $client->process(1);
-            } catch (\Throwable $e) {
-                if (str_contains($e->getMessage(), 'No handler')) {
-                    usleep(200_000);
+                $client = new Client($configuration);
 
-                    continue;
+                $client->subscribe($natsSubject, function (Payload $payload) use ($messageHandler, $subjectPrefix, $subjectSuffix): void {
+                    $messageHandler->handle(
+                        subject: $payload->subject ?? '',
+                        body: $payload->body,
+                        prefix: $subjectPrefix,
+                        suffix: $subjectSuffix,
+                    );
+                });
+
+                $this->info('Device presence listener is running. Press Ctrl+C to stop.');
+                $this->newLine();
+
+                $lastHeartbeatAt = microtime(true);
+
+                while (true) { /** @phpstan-ignore while.alwaysTrue */
+                    try {
+                        $client->process(1);
+                        $lastHeartbeatAt = $heartbeat->maintain(
+                            ping: fn (): bool => $client->ping(),
+                            lastHeartbeatAt: $lastHeartbeatAt,
+                        );
+                    } catch (\Throwable $e) {
+                        if (str_contains($e->getMessage(), 'No handler')) {
+                            usleep(200_000);
+
+                            continue;
+                        }
+
+                        throw $e;
+                    }
                 }
-
+            } catch (\Throwable $e) {
                 Log::channel('device_control')->warning('Presence listener process loop error', [
                     'error' => $e->getMessage(),
                 ]);
@@ -119,6 +133,13 @@ class ListenForDevicePresence extends Command
         $suffix = config('iot.presence.subject_suffix', 'presence');
 
         return is_string($suffix) && trim($suffix) !== '' ? str_replace('/', '.', trim($suffix)) : 'presence';
+    }
+
+    private function resolveHealthCheckInterval(): int
+    {
+        $interval = config('iot.nats.health_check_seconds', 15);
+
+        return is_numeric($interval) ? max(1, (int) $interval) : 15;
     }
 
     private function disableTelescopeRecording(): void
