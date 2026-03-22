@@ -10,7 +10,10 @@
     ],
     "sail": false,
     "skills": [
+        "configuring-horizon",
         "pennant-development",
+        "pulse-development",
+        "scout-development",
         "pest-testing"
     ]
 }

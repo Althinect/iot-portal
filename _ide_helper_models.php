@@ -27,7 +27,7 @@ namespace App\Domain\Authorization\Models{
  * @method static \Database\Factories\RoleFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Role newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Role newQuery()
- * @method static \Illuminate\Database\Eloquent\Builder<static>|Role permission($permissions, $without = false)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Role permission($permissions, bool $without = false)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Role query()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Role whereCreatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Role whereGuardName($value)
@@ -54,7 +54,7 @@ namespace App\Domain\Automation\Models{
  * @property array<array-key, mixed>|null $error_summary
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Domain\Shared\Models\Organization $organization
+ * @property-read \App\Domain\Shared\Models\Organization|null $organization
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\Automation\Models\AutomationRunStep> $steps
  * @property-read int|null $steps_count
  * @property-read \App\Domain\Automation\Models\AutomationWorkflow $workflow
@@ -127,7 +127,7 @@ namespace App\Domain\Automation\Models{
  * @property bool $active
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Domain\Shared\Models\Organization $organization
+ * @property-read \App\Domain\Shared\Models\Organization|null $organization
  * @property-read \App\Domain\Automation\Models\AutomationWorkflowVersion $workflowVersion
  * @method static \Database\Factories\Domain\Automation\Models\AutomationScheduleTriggerFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|AutomationScheduleTrigger newModelQuery()
@@ -159,7 +159,7 @@ namespace App\Domain\Automation\Models{
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read \App\Domain\DeviceManagement\Models\Device|null $device
  * @property-read \App\Domain\DeviceManagement\Models\DeviceType|null $deviceType
- * @property-read \App\Domain\Shared\Models\Organization $organization
+ * @property-read \App\Domain\Shared\Models\Organization|null $organization
  * @property-read \App\Domain\DeviceSchema\Models\SchemaVersionTopic|null $schemaVersionTopic
  * @property-read \App\Domain\Automation\Models\AutomationWorkflowVersion $workflowVersion
  * @method static \Database\Factories\Domain\Automation\Models\AutomationTelemetryTriggerFactory factory($count = null, $state = [])
@@ -193,7 +193,7 @@ namespace App\Domain\Automation\Models{
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read \App\Domain\Automation\Models\AutomationWorkflowVersion|null $activeVersion
  * @property-read \App\Domain\Shared\Models\User|null $createdBy
- * @property-read \App\Domain\Shared\Models\Organization $organization
+ * @property-read \App\Domain\Shared\Models\Organization|null $organization
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\Automation\Models\AutomationRun> $runs
  * @property-read int|null $runs_count
  * @property-read \App\Domain\Shared\Models\User|null $updatedBy
@@ -246,6 +246,40 @@ namespace App\Domain\Automation\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|AutomationWorkflowVersion whereVersion($value)
  */
 	class AutomationWorkflowVersion extends \Eloquent {}
+}
+
+namespace App\Domain\DataIngestion\Models{
+/**
+ * @property int $id
+ * @property int $device_id
+ * @property int $parameter_definition_id
+ * @property string $source_topic
+ * @property string $source_json_path
+ * @property string|null $source_adapter
+ * @property int $sequence
+ * @property bool $is_active
+ * @property array<array-key, mixed>|null $metadata
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read \App\Domain\DeviceManagement\Models\Device|null $device
+ * @property-read \App\Domain\DeviceSchema\Models\ParameterDefinition $parameterDefinition
+ * @method static \Database\Factories\Domain\DataIngestion\Models\DeviceSignalBindingFactory factory($count = null, $state = [])
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceSignalBinding newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceSignalBinding newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceSignalBinding query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceSignalBinding whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceSignalBinding whereDeviceId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceSignalBinding whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceSignalBinding whereIsActive($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceSignalBinding whereMetadata($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceSignalBinding whereParameterDefinitionId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceSignalBinding whereSequence($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceSignalBinding whereSourceAdapter($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceSignalBinding whereSourceJsonPath($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceSignalBinding whereSourceTopic($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceSignalBinding whereUpdatedAt($value)
+ */
+	class DeviceSignalBinding extends \Eloquent {}
 }
 
 namespace App\Domain\DataIngestion\Models{
@@ -339,7 +373,7 @@ namespace App\Domain\DataIngestion\Models{
  * @property string $tier
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Domain\Shared\Models\Organization $organization
+ * @property-read \App\Domain\Shared\Models\Organization|null $organization
  * @method static \Database\Factories\Domain\DataIngestion\Models\OrganizationIngestionProfileFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|OrganizationIngestionProfile newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|OrganizationIngestionProfile newQuery()
@@ -374,7 +408,7 @@ namespace App\Domain\DeviceControl\Models{
  * @property \Illuminate\Support\Carbon|null $completed_at
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Domain\DeviceManagement\Models\Device $device
+ * @property-read \App\Domain\DeviceManagement\Models\Device|null $device
  * @property-read \App\Domain\DeviceSchema\Models\SchemaVersionTopic|null $responseTopic
  * @property-read \App\Domain\DeviceSchema\Models\SchemaVersionTopic $topic
  * @property-read \App\Domain\Shared\Models\User|null $user
@@ -409,7 +443,7 @@ namespace App\Domain\DeviceControl\Models{
  * @property \Illuminate\Support\Carbon|null $reconciled_at
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Domain\DeviceManagement\Models\Device $device
+ * @property-read \App\Domain\DeviceManagement\Models\Device|null $device
  * @method static \Database\Factories\Domain\DeviceControl\Models\DeviceDesiredStateFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceDesiredState newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceDesiredState newQuery()
@@ -434,7 +468,7 @@ namespace App\Domain\DeviceControl\Models{
  * @property \Illuminate\Support\Carbon|null $reconciled_at
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Domain\DeviceManagement\Models\Device $device
+ * @property-read \App\Domain\DeviceManagement\Models\Device|null $device
  * @property-read \App\Domain\DeviceSchema\Models\SchemaVersionTopic $topic
  * @method static \Database\Factories\Domain\DeviceControl\Models\DeviceDesiredTopicStateFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceDesiredTopicState newModelQuery()
@@ -471,17 +505,23 @@ namespace App\Domain\DeviceManagement\Models{
  * @property array<array-key, mixed>|null $ingestion_overrides
  * @property int|null $presence_timeout_seconds
  * @property \Illuminate\Support\Carbon|null $offline_deadline_at
+ * @property int|null $parent_device_id
  * @property-read \App\Domain\DeviceManagement\Models\DeviceCertificate|null $activeCertificate
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\DeviceManagement\Models\DeviceCertificate> $certificates
  * @property-read int|null $certificates_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Device> $childDevices
+ * @property-read int|null $child_devices_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\DeviceControl\Models\DeviceCommandLog> $commandLogs
  * @property-read int|null $command_logs_count
  * @property-read \App\Domain\DeviceControl\Models\DeviceDesiredState|null $desiredState
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\DeviceControl\Models\DeviceDesiredTopicState> $desiredTopicStates
  * @property-read int|null $desired_topic_states_count
  * @property-read \App\Domain\DeviceManagement\Models\DeviceType $deviceType
- * @property-read \App\Domain\Shared\Models\Organization $organization
+ * @property-read \App\Domain\Shared\Models\Organization|null $organization
+ * @property-read Device|null $parentDevice
  * @property-read \App\Domain\DeviceSchema\Models\DeviceSchemaVersion $schemaVersion
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\DataIngestion\Models\DeviceSignalBinding> $signalBindings
+ * @property-read int|null $signal_bindings_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\Telemetry\Models\DeviceTelemetryLog> $telemetryLogs
  * @property-read int|null $telemetry_logs_count
  * @property-read \App\Domain\DeviceManagement\Models\TemporaryDevice|null $temporaryDevice
@@ -505,6 +545,7 @@ namespace App\Domain\DeviceManagement\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereName($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereOfflineDeadlineAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereOrganizationId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereParentDeviceId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device wherePresenceTimeoutSeconds($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereUpdatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Device whereUuid($value)
@@ -531,7 +572,7 @@ namespace App\Domain\DeviceManagement\Models{
  * @property string|null $revocation_reason
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Domain\DeviceManagement\Models\Device $device
+ * @property-read \App\Domain\DeviceManagement\Models\Device|null $device
  * @property-read \App\Domain\Shared\Models\User|null $issuedBy
  * @method static \Database\Factories\Domain\DeviceManagement\Models\DeviceCertificateFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|DeviceCertificate newModelQuery()
@@ -567,6 +608,8 @@ namespace App\Domain\DeviceManagement\Models{
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read \App\Domain\Shared\Models\Organization|null $organization
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\DeviceSchema\Models\DeviceSchemaVersion> $schemaVersions
+ * @property-read int|null $schema_versions_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\DeviceSchema\Models\DeviceSchema> $schemas
  * @property-read int|null $schemas_count
  * @method static \Database\Factories\Domain\DeviceManagement\Models\DeviceTypeFactory factory($count = null, $state = [])
@@ -594,7 +637,7 @@ namespace App\Domain\DeviceManagement\Models{
  * @property \Illuminate\Support\Carbon $expires_at
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Domain\DeviceManagement\Models\Device $device
+ * @property-read \App\Domain\DeviceManagement\Models\Device|null $device
  * @method static \Illuminate\Database\Eloquent\Builder<static>|TemporaryDevice expired(?\Illuminate\Support\Carbon $now = null)
  * @method static \Database\Factories\Domain\DeviceManagement\Models\TemporaryDeviceFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|TemporaryDevice newModelQuery()
@@ -651,6 +694,8 @@ namespace App\Domain\DeviceSchema\Models{
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property \Illuminate\Support\Carbon|null $deleted_at
  * @property-read \App\Domain\DeviceManagement\Models\DeviceType $deviceType
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\DeviceSchema\Models\SchemaVersionTopic> $topics
+ * @property-read int|null $topics_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\DeviceSchema\Models\DeviceSchemaVersion> $versions
  * @property-read int|null $versions_count
  * @method static \Database\Factories\Domain\DeviceSchema\Models\DeviceSchemaFactory factory($count = null, $state = [])
@@ -685,7 +730,7 @@ namespace App\Domain\DeviceSchema\Models{
  * @property-read int|null $derived_parameters_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\DeviceSchema\Models\ParameterDefinition> $parameters
  * @property-read int|null $parameters_count
- * @property-read \App\Domain\DeviceSchema\Models\DeviceSchema $schema
+ * @property-read \App\Domain\DeviceSchema\Models\DeviceSchema|null $schema
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\Telemetry\Models\DeviceTelemetryLog> $telemetryLogs
  * @property-read int|null $telemetry_logs_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\DeviceSchema\Models\SchemaVersionTopicLink> $topicLinks
@@ -730,6 +775,8 @@ namespace App\Domain\DeviceSchema\Models{
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property array<array-key, mixed>|null $default_value
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\DataIngestion\Models\DeviceSignalBinding> $signalBindings
+ * @property-read int|null $signal_bindings_count
  * @property-read \App\Domain\DeviceSchema\Models\SchemaVersionTopic $topic
  * @method static \Database\Factories\Domain\DeviceSchema\Models\ParameterDefinitionFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ParameterDefinition newModelQuery()
@@ -846,7 +893,8 @@ namespace App\Domain\IoTDashboard\Models{
  * @property bool $is_active
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Domain\Shared\Models\Organization $organization
+ * @property \App\Domain\IoTDashboard\Enums\DashboardHistoryPreset $default_history_preset
+ * @property-read \App\Domain\Shared\Models\Organization|null $organization
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Domain\IoTDashboard\Models\IoTDashboardWidget> $widgets
  * @property-read int|null $widgets_count
  * @method static \Database\Factories\Domain\IoTDashboard\Models\IoTDashboardFactory factory($count = null, $state = [])
@@ -854,6 +902,7 @@ namespace App\Domain\IoTDashboard\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|IoTDashboard newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|IoTDashboard query()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|IoTDashboard whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|IoTDashboard whereDefaultHistoryPreset($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|IoTDashboard whereDescription($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|IoTDashboard whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|IoTDashboard whereIsActive($value)
@@ -1050,9 +1099,9 @@ namespace App\Domain\Shared\Models{
  * @method static \Database\Factories\UserFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User newQuery()
- * @method static \Illuminate\Database\Eloquent\Builder<static>|User permission($permissions, $without = false)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User permission($permissions, bool $without = false)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User query()
- * @method static \Illuminate\Database\Eloquent\Builder<static>|User role($roles, $guard = null, $without = false)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User role($roles, ?string $guard = null, bool $without = false)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereCreatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereEmail($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereEmailVerifiedAt($value)
@@ -1063,7 +1112,7 @@ namespace App\Domain\Shared\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereRememberToken($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereUpdatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User withoutPermission($permissions)
- * @method static \Illuminate\Database\Eloquent\Builder<static>|User withoutRole($roles, $guard = null)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User withoutRole($roles, ?string $guard = null)
  */
 	class User extends \Eloquent implements \Filament\Models\Contracts\FilamentUser, \Filament\Models\Contracts\HasTenants {}
 }
@@ -1085,7 +1134,7 @@ namespace App\Domain\Telemetry\Models{
  * @property array<array-key, mixed>|null $validation_errors
  * @property array<array-key, mixed>|null $mutated_values
  * @property string $processing_state
- * @property-read \App\Domain\DeviceManagement\Models\Device $device
+ * @property-read \App\Domain\DeviceManagement\Models\Device|null $device
  * @property-read \App\Domain\DataIngestion\Models\IngestionMessage|null $ingestionMessage
  * @property-read \App\Domain\DeviceSchema\Models\DeviceSchemaVersion $schemaVersion
  * @property-read \App\Domain\DeviceSchema\Models\SchemaVersionTopic|null $topic
