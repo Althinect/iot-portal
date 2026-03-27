@@ -1,0 +1,185 @@
+.iot-threshold-status-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    height: 100%;
+    container-type: size;
+    padding: 1rem;
+}
+
+.iot-threshold-status-card__header {
+    display: grid;
+    gap: 0.18rem;
+}
+
+.iot-threshold-status-card__meta-label {
+    font-size: 0.68rem;
+    line-height: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--gray-500);
+}
+
+:is(.dark, .dark *) .iot-threshold-status-card__meta-label {
+    color: var(--gray-400);
+}
+
+.iot-threshold-status-card__meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.iot-threshold-status-card__meta-value {
+    font-size: 0.82rem;
+    line-height: 1.1rem;
+    font-weight: 700;
+    color: var(--gray-700);
+}
+
+:is(.dark, .dark *) .iot-threshold-status-card__meta-value {
+    color: var(--gray-200);
+}
+
+.iot-threshold-status-card__presence-dot {
+    --presence-color: #64748b;
+    width: 0.72rem;
+    height: 0.72rem;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: var(--presence-color);
+    box-shadow: 0 0 0 0.18rem color-mix(in srgb, var(--presence-color) 18%, transparent 82%);
+}
+
+.iot-threshold-status-card__rule {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 0.45rem 0.9rem;
+    border-radius: 0.8rem;
+    border: 1px solid color-mix(in srgb, var(--gray-300) 85%, transparent 15%);
+    background: color-mix(in srgb, var(--gray-50) 92%, transparent 8%);
+    font-size: 0.88rem;
+    line-height: 1.25rem;
+    font-weight: 700;
+    color: var(--gray-600);
+    text-align: center;
+}
+
+:is(.dark, .dark *) .iot-threshold-status-card__rule {
+    border-color: color-mix(in srgb, var(--gray-600) 85%, transparent 15%);
+    background: color-mix(in srgb, white 3%, #000 97%);
+    color: var(--gray-300);
+}
+
+.iot-threshold-status-card__rule-action {
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+    color: var(--gray-500);
+    cursor: pointer;
+}
+
+.iot-threshold-status-card__rule-action:hover,
+.iot-threshold-status-card__rule-action:focus-visible {
+    color: var(--gray-700);
+    background: color-mix(in srgb, var(--gray-100) 92%, white 8%);
+}
+
+:is(.dark, .dark *) .iot-threshold-status-card__rule-action {
+    color: var(--gray-400);
+}
+
+:is(.dark, .dark *) .iot-threshold-status-card__rule-action:hover,
+:is(.dark, .dark *) .iot-threshold-status-card__rule-action:focus-visible {
+    color: var(--gray-200);
+    background: color-mix(in srgb, white 9%, #000 91%);
+    border-color: color-mix(in srgb, var(--gray-500) 85%, transparent 15%);
+}
+
+.iot-threshold-status-card__status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 2.2rem;
+    padding: 0.45rem 0.9rem;
+    border-radius: 0.8rem;
+    font-size: 0.8rem;
+    line-height: 1rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: white;
+    flex: 0 0 auto;
+}
+
+.iot-threshold-status-card__status.is-normal {
+    background: #22c55e;
+}
+
+.iot-threshold-status-card__status.is-alert {
+    background: #ef4444;
+}
+
+:is(.dark, .dark *) .iot-threshold-status-card__status {
+    color: white;
+}
+
+.iot-threshold-status-card__value {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 auto;
+    min-height: 0;
+    text-align: center;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: clamp(1.85rem, min(18cqw, 24cqh), 5.4rem);
+    line-height: 0.9;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
+    color: #94a3b8;
+}
+
+.iot-threshold-status-card__value.is-normal {
+    color: #3b82f6;
+}
+
+.iot-threshold-status-card__value.is-alert {
+    color: #ef4444;
+}
+
+:is(.dark, .dark *) .iot-threshold-status-card__value.is-normal {
+    color: #60a5fa;
+}
+
+:is(.dark, .dark *) .iot-threshold-status-card__value.is-alert {
+    color: #f87171;
+}
+
+.iot-threshold-status-card__value.is-neutral {
+    color: #475569;
+}
+
+:is(.dark, .dark *) .iot-threshold-status-card__value.is-neutral {
+    color: #cbd5e1;
+}
+
+.iot-threshold-status-card--empty {
+    justify-content: center;
+}
+
+.iot-threshold-status-card__empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+    text-align: center;
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: var(--gray-500);
+}

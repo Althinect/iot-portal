@@ -1,0 +1,143 @@
+.iot-status-summary {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    padding: 1rem;
+}
+
+.iot-status-summary__meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.iot-status-summary__timestamp {
+    font-size: 0.72rem;
+    line-height: 1rem;
+    color: var(--gray-500);
+}
+
+:is(.dark, .dark *) .iot-status-summary__timestamp {
+    color: var(--gray-400);
+}
+
+.iot-status-summary__presence-dot {
+    --presence-color: #64748b;
+    width: 0.72rem;
+    height: 0.72rem;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: var(--presence-color);
+    box-shadow: 0 0 0 0.18rem color-mix(in srgb, var(--presence-color) 18%, transparent 82%);
+}
+
+.iot-status-summary__rows {
+    flex: 1 1 auto;
+    display: grid;
+    gap: 0.75rem;
+}
+
+.iot-status-summary__row {
+    --summary-columns: 1;
+    display: grid;
+    grid-template-columns: repeat(var(--summary-columns), minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.iot-status-summary__item {
+    display: grid;
+    gap: 0.35rem;
+    padding: 0.75rem;
+    border-radius: 0.85rem;
+    border: 1px solid var(--gray-200);
+    background: var(--gray-50);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gray-200) 45%, transparent 55%);
+}
+
+:is(.dark, .dark *) .iot-status-summary__item {
+    border-color: var(--gray-700);
+    background: color-mix(in srgb, var(--gray-900) 82%, black 18%);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gray-700) 55%, transparent 45%);
+}
+
+.iot-status-summary__item.is-accented {
+    border-color: color-mix(in srgb, var(--summary-color) 18%, var(--gray-200) 82%);
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--summary-color) 8%, transparent), transparent 42%),
+        var(--gray-50);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--summary-color) 10%, transparent 90%);
+}
+
+:is(.dark, .dark *) .iot-status-summary__item.is-accented {
+    border-color: color-mix(in srgb, var(--summary-color) 24%, var(--gray-700) 76%);
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--summary-color) 10%, transparent), transparent 38%),
+        color-mix(in srgb, var(--gray-900) 82%, black 18%);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--summary-color) 14%, transparent 86%);
+}
+
+.iot-status-summary__label {
+    font-size: 0.72rem;
+    line-height: 1rem;
+    color: var(--gray-600);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+:is(.dark, .dark *) .iot-status-summary__label {
+    color: var(--gray-300);
+}
+
+.iot-status-summary__value {
+    display: inline-flex;
+    align-items: baseline;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    width: 100%;
+    font-size: 1.05rem;
+    line-height: 1.35rem;
+    font-weight: 800;
+    color: var(--gray-900);
+}
+
+:is(.dark, .dark *) .iot-status-summary__value {
+    color: var(--gray-100);
+}
+
+.iot-status-summary__value-number {
+    display: inline-block;
+}
+
+.iot-status-summary__value-unit {
+    font-size: 0.82rem;
+    line-height: 1rem;
+    font-weight: 700;
+    color: var(--gray-500);
+}
+
+:is(.dark, .dark *) .iot-status-summary__value-unit {
+    color: var(--gray-300);
+}
+
+.iot-status-summary__empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 auto;
+    min-height: 7rem;
+    border-radius: 0.9rem;
+    border: 1px dashed var(--gray-300);
+    color: var(--gray-500);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+
+:is(.dark, .dark *) .iot-status-summary__empty {
+    border-color: var(--gray-600);
+    color: var(--gray-400);
+}

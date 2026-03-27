@@ -140,7 +140,10 @@
                             gs-w="{{ $gridSpan }}"
                             gs-h="{{ $gridHeight }}"
                         >
-                            <article class="iot-widget-card grid-stack-item-content">
+                            <article
+                                class="iot-widget-card iot-widget-card--{{ str_replace('_', '-', (string) $widget->type) }} grid-stack-item-content"
+                                data-widget-type="{{ $widget->type }}"
+                            >
                                 <header>
                                     <div>
                                         <h3 class="iot-widget-title">{{ $widget->title }}</h3>

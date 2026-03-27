@@ -1,0 +1,247 @@
+.iot-threshold-grid {
+    display: grid;
+    gap: 0.9rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    align-content: start;
+}
+
+.iot-threshold-grid--empty {
+    min-height: 18rem;
+}
+
+.iot-threshold-grid__empty {
+    display: grid;
+    place-items: center;
+    min-height: 18rem;
+    border-radius: 0.9rem;
+    border: 1px dashed var(--gray-300);
+    color: var(--gray-500);
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 1.5rem;
+    text-align: center;
+}
+
+:is(.dark, .dark *) .iot-threshold-grid__empty {
+    border-color: var(--gray-600);
+    color: var(--gray-400);
+}
+
+.iot-threshold-grid__card {
+    display: grid;
+    gap: 0.55rem;
+    padding: 1rem;
+    border-radius: 0.95rem;
+    border: 1px solid var(--gray-200);
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+:is(.dark, .dark *) .iot-threshold-grid__card {
+    border-color: var(--gray-700);
+    background: rgba(15, 23, 42, 0.74);
+    box-shadow: 0 12px 28px rgba(2, 6, 23, 0.3);
+}
+
+.iot-threshold-grid__card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.iot-threshold-grid__device-name {
+    font-size: 0.98rem;
+    font-weight: 700;
+    color: var(--gray-900);
+}
+
+:is(.dark, .dark *) .iot-threshold-grid__device-name {
+    color: var(--gray-50);
+}
+
+.iot-threshold-grid__edit-link {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #2563eb;
+    text-decoration: none;
+}
+
+.iot-threshold-grid__edit-link:hover {
+    text-decoration: underline;
+}
+
+.iot-threshold-grid__badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.2rem;
+    padding: 0.45rem 0.7rem;
+    border-radius: 0.7rem;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+}
+
+.iot-threshold-grid__badge.is-online,
+.iot-threshold-grid__badge.is-normal {
+    background: rgba(34, 197, 94, 0.16);
+    color: #15803d;
+}
+
+.iot-threshold-grid__badge.is-offline,
+.iot-threshold-grid__badge.is-alert {
+    background: rgba(239, 68, 68, 0.16);
+    color: #b91c1c;
+}
+
+.iot-threshold-grid__badge.is-unknown,
+.iot-threshold-grid__badge.is-no-data {
+    background: rgba(148, 163, 184, 0.16);
+    color: #475569;
+}
+
+:is(.dark, .dark *) .iot-threshold-grid__badge.is-online,
+:is(.dark, .dark *) .iot-threshold-grid__badge.is-normal {
+    color: #86efac;
+}
+
+:is(.dark, .dark *) .iot-threshold-grid__badge.is-offline,
+:is(.dark, .dark *) .iot-threshold-grid__badge.is-alert {
+    color: #fca5a5;
+}
+
+:is(.dark, .dark *) .iot-threshold-grid__badge.is-unknown,
+:is(.dark, .dark *) .iot-threshold-grid__badge.is-no-data {
+    color: var(--gray-200);
+}
+
+.iot-threshold-grid__timestamp {
+    font-size: 0.78rem;
+    color: var(--gray-500);
+}
+
+:is(.dark, .dark *) .iot-threshold-grid__timestamp {
+    color: var(--gray-400);
+}
+
+.iot-threshold-grid__range {
+    display: grid;
+    place-items: center;
+    min-height: 5.2rem;
+    padding: 0.75rem;
+    border-radius: 0.85rem;
+    border: 1px solid var(--gray-200);
+    background: rgba(248, 250, 252, 0.8);
+    color: var(--gray-900);
+    font-size: 1.15rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+:is(.dark, .dark *) .iot-threshold-grid__range {
+    border-color: var(--gray-700);
+    background: rgba(15, 23, 42, 0.5);
+    color: var(--gray-50);
+}
+
+.iot-threshold-grid__value {
+    display: grid;
+    place-items: center;
+    min-height: 7rem;
+    border-radius: 0.85rem;
+    background: rgba(59, 130, 246, 0.1);
+    color: #2563eb;
+    font-size: clamp(2rem, 4vw, 3rem);
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1;
+}
+
+:is(.dark, .dark *) .iot-threshold-grid__value {
+    background: rgba(37, 99, 235, 0.18);
+    color: #93c5fd;
+}
+
+.iot-threshold-grid--sri-lankan {
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.iot-threshold-grid__card--sri-lankan {
+    gap: 0.4rem;
+    padding: 0.7rem;
+    border-radius: 0.35rem;
+    border-color: #2b313d;
+    background: #16191f;
+    box-shadow: none;
+}
+
+.iot-threshold-grid__device-name--sri-lankan {
+    font-size: 0.96rem;
+    font-weight: 700;
+    color: #f1f5f9;
+    letter-spacing: 0.01em;
+}
+
+.iot-threshold-grid__badge--sri-lankan {
+    width: 100%;
+    min-height: 1.95rem;
+    border-radius: 0.2rem;
+    padding: 0.3rem 0.65rem;
+    letter-spacing: 0.04em;
+    color: #f8fafc;
+}
+
+.iot-threshold-grid__badge--sri-lankan.is-online,
+.iot-threshold-grid__badge--sri-lankan.is-normal {
+    background: #3d9332;
+    color: #f8fafc;
+}
+
+.iot-threshold-grid__badge--sri-lankan.is-offline,
+.iot-threshold-grid__badge--sri-lankan.is-alert {
+    background: #c91d29;
+    color: #fff5f5;
+}
+
+.iot-threshold-grid__badge--sri-lankan.is-unknown,
+.iot-threshold-grid__badge--sri-lankan.is-no-data {
+    background: #4b5563;
+    color: #f8fafc;
+}
+
+.iot-threshold-grid__timestamp--sri-lankan {
+    display: grid;
+    place-items: center;
+    min-height: 1.85rem;
+    padding: 0.3rem 0.65rem;
+    border-radius: 0.2rem;
+    border: 1px solid #2b313d;
+    background: #1d2129;
+    color: #d6dae3;
+    font-size: 0.78rem;
+    font-weight: 500;
+}
+
+.iot-threshold-grid__range--sri-lankan {
+    min-height: 4.7rem;
+    border-radius: 0.2rem;
+    border-color: #2b313d;
+    background: #1b1f27;
+    color: #d9dce5;
+    font-size: clamp(1.6rem, 2vw, 2rem);
+    font-weight: 700;
+    line-height: 1.05;
+}
+
+.iot-threshold-grid__value--sri-lankan {
+    min-height: 5.9rem;
+    border: 1px solid #2b313d;
+    border-radius: 0.2rem;
+    background: #1b1f27;
+    color: #8cb3ff;
+    font-size: clamp(2.4rem, 4vw, 3.9rem);
+    font-weight: 700;
+    letter-spacing: -0.05em;
+}
