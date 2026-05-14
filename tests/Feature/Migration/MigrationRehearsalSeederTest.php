@@ -83,7 +83,6 @@ it('seeds the witco, miracle dome, textrip, tj india, teejay, and srilankan pilo
         'status',
         'steam_meter',
         'stenter_line',
-        'stenter_line_status_length',
         'tank_level_sensor',
         'temperature_sensor',
         'water_flow_meter',

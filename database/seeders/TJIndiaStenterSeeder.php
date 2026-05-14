@@ -29,13 +29,13 @@ class TJIndiaStenterSeeder extends TJIndiaMigrationSeederSupport
         ],
     ];
 
-    private const DEVICE_TYPE_KEY = 'stenter_line_status_length';
+    private const DEVICE_TYPE_KEY = 'stenter_line';
 
-    private const DEVICE_TYPE_NAME = 'Stenter Line (Status + Length)';
+    private const DEVICE_TYPE_NAME = 'Stenter Line';
 
-    private const BASE_TOPIC = 'lines/stenter-status-length';
+    private const BASE_TOPIC = 'lines/stenter';
 
-    private const SCHEMA_NAME = 'Stenter Line Status Length Contract';
+    private const SCHEMA_NAME = 'Stenter Line Contract';
 
     public function run(): void
     {
