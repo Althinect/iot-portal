@@ -5,28 +5,29 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Domain\DeviceManagement\Models\Device;
+use App\Domain\DeviceSchema\Enums\ParameterCategory;
 use App\Domain\DeviceSchema\Enums\ParameterDataType;
 use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
 use App\Domain\DeviceSchema\Models\ParameterDefinition;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
 
-class TeejayModbusLevelSensorSeeder extends TeejayMigrationSeederSupport
+class TJIndiaFabricLengthSeeder extends TJIndiaMigrationSeederSupport
 {
-    private const DEVICE_TYPE_KEY = 'tank_level_sensor';
+    private const DEVICE_TYPE_KEY = 'fabric_length_counter';
 
-    private const DEVICE_TYPE_NAME = 'Tank Level Sensor';
+    private const DEVICE_TYPE_NAME = 'Fabric Length Counter';
 
-    private const BASE_TOPIC = 'storage';
+    private const BASE_TOPIC = 'production/fabric-length';
 
-    private const SCHEMA_NAME = 'Tank Level Sensor Contract';
+    private const SCHEMA_NAME = 'Fabric Length Contract';
 
-    private const VERSION_OFFSET = 4;
+    private const VERSION_OFFSET = 1;
 
     public function run(): void
     {
         $organization = $this->ensureOrganization();
         $hubs = $this->ensureHubs($organization);
-        $inventory = TeejayMigrationInventory::devicesForType('IMoni Modbus Level Sensor');
+        $inventory = TJIndiaMigrationInventory::devicesForType('Fabric Length');
         $schemaVersions = [];
         $expectedExternalIds = [];
 
@@ -38,28 +39,19 @@ class TeejayModbusLevelSensorSeeder extends TeejayMigrationSeederSupport
                 schemaName: self::SCHEMA_NAME,
                 version: self::VERSION_OFFSET + $index,
                 status: 'draft',
-                notes: 'Recovered legacy tank level sensor calibration variant: '.$schemaConfig['variant'],
+                notes: 'Recovered legacy fabric length calibration variant: '.$schemaConfig['variant'],
                 parameters: [
                     [
-                        'key' => 'level1',
-                        'label' => 'Level 1',
-                        'json_path' => '$.level1',
+                        'key' => 'length',
+                        'label' => 'Fabric Length',
+                        'json_path' => '$.length',
                         'type' => ParameterDataType::Decimal,
+                        'category' => ParameterCategory::Counter,
                         'required' => true,
                         'is_critical' => true,
-                        'validation_rules' => ['min' => 0],
-                        'mutation_expression' => $schemaConfig['level1_mutation'],
+                        'validation_rules' => ['min' => -100000, 'category' => 'counter'],
+                        'mutation_expression' => $schemaConfig['length_mutation'],
                         'sequence' => 1,
-                    ],
-                    [
-                        'key' => 'level2',
-                        'label' => 'Level 2',
-                        'json_path' => '$.level2',
-                        'type' => ParameterDataType::Decimal,
-                        'required' => false,
-                        'validation_rules' => ['min' => -1000],
-                        'mutation_expression' => $schemaConfig['level2_mutation'],
-                        'sequence' => 2,
                     ],
                 ],
             );
@@ -79,13 +71,13 @@ class TeejayModbusLevelSensorSeeder extends TeejayMigrationSeederSupport
                 parentDevice: $parentDevice,
                 schemaVersion: $schemaVersion,
                 externalId: $deviceConfig['external_id'],
-                name: trim($deviceConfig['name']),
+                name: $deviceConfig['name'],
                 metadata: [
-                    'migration_origin' => TeejayMigrationSeeder::ORGANIZATION_SLUG,
+                    'migration_origin' => TJIndiaMigrationSeeder::ORGANIZATION_SLUG,
                     'migration_role' => 'physical_device',
-                    'migration_device_type' => 'IMoni Modbus Level Sensor',
+                    'migration_device_type' => 'Fabric Length',
                     'source_adapter' => 'imoni',
-                    'schema_variant' => $this->schemaMutationsBySignature([$deviceConfig])[$signature]['variant'] ?? 'tank-level',
+                    'schema_variant' => $this->schemaMutationsBySignature([$deviceConfig])[$signature]['variant'] ?? 'fabric-length',
                     'legacy_device_uid' => $deviceConfig['legacy_device_uid'],
                     'legacy_virtual_device_id' => $deviceConfig['legacy_virtual_device_id'],
                     'legacy_hub_imei' => $deviceConfig['hub_imei'],
@@ -102,49 +94,45 @@ class TeejayModbusLevelSensorSeeder extends TeejayMigrationSeederSupport
                 continue;
             }
 
-            /** @var array<string, ParameterDefinition> $parametersByKey */
-            $parametersByKey = $topic->parameters()->orderBy('sequence')->get()->keyBy('key')->all();
-            $bindings = [];
+            /** @var ParameterDefinition|null $parameter */
+            $parameter = $topic->parameters()->where('key', 'length')->first();
 
-            foreach (['level1', 'level2'] as $index => $parameterKey) {
-                $legacyPath = $deviceConfig['parameter_map'][$parameterKey] ?? null;
-                $sourceJsonPath = is_string($legacyPath) ? $this->normalizedSourcePath($legacyPath) : null;
+            if (! $parameter instanceof ParameterDefinition) {
+                continue;
+            }
 
-                if (! is_string($sourceJsonPath)) {
-                    continue;
-                }
+            $legacyPath = $this->primaryLegacyPath($deviceConfig);
+            $sourceJsonPath = is_string($legacyPath) ? $this->normalizedSourcePath($legacyPath) : null;
 
-                $bindings[$parameterKey] = [
-                    'source_json_path' => $sourceJsonPath,
-                    'legacy_source_path' => $legacyPath,
-                    'sequence' => $index,
-                    'decoder' => $this->decoderFor(
-                        hubImei: $deviceConfig['hub_imei'],
-                        peripheralTypeHex: $deviceConfig['peripheral_type_hex'],
-                        sourceJsonPath: $sourceJsonPath,
-                    ),
-                ];
+            if (! is_string($sourceJsonPath)) {
+                continue;
             }
 
             $this->syncBindings(
                 device: $device,
                 hubImei: $deviceConfig['hub_imei'],
                 peripheralTypeHex: $deviceConfig['peripheral_type_hex'],
-                parametersByKey: $parametersByKey,
-                bindingDefinitions: $bindings,
+                parametersByKey: ['length' => $parameter],
+                bindingDefinitions: [
+                    'length' => [
+                        'source_json_path' => $sourceJsonPath,
+                        'legacy_source_path' => $legacyPath,
+                        'sequence' => 0,
+                    ],
+                ],
                 deviceMetadata: ['legacy_device_uid' => $deviceConfig['legacy_device_uid']],
             );
 
             $expectedExternalIds[] = $deviceConfig['external_id'];
         }
 
-        $this->cleanupDevices($organization, 'IMoni Modbus Level Sensor', $expectedExternalIds);
+        $this->cleanupDevices($organization, 'Fabric Length', $expectedExternalIds);
         $this->cleanupUnusedDraftSchemaVersions(self::DEVICE_TYPE_KEY, self::SCHEMA_NAME, $this->schemaVersionNumbers($schemaVersions));
     }
 
     /**
      * @param  array<int, array<string, mixed>>  $inventory
-     * @return array<string, array{signature: string, variant: string, level1_mutation: array<string, mixed>|null, level2_mutation: array<string, mixed>|null}>
+     * @return array<string, array{signature: string, variant: string, length_mutation: array<string, mixed>|null}>
      */
     private function schemaMutationsBySignature(array $inventory): array
     {
@@ -157,14 +145,12 @@ class TeejayModbusLevelSensorSeeder extends TeejayMigrationSeederSupport
                 continue;
             }
 
-            $level1Mutation = $this->mutationExpressionForParameter($deviceConfig, 'level1');
-            $level2Mutation = $this->mutationExpressionForParameter($deviceConfig, 'level2');
+            $lengthMutation = $this->mutationExpressionForParameter($deviceConfig, 'length');
 
             $schemas[$signature] = [
                 'signature' => $signature,
-                'variant' => $this->schemaVariantKey('tank-level', $level1Mutation, $level2Mutation),
-                'level1_mutation' => $level1Mutation,
-                'level2_mutation' => $level2Mutation,
+                'variant' => $this->schemaVariantKey('fabric-length', $lengthMutation),
+                'length_mutation' => $lengthMutation,
             ];
         }
 
@@ -176,9 +162,28 @@ class TeejayModbusLevelSensorSeeder extends TeejayMigrationSeederSupport
      */
     private function schemaSignatureFor(array $deviceConfig): string
     {
-        return md5(json_encode([
-            'level1' => $this->mutationExpressionForParameter($deviceConfig, 'level1'),
-            'level2' => $this->mutationExpressionForParameter($deviceConfig, 'level2'),
-        ], JSON_THROW_ON_ERROR));
+        return md5(json_encode($this->mutationExpressionForParameter($deviceConfig, 'length'), JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * @param  array<string, mixed>  $deviceConfig
+     */
+    private function primaryLegacyPath(array $deviceConfig): ?string
+    {
+        $parameterMap = $deviceConfig['parameter_map'] ?? [];
+
+        if (! is_array($parameterMap)) {
+            return null;
+        }
+
+        foreach (['length', 'length_raw', 'ioid1'] as $parameterKey) {
+            $candidate = $parameterMap[$parameterKey] ?? null;
+
+            if (is_string($candidate) && trim($candidate) !== '') {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 }

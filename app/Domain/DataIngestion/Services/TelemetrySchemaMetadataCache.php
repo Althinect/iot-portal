@@ -73,7 +73,9 @@ class TelemetrySchemaMetadataCache
             return $this->derivedParametersBySchemaVersionId[$schemaVersionId];
         }
 
-        $this->derivedParametersBySchemaVersionId[$schemaVersionId] = $schemaVersion->derivedParameters()->get();
+        $this->derivedParametersBySchemaVersionId[$schemaVersionId] = $schemaVersion->derivedParameters()
+            ->orderBy('id')
+            ->get();
         $this->refreshedAt[$cacheKey] = now();
 
         return $this->derivedParametersBySchemaVersionId[$schemaVersionId];

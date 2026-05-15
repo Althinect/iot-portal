@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Admin\Pages\IoTDashboardSupport;
 
+use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Widgets\BarChart\BarInterval;
@@ -43,7 +44,7 @@ class WidgetFormSchemaFactory
                 ->required()
                 ->default('Line Chart')
                 ->maxLength(255),
-            ...$this->baseScopeSchema($dashboard),
+            ...$this->baseScopeSchema($dashboard, defaultTitle: 'Line Chart'),
             Select::make('parameter_keys')
                 ->label('Series parameters')
                 ->multiple()
@@ -66,7 +67,7 @@ class WidgetFormSchemaFactory
                 ->required()
                 ->default('Energy Consumption')
                 ->maxLength(255),
-            ...$this->baseScopeSchema($dashboard),
+            ...$this->baseScopeSchema($dashboard, defaultTitle: 'Energy Consumption'),
             Select::make('parameter_key')
                 ->label('Counter parameter')
                 ->options(fn (Get $get): array => $this->optionsService->counterParameterOptions($get('schema_version_topic_id')))
@@ -92,7 +93,7 @@ class WidgetFormSchemaFactory
                 ->required()
                 ->default('Gauge')
                 ->maxLength(255),
-            ...$this->baseScopeSchema($dashboard),
+            ...$this->baseScopeSchema($dashboard, defaultTitle: 'Gauge'),
             Select::make('parameter_key')
                 ->label('Gauge parameter')
                 ->options(fn (Get $get): array => $this->optionsService->numericParameterOptions($get('schema_version_topic_id')))
@@ -158,7 +159,7 @@ class WidgetFormSchemaFactory
                 ->required()
                 ->default('State Card')
                 ->maxLength(255),
-            ...$this->baseScopeSchema($dashboard),
+            ...$this->baseScopeSchema($dashboard, defaultTitle: 'State Card'),
             Select::make('parameter_key')
                 ->label('State parameter')
                 ->options(fn (Get $get): array => $this->optionsService->stateParameterOptions($get('schema_version_topic_id')))
@@ -185,7 +186,7 @@ class WidgetFormSchemaFactory
                 ->required()
                 ->default('State Timeline')
                 ->maxLength(255),
-            ...$this->baseScopeSchema($dashboard),
+            ...$this->baseScopeSchema($dashboard, defaultTitle: 'State Timeline'),
             Select::make('parameter_key')
                 ->label('State parameter')
                 ->options(fn (Get $get): array => $this->optionsService->stateParameterOptions($get('schema_version_topic_id')))
@@ -264,11 +265,12 @@ class WidgetFormSchemaFactory
                 ->required()
                 ->default('Stenter Utilization')
                 ->maxLength(255),
-            Select::make('device_id')
-                ->label('Stenter')
-                ->options(fn (): array => $this->optionsService->stenterDeviceOptions($dashboard))
-                ->searchable()
-                ->required(),
+            $this->deviceSelect(
+                dashboard: $dashboard,
+                label: 'Stenter',
+                optionsResolver: fn (): array => $this->optionsService->stenterDeviceOptions($dashboard),
+                defaultTitle: 'Stenter Utilization',
+            ),
             $this->stenterShiftsRepeater(),
             $this->stenterPercentageThresholdsRepeater(),
             ...$this->transportSchema(false, true, 30, 1440, 60),
@@ -287,11 +289,12 @@ class WidgetFormSchemaFactory
                 ->required()
                 ->default('Compressor Utilization')
                 ->maxLength(255),
-            Select::make('device_id')
-                ->label('Compressor')
-                ->options(fn (): array => $this->optionsService->compressorDeviceOptions($dashboard))
-                ->searchable()
-                ->required(),
+            $this->deviceSelect(
+                dashboard: $dashboard,
+                label: 'Compressor',
+                optionsResolver: fn (): array => $this->optionsService->compressorDeviceOptions($dashboard),
+                defaultTitle: 'Compressor Utilization',
+            ),
             $this->compressorShiftsRepeater(),
             $this->compressorPercentageThresholdsRepeater(),
             ...$this->transportSchema(false, true, 30, 1440, 60),
@@ -310,11 +313,12 @@ class WidgetFormSchemaFactory
                 ->required()
                 ->default('Steam Meter')
                 ->maxLength(255),
-            Select::make('device_id')
-                ->label('Steam meter')
-                ->options(fn (): array => $this->optionsService->steamMeterDeviceOptions($dashboard))
-                ->searchable()
-                ->required(),
+            $this->deviceSelect(
+                dashboard: $dashboard,
+                label: 'Steam meter',
+                optionsResolver: fn (): array => $this->optionsService->steamMeterDeviceOptions($dashboard),
+                defaultTitle: 'Steam Meter',
+            ),
             $this->steamMeterShiftsRepeater(),
             ...$this->transportSchema(false, true, 30, 1440, 1),
             ...$this->layoutSchema('4', 520),
@@ -339,24 +343,24 @@ class WidgetFormSchemaFactory
                     WidgetType::SteamMeter->value,
                 ], true),
             ),
-            Select::make('device_id')
-                ->label('Stenter')
-                ->options(fn (): array => $this->optionsService->stenterDeviceOptions($dashboard))
-                ->searchable()
-                ->visible(fn (Get $get): bool => $get('widget_type') === WidgetType::StenterUtilization->value)
-                ->required(fn (Get $get): bool => $get('widget_type') === WidgetType::StenterUtilization->value),
-            Select::make('device_id')
-                ->label('Compressor')
-                ->options(fn (): array => $this->optionsService->compressorDeviceOptions($dashboard))
-                ->searchable()
-                ->visible(fn (Get $get): bool => $get('widget_type') === WidgetType::CompressorUtilization->value)
-                ->required(fn (Get $get): bool => $get('widget_type') === WidgetType::CompressorUtilization->value),
-            Select::make('device_id')
-                ->label('Steam meter')
-                ->options(fn (): array => $this->optionsService->steamMeterDeviceOptions($dashboard))
-                ->searchable()
-                ->visible(fn (Get $get): bool => $get('widget_type') === WidgetType::SteamMeter->value)
-                ->required(fn (Get $get): bool => $get('widget_type') === WidgetType::SteamMeter->value),
+            $this->deviceSelect(
+                dashboard: $dashboard,
+                label: 'Stenter',
+                optionsResolver: fn (): array => $this->optionsService->stenterDeviceOptions($dashboard),
+                condition: fn (Get $get): bool => $get('widget_type') === WidgetType::StenterUtilization->value,
+            ),
+            $this->deviceSelect(
+                dashboard: $dashboard,
+                label: 'Compressor',
+                optionsResolver: fn (): array => $this->optionsService->compressorDeviceOptions($dashboard),
+                condition: fn (Get $get): bool => $get('widget_type') === WidgetType::CompressorUtilization->value,
+            ),
+            $this->deviceSelect(
+                dashboard: $dashboard,
+                label: 'Steam meter',
+                optionsResolver: fn (): array => $this->optionsService->steamMeterDeviceOptions($dashboard),
+                condition: fn (Get $get): bool => $get('widget_type') === WidgetType::SteamMeter->value,
+            ),
             Select::make('policy_id')
                 ->label('Threshold policy')
                 ->searchable()
@@ -502,18 +506,21 @@ class WidgetFormSchemaFactory
     /**
      * @return array<int, Component>
      */
-    private function baseScopeSchema(IoTDashboard $dashboard, ?Closure $visibleCondition = null): array
-    {
+    private function baseScopeSchema(
+        IoTDashboard $dashboard,
+        ?Closure $visibleCondition = null,
+        ?string $defaultTitle = null,
+    ): array {
         $visibleCondition ??= static fn (): bool => true;
 
         return [
-            Select::make('device_id')
-                ->label('Device')
-                ->options(fn (): array => $this->optionsService->deviceOptions($dashboard))
-                ->searchable()
-                ->required($visibleCondition)
-                ->visible($visibleCondition)
-                ->live(),
+            $this->deviceSelect(
+                dashboard: $dashboard,
+                label: 'Device',
+                optionsResolver: fn (): array => $this->optionsService->deviceOptions($dashboard),
+                condition: $visibleCondition,
+                defaultTitle: $defaultTitle,
+            ),
             Select::make('schema_version_topic_id')
                 ->label('Publish topic')
                 ->options(fn (Get $get): array => $this->optionsService->topicOptions($dashboard, $get('device_id')))
@@ -530,12 +537,12 @@ class WidgetFormSchemaFactory
     private function statusSummaryScopeSchema(IoTDashboard $dashboard): array
     {
         return [
-            Select::make('device_id')
-                ->label('Device')
-                ->options(fn (): array => $this->optionsService->deviceOptions($dashboard))
-                ->searchable()
-                ->required()
-                ->live(),
+            $this->deviceSelect(
+                dashboard: $dashboard,
+                label: 'Device',
+                optionsResolver: fn (): array => $this->optionsService->deviceOptions($dashboard),
+                defaultTitle: 'Latest Status',
+            ),
             Select::make('schema_version_topic_id')
                 ->label('Publish topic')
                 ->options(fn (Get $get): array => $this->optionsService->topicOptions($dashboard, $get('device_id')))
@@ -615,6 +622,116 @@ class WidgetFormSchemaFactory
                         ->required(),
                 ]),
         ];
+    }
+
+    private function deviceSelect(
+        IoTDashboard $dashboard,
+        string $label,
+        Closure $optionsResolver,
+        ?Closure $condition = null,
+        ?string $defaultTitle = null,
+    ): Select {
+        $select = Select::make('device_id')
+            ->label($label)
+            ->options($optionsResolver)
+            ->searchable()
+            ->live()
+            ->afterStateUpdated(function (Set $set, Get $get, mixed $state, mixed $old) use ($dashboard, $defaultTitle): void {
+                $this->autoPopulateTitleFromDeviceSelection(
+                    dashboard: $dashboard,
+                    set: $set,
+                    get: $get,
+                    deviceId: $state,
+                    previousDeviceId: $old,
+                    defaultTitle: $defaultTitle,
+                );
+            });
+
+        if ($condition !== null) {
+            return $select
+                ->visible($condition)
+                ->required($condition);
+        }
+
+        return $select->required();
+    }
+
+    private function autoPopulateTitleFromDeviceSelection(
+        IoTDashboard $dashboard,
+        Set $set,
+        Get $get,
+        mixed $deviceId,
+        mixed $previousDeviceId,
+        ?string $defaultTitle = null,
+    ): void {
+        $resolvedTitle = $this->resolveAutofilledTitleForDeviceSelection(
+            dashboard: $dashboard,
+            deviceId: $deviceId,
+            previousDeviceId: $previousDeviceId,
+            currentTitle: $get('title'),
+            defaultTitle: $defaultTitle,
+        );
+
+        if ($resolvedTitle === null) {
+            return;
+        }
+
+        $set('title', $resolvedTitle);
+    }
+
+    public function resolveAutofilledTitleForDeviceSelection(
+        IoTDashboard $dashboard,
+        mixed $deviceId,
+        mixed $previousDeviceId,
+        mixed $currentTitle,
+        ?string $defaultTitle = null,
+    ): ?string {
+        if (! is_numeric($deviceId)) {
+            return null;
+        }
+
+        $selectedDevice = Device::query()
+            ->whereKey((int) $deviceId)
+            ->where('organization_id', $dashboard->organization_id)
+            ->first(['id', 'name']);
+
+        if (! $selectedDevice instanceof Device) {
+            return null;
+        }
+
+        $currentTitle = is_string($currentTitle) ? trim($currentTitle) : '';
+
+        if ($currentTitle !== '' && ! $this->shouldReplaceWidgetTitle($dashboard, $currentTitle, $previousDeviceId, $defaultTitle)) {
+            return null;
+        }
+
+        return $selectedDevice->name;
+    }
+
+    private function shouldReplaceWidgetTitle(
+        IoTDashboard $dashboard,
+        string $currentTitle,
+        mixed $previousDeviceId,
+        ?string $defaultTitle = null,
+    ): bool {
+        if ($defaultTitle !== null && $currentTitle === $defaultTitle) {
+            return true;
+        }
+
+        if (! is_numeric($previousDeviceId)) {
+            return false;
+        }
+
+        $previousDevice = Device::query()
+            ->whereKey((int) $previousDeviceId)
+            ->where('organization_id', $dashboard->organization_id)
+            ->first(['id', 'name']);
+
+        if (! $previousDevice instanceof Device) {
+            return false;
+        }
+
+        return $currentTitle === $previousDevice->name;
     }
 
     /**

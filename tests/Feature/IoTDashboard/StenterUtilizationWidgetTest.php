@@ -19,6 +19,7 @@ use App\Domain\IoTDashboard\Widgets\StenterUtilization\StenterUtilizationSnapsho
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use App\Filament\Admin\Pages\IoTDashboardSupport\WidgetFormOptionsService;
+use App\Support\DeviceSelectOptions;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -162,10 +163,52 @@ it('lists only fully linked virtual stenters and resolves physical status and le
         ]);
 });
 
+it('includes tj india stenter device types in the stenter dropdown', function (): void {
+    [$widget, , , , $statusDevice, $lengthDevice] = createStenterUtilizationSnapshotContext();
+    $dashboard = IoTDashboard::query()->findOrFail($widget->iot_dashboard_id);
+
+    $tjIndiaType = DeviceType::query()->firstOrCreate([
+        'key' => 'stenter_line',
+    ], [
+        'name' => 'Stenter Line',
+        'default_protocol' => 'http',
+        'protocol_config' => [],
+    ]);
+
+    $tjIndiaVirtualDevice = Device::factory()->create([
+        'organization_id' => $dashboard->organization_id,
+        'device_type_id' => $tjIndiaType->id,
+        'device_schema_version_id' => $widget->device->device_schema_version_id,
+        'is_virtual' => true,
+        'name' => 'TJ India Stenter',
+    ]);
+
+    VirtualDeviceLink::factory()->create([
+        'virtual_device_id' => $tjIndiaVirtualDevice->id,
+        'source_device_id' => $statusDevice->id,
+        'purpose' => 'status',
+    ]);
+    VirtualDeviceLink::factory()->create([
+        'virtual_device_id' => $tjIndiaVirtualDevice->id,
+        'source_device_id' => $lengthDevice->id,
+        'purpose' => 'length',
+    ]);
+
+    $options = app(WidgetFormOptionsService::class)->stenterDeviceOptions($dashboard);
+
+    expect(DeviceSelectOptions::findLabel($options, $tjIndiaVirtualDevice->id))->toContain('TJ India Stenter');
+});
+
 function createStenterUtilizationSnapshotContext(): array
 {
     $organization = Organization::factory()->create();
-    $stenterType = DeviceType::factory()->create(['key' => 'stenter_line']);
+    $stenterType = DeviceType::query()->firstOrCreate([
+        'key' => 'stenter_line',
+    ], [
+        'name' => 'Stenter Line',
+        'default_protocol' => 'http',
+        'protocol_config' => [],
+    ]);
     $statusType = DeviceType::factory()->mqtt()->create(['key' => 'status_source']);
     $lengthType = DeviceType::factory()->mqtt()->create(['key' => 'length_source']);
 

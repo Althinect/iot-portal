@@ -23,7 +23,7 @@ class TeejayAcEnergyMateSeeder extends TeejayMigrationSeederSupport
 
     private const SCHEMA_NAME = 'Energy Meter Contract';
 
-    private const VERSION_OFFSET = 20;
+    private const VERSION_OFFSET = 4;
 
     private const COMPRESSOR_STATUS_THRESHOLD = 10;
 
@@ -43,7 +43,7 @@ class TeejayAcEnergyMateSeeder extends TeejayMigrationSeederSupport
                 schemaName: self::SCHEMA_NAME,
                 version: self::VERSION_OFFSET + $index,
                 status: 'draft',
-                notes: 'Recovered Teejay AC Energy Mate contract variant: '.$schemaConfig['variant'],
+                notes: 'Recovered legacy AC Energy Mate contract variant: '.$schemaConfig['variant'],
                 parameters: $this->parametersForSchema(),
                 derivedParameters: $schemaConfig['derived_parameters'],
             );

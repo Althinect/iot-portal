@@ -50,7 +50,7 @@ it('seeds textrip hubs, vendor-native child ids, and schema variants from the re
 
     $schemaCounts = $childDevices
         ->groupBy(fn (Device $device): string => (string) $device->schemaVersion?->schema?->name.'@v'.(string) $device->schemaVersion?->version)
-        ->map->count()
+        ->map(static fn ($devices): int => $devices->count())
         ->all();
 
     $specialEnergyDevice = $childDevices->firstWhere('external_id', '869244041759394-27');
@@ -70,14 +70,14 @@ it('seeds textrip hubs, vendor-native child ids, and schema variants from the re
         ->and($childDevices->where('deviceType.key', 'energy_meter'))->toHaveCount(11)
         ->and($childDevices->where('deviceType.key', 'tank_level_sensor'))->toHaveCount(7)
         ->and($schemaCounts)->toMatchArray([
-            'Energy Meter Contract@v3' => 10,
-            'Energy Meter Contract@v4' => 1,
+            'Energy Meter Contract@v2' => 10,
+            'Energy Meter Contract@v3' => 1,
             'Tank Level Sensor Contract@v1' => 5,
             'Tank Level Sensor Contract@v2' => 1,
             'Tank Level Sensor Contract@v3' => 1,
         ])
         ->and($specialEnergyDevice?->schemaVersion?->schema?->name)->toBe('Energy Meter Contract')
-        ->and($specialEnergyDevice?->schemaVersion?->version)->toBe(4)
+        ->and($specialEnergyDevice?->schemaVersion?->version)->toBe(3)
         ->and($specialEnergyDevice?->metadata['schema_variant'] ?? null)->toBe('ac_voltage_alias')
         ->and($standardModbusDevice?->schemaVersion?->schema?->name)->toBe('Tank Level Sensor Contract')
         ->and($standardModbusDevice?->schemaVersion?->version)->toBe(1)

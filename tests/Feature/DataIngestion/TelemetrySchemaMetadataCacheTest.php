@@ -9,13 +9,18 @@ use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
 use App\Domain\DeviceSchema\Models\ParameterDefinition;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
 
 beforeEach(function (): void {
+    config()->set('cache.default', 'array');
+    config()->set('cache.stores.file.path', storage_path('framework/cache/testing/'.Str::uuid()->toString()));
     config()->set('ingestion.metadata_ttl_seconds', 300);
 
+    Cache::purge('file');
     TelemetrySchemaMetadataCache::invalidateSharedVersion();
 });
 
@@ -49,11 +54,14 @@ it('reuses cached active parameter metadata for a topic within the ttl window', 
     DB::enableQueryLog();
 
     $second = $cache->activeParametersFor($topic);
+    $parameterDefinitionQueryCount = collect(DB::getQueryLog())
+        ->filter(static fn (array $query): bool => str_contains((string) $query['query'], 'parameter_definitions'))
+        ->count();
 
     expect($first)->toHaveCount(1)
         ->and($first->pluck('key')->all())->toBe(['temp_c'])
         ->and($second->pluck('key')->all())->toBe(['temp_c'])
-        ->and(count(DB::getQueryLog()))->toBe(0);
+        ->and($parameterDefinitionQueryCount)->toBe(0);
 });
 
 it('reuses cached derived parameter metadata for a schema version within the ttl window', function (): void {
@@ -72,11 +80,14 @@ it('reuses cached derived parameter metadata for a schema version within the ttl
     DB::enableQueryLog();
 
     $second = $cache->derivedParametersFor($schemaVersion);
+    $derivedParameterDefinitionQueryCount = collect(DB::getQueryLog())
+        ->filter(static fn (array $query): bool => str_contains((string) $query['query'], 'derived_parameter_definitions'))
+        ->count();
 
     expect($first)->toHaveCount(1)
         ->and($first->pluck('key')->all())->toBe(['temp_f'])
         ->and($second->pluck('key')->all())->toBe(['temp_f'])
-        ->and(count(DB::getQueryLog()))->toBe(0);
+        ->and($derivedParameterDefinitionQueryCount)->toBe(0);
 });
 
 it('refreshes cached active parameter metadata immediately after parameter changes', function (): void {

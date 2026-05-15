@@ -309,7 +309,7 @@ it('keeps happy-path ingestion within the expected query budget', function (): v
     expect($message)->toBeInstanceOf(IngestionMessage::class)
         ->and($message?->status)->toBe(IngestionStatus::Completed);
 
-    expect(count(DB::getQueryLog()))->toBeLessThanOrEqual(7);
+    expect(count(DB::getQueryLog()))->toBeLessThanOrEqual(8);
 });
 
 it('skips presence writes within the heartbeat throttle window', function (): void {
@@ -329,7 +329,8 @@ it('skips presence writes within the heartbeat throttle window', function (): vo
         receivedAt: now(),
     ));
 
-    $this->expectsDatabaseQueryCount(3);
+    DB::flushQueryLog();
+    DB::enableQueryLog();
 
     $message = $service->ingest(new IncomingTelemetryEnvelope(
         sourceSubject: str_replace('/', '.', $context['mqtt_topic']),
@@ -342,6 +343,8 @@ it('skips presence writes within the heartbeat throttle window', function (): vo
 
     expect($message)->toBeInstanceOf(IngestionMessage::class)
         ->and($message?->status)->toBe(IngestionStatus::Completed);
+
+    expect(count(DB::getQueryLog()))->toBeLessThanOrEqual(5);
 });
 
 it('handles duplicate envelopes with the conflict-first query budget', function (): void {

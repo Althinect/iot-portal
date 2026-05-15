@@ -42,7 +42,7 @@ class MiracleDomeMigrationSeeder extends Seeder
 
     private const ENERGY_SCHEMA_NAME = 'Energy Meter Contract';
 
-    private const ENERGY_SCHEMA_VERSION = 2;
+    private const ENERGY_SCHEMA_VERSION = 1;
 
     private const ENERGY_SCHEMA_VARIANT = 'ac_energy_mate_calibrated';
 

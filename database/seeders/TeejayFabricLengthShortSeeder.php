@@ -21,7 +21,7 @@ class TeejayFabricLengthShortSeeder extends TeejayMigrationSeederSupport
 
     private const SCHEMA_NAME = 'Fabric Length Contract';
 
-    private const VERSION_OFFSET = 30;
+    private const VERSION_OFFSET = 12;
 
     public function run(): void
     {
@@ -39,7 +39,7 @@ class TeejayFabricLengthShortSeeder extends TeejayMigrationSeederSupport
                 schemaName: self::SCHEMA_NAME,
                 version: self::VERSION_OFFSET + $index,
                 status: 'draft',
-                notes: 'Recovered Teejay short fabric length calibration variant: '.$schemaConfig['variant'],
+                notes: 'Recovered legacy short fabric length calibration variant: '.$schemaConfig['variant'],
                 parameters: [
                     [
                         'key' => 'length',

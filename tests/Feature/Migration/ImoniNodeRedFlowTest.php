@@ -277,7 +277,7 @@ it('normalizes witco hub traffic into generic source topics for laravel-side bin
         ]);
 });
 
-it('uses environment-driven mqtt broker settings for the node-red flow', function (): void {
+it('uses local nats mqtt broker settings for the node-red flow', function (): void {
     $flow = collect(json_decode(
         file_get_contents(base_path('docker/node-red/data/flows.json')) ?: '[]',
         true,
@@ -290,6 +290,6 @@ it('uses environment-driven mqtt broker settings for the node-red flow', functio
     );
 
     expect($mqttBrokerNode)->toBeArray()
-        ->and($mqttBrokerNode['broker'] ?? null)->toBe('${MQTT_BROKER_HOST}')
-        ->and($mqttBrokerNode['port'] ?? null)->toBe('${MQTT_BROKER_PORT}');
+        ->and($mqttBrokerNode['broker'] ?? null)->toBe('nats')
+        ->and($mqttBrokerNode['port'] ?? null)->toBe('1883');
 });

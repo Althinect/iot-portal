@@ -7,6 +7,7 @@ use App\Domain\Automation\Models\AutomationNotificationProfile;
 use App\Domain\Automation\Models\AutomationThresholdPolicy;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Models\DeviceType;
+use App\Domain\DeviceManagement\Models\VirtualDeviceLink;
 use App\Domain\DeviceSchema\Enums\ParameterCategory;
 use App\Domain\DeviceSchema\Enums\ParameterDataType;
 use App\Domain\DeviceSchema\Models\DeviceSchema;
@@ -15,6 +16,7 @@ use App\Domain\DeviceSchema\Models\ParameterDefinition;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
+use App\Domain\IoTDashboard\Widgets\StenterUtilization\StenterUtilizationConfig;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Shared\Models\User;
 use App\Filament\Admin\Pages\IoTDashboard as IoTDashboardPage;
@@ -25,6 +27,8 @@ use Filament\Actions\Testing\TestAction;
 use Filament\Forms\Components\Repeater;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+
+use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
@@ -130,8 +134,9 @@ function createDashboardTopicForPageTest(): array
 }
 
 beforeEach(function (): void {
+    /** @var User $admin */
     $admin = User::factory()->create(['is_super_admin' => true]);
-    $this->actingAs($admin);
+    actingAs($admin);
 });
 
 it('renders the IoT dashboard page', function (): void {
@@ -254,6 +259,41 @@ it('renders threshold colors with a table repeater in widget configuration', fun
         ->and($thresholdRepeater?->isTable())->toBeTrue();
 });
 
+it('auto-populates widget titles from the selected device until the title is customized', function (): void {
+    [$dashboard, , $device] = createDashboardTopicForPageTest();
+
+    $replacementDevice = Device::factory()->create([
+        'organization_id' => $dashboard->organization_id,
+        'device_type_id' => $device->device_type_id,
+        'device_schema_version_id' => $device->device_schema_version_id,
+        'name' => 'Replacement Energy Meter',
+    ]);
+
+    $factory = app(WidgetFormSchemaFactory::class);
+
+    expect($factory->resolveAutofilledTitleForDeviceSelection(
+        dashboard: $dashboard,
+        deviceId: $device->id,
+        previousDeviceId: null,
+        currentTitle: 'Line Chart',
+        defaultTitle: 'Line Chart',
+    ))->toBe($device->name)
+        ->and($factory->resolveAutofilledTitleForDeviceSelection(
+            dashboard: $dashboard,
+            deviceId: $replacementDevice->id,
+            previousDeviceId: $device->id,
+            currentTitle: $device->name,
+            defaultTitle: 'Line Chart',
+        ))->toBe($replacementDevice->name)
+        ->and($factory->resolveAutofilledTitleForDeviceSelection(
+            dashboard: $dashboard,
+            deviceId: $replacementDevice->id,
+            previousDeviceId: $device->id,
+            currentTitle: 'Custom Widget Title',
+            defaultTitle: 'Line Chart',
+        ))->toBeNull();
+});
+
 it('uses neutral status summary tiles and centers values', function (): void {
     $statusSummaryStylesheet = file_get_contents(resource_path('css/iot-dashboard/widgets/status-summary.css'));
     $statusSummaryRenderer = file_get_contents(resource_path('js/iot-dashboard/widgets/status-summary/renderer.js'));
@@ -355,6 +395,110 @@ it('uses dashboard-consistent stenter utilization panels and filled efficiency b
         ->toContain('function mergeStatusSegments(segments)')
         ->toContain('return mergeStatusSegments(segments)')
         ->not->toContain('iot-stenter-utilization__meter');
+});
+
+it('warns when a stenter widget is submitted without linked sources', function (): void {
+    $organization = Organization::factory()->create();
+    $dashboard = IoTDashboard::factory()->create([
+        'organization_id' => $organization->id,
+    ]);
+
+    $stenterType = DeviceType::query()->firstOrCreate([
+        'key' => 'stenter_line',
+    ], [
+        'name' => 'Stenter Line',
+        'default_protocol' => 'http',
+        'protocol_config' => [],
+    ]);
+    $schema = DeviceSchema::factory()->forDeviceType($stenterType)->create();
+    $schemaVersion = DeviceSchemaVersion::factory()->active()->create([
+        'device_schema_id' => $schema->id,
+    ]);
+    SchemaVersionTopic::factory()->publish()->create([
+        'device_schema_version_id' => $schemaVersion->id,
+        'key' => 'telemetry',
+        'label' => 'Telemetry',
+        'suffix' => 'telemetry',
+    ]);
+
+    $statusType = DeviceType::factory()->mqtt()->create([
+        'key' => 'status_source_warning_test',
+    ]);
+    $statusSchema = DeviceSchema::factory()->forDeviceType($statusType)->create();
+    $statusSchemaVersion = DeviceSchemaVersion::factory()->active()->create([
+        'device_schema_id' => $statusSchema->id,
+    ]);
+    SchemaVersionTopic::factory()->publish()->create([
+        'device_schema_version_id' => $statusSchemaVersion->id,
+        'key' => 'telemetry',
+        'label' => 'Telemetry',
+        'suffix' => 'telemetry',
+    ]);
+
+    $lengthType = DeviceType::factory()->mqtt()->create([
+        'key' => 'length_source_warning_test',
+    ]);
+    $lengthSchema = DeviceSchema::factory()->forDeviceType($lengthType)->create();
+    $lengthSchemaVersion = DeviceSchemaVersion::factory()->active()->create([
+        'device_schema_id' => $lengthSchema->id,
+    ]);
+    SchemaVersionTopic::factory()->publish()->create([
+        'device_schema_version_id' => $lengthSchemaVersion->id,
+        'key' => 'telemetry',
+        'label' => 'Telemetry',
+        'suffix' => 'telemetry',
+    ]);
+
+    $stenterDevice = Device::factory()->create([
+        'organization_id' => $organization->id,
+        'device_type_id' => $stenterType->id,
+        'device_schema_version_id' => $schemaVersion->id,
+        'is_virtual' => true,
+        'name' => 'TJ India Stenter',
+    ]);
+
+    $statusDevice = Device::factory()->create([
+        'organization_id' => $organization->id,
+        'device_type_id' => $statusType->id,
+        'device_schema_version_id' => $statusSchemaVersion->id,
+        'name' => 'Status Source',
+    ]);
+    $lengthDevice = Device::factory()->create([
+        'organization_id' => $organization->id,
+        'device_type_id' => $lengthType->id,
+        'device_schema_version_id' => $lengthSchemaVersion->id,
+        'name' => 'Length Source',
+    ]);
+
+    VirtualDeviceLink::factory()->create([
+        'virtual_device_id' => $stenterDevice->id,
+        'source_device_id' => $statusDevice->id,
+        'purpose' => 'status',
+    ]);
+    VirtualDeviceLink::factory()->create([
+        'virtual_device_id' => $stenterDevice->id,
+        'source_device_id' => $lengthDevice->id,
+        'purpose' => 'length',
+    ]);
+
+    livewire(IoTDashboardPage::class)
+        ->set('dashboardId', $dashboard->id)
+        ->callAction('addStenterUtilizationWidget', data: [
+            'title' => 'TJ India Stenter Utilization',
+            'device_id' => (string) $stenterDevice->id,
+            'shifts' => StenterUtilizationConfig::defaultShifts(),
+            'percentage_thresholds' => StenterUtilizationConfig::defaultPercentageThresholds(),
+            'use_websocket' => true,
+            'use_polling' => true,
+            'polling_interval_seconds' => 30,
+            'lookback_minutes' => 1440,
+            'max_points' => 60,
+            'grid_columns' => '4',
+            'card_height_px' => 768,
+        ])
+        ->assertNotified('Invalid widget input');
+
+    expect(IoTDashboardWidget::query()->where('iot_dashboard_id', $dashboard->id)->exists())->toBeFalse();
 });
 
 it('edits a threshold policy from the dashboard slide-over action', function (): void {

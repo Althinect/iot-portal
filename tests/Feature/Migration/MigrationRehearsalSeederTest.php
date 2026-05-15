@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Models\DeviceType;
+use App\Domain\DeviceSchema\Models\DeviceSchema;
 use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Widgets\StenterUtilization\StenterUtilizationConfig;
@@ -13,7 +14,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-it('seeds the witco, miracle dome, textrip, teejay, and srilankan pilots plus the shared migration catalog by default', function (): void {
+it('seeds the witco, miracle dome, textrip, tj india, teejay, and srilankan pilots plus the shared migration catalog by default', function (): void {
     $this->seed(DatabaseSeeder::class);
     $this->seed(DatabaseSeeder::class);
 
@@ -54,12 +55,23 @@ it('seeds the witco, miracle dome, textrip, teejay, and srilankan pilots plus th
     $stenterFirstWidget = $stenterDashboard?->widgets
         ->firstWhere('title', 'TJ - Stenter01  (AGR) · Utilization');
 
+    $schemaVersions = fn (string $deviceTypeKey, string $schemaName): array => DeviceSchema::query()
+        ->where('name', $schemaName)
+        ->whereHas('deviceType', fn ($query) => $query->where('key', $deviceTypeKey))
+        ->firstOrFail()
+        ->versions()
+        ->orderBy('version')
+        ->pluck('version')
+        ->map(static fn (mixed $version): int => (int) $version)
+        ->all();
+
     expect($organizationSlugs)->toBe([
         'main-organization',
         'miracle-dome',
         'srilankan-airlines',
         'teejay',
         'textrip',
+        'tj-india',
         'witco',
     ])->and($deviceTypeKeys)->toBe([
         'energy_meter',
@@ -86,6 +98,11 @@ it('seeds the witco, miracle dome, textrip, teejay, and srilankan pilots plus th
         ->and(Device::query()->where('external_id', '869604063866064-51')->exists())->toBeTrue()
         ->and(Device::query()->where('external_id', '869244041754767')->exists())->toBeTrue()
         ->and(Device::query()->where('external_id', 'ea2b48f3-911f-4c90-88b7-29ac47799ed7')->exists())->toBeTrue()
+        ->and(Device::query()->where('external_id', '869604063844418-52-2')->exists())->toBeTrue()
+        ->and(Device::query()->where('external_id', 'tj-india-compactor01')->exists())->toBeTrue()
+        ->and($schemaVersions('energy_meter', 'Energy Meter Contract'))->toBe([1, 2, 3, 4, 5])
+        ->and($schemaVersions('tank_level_sensor', 'Tank Level Sensor Contract'))->toBe([1, 2, 3, 4, 5, 6, 7])
+        ->and($schemaVersions('fabric_length_counter', 'Fabric Length Contract'))->toBe([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
         ->and($stenterStandard?->isVirtual())->toBeTrue()
         ->and($stenterStandard?->parent_device_id)->toBeNull()
         ->and($stenterStandard?->virtualDeviceLinks)->toHaveCount(3)

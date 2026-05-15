@@ -83,7 +83,7 @@ it('seeds miracle dome hubs and physical energy meters with normalized source bi
     expect($serverRoomMeter)->not->toBeNull()
         ->and($serverRoomMeter?->deviceType?->key)->toBe('energy_meter')
         ->and($serverRoomMeter?->schemaVersion?->schema?->name)->toBe('Energy Meter Contract')
-        ->and($serverRoomMeter?->schemaVersion?->version)->toBe(2)
+        ->and($serverRoomMeter?->schemaVersion?->version)->toBe(1)
         ->and($serverRoomMeter?->metadata['schema_variant'] ?? null)->toBe('ac_energy_mate_calibrated')
         ->and($telemetryTopic?->resolvedTopic($serverRoomMeter))->toBe('energy/869244041759402-21/telemetry')
         ->and($parameterKeys)->toBe([

@@ -42,9 +42,9 @@ class TextripMigrationSeeder extends Seeder
 
     private const AC_SCHEMA_NAME = 'Energy Meter Contract';
 
-    private const AC_STANDARD_SCHEMA_VERSION = 3;
+    private const AC_STANDARD_SCHEMA_VERSION = 2;
 
-    private const AC_VOLTAGE_CALIBRATION_SCHEMA_VERSION = 4;
+    private const AC_VOLTAGE_CALIBRATION_SCHEMA_VERSION = 3;
 
     private const MODBUS_DEVICE_TYPE_KEY = 'tank_level_sensor';
 
