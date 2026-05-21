@@ -14,17 +14,17 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-it('seeds the witco, miracle dome, textrip, tj india, teejay, and srilankan pilots plus the shared migration catalog by default', function (): void {
+it('seeds the witco, miracle dome, textrip, commercial bank, tj india, teejay, and srilankan pilots plus the shared migration catalog by default', function (): void {
     $this->seed(DatabaseSeeder::class);
     $this->seed(DatabaseSeeder::class);
 
     $organizationSlugs = Organization::query()
-        ->orderBy('slug')
+        ->orderBy('slug', 'asc')
         ->pluck('slug')
         ->all();
 
     $deviceTypeKeys = DeviceType::query()
-        ->orderBy('key')
+        ->orderBy('key', 'asc')
         ->pluck('key')
         ->all();
 
@@ -66,6 +66,7 @@ it('seeds the witco, miracle dome, textrip, tj india, teejay, and srilankan pilo
         ->all();
 
     expect($organizationSlugs)->toBe([
+        'commercial-bank',
         'main-organization',
         'miracle-dome',
         'srilankan-airlines',
@@ -79,6 +80,7 @@ it('seeds the witco, miracle dome, textrip, tj india, teejay, and srilankan pilo
         'legacy_climate_sensor',
         'legacy_egravity_sensor',
         'legacy_hub',
+        'legacy_imoni_lite',
         'pressure_sensor',
         'status',
         'steam_meter',
@@ -100,7 +102,10 @@ it('seeds the witco, miracle dome, textrip, tj india, teejay, and srilankan pilo
         ->and(Device::query()->where('external_id', 'ea2b48f3-911f-4c90-88b7-29ac47799ed7')->exists())->toBeTrue()
         ->and(Device::query()->where('external_id', '869604063844418-52-2')->exists())->toBeTrue()
         ->and(Device::query()->where('external_id', 'tj-india-compactor01')->exists())->toBeTrue()
-        ->and($schemaVersions('energy_meter', 'Energy Meter Contract'))->toBe([1, 2, 3, 4, 5])
+        ->and(Device::query()->where('external_id', '169244041767793')->exists())->toBeTrue()
+        ->and(Device::query()->where('external_id', '169244041767793-00')->exists())->toBeTrue()
+        ->and(Device::query()->where('external_id', '869244041759659-21')->exists())->toBeTrue()
+        ->and($schemaVersions('energy_meter', 'Energy Meter Contract'))->toBe([1, 2, 3, 4, 5, 20])
         ->and($schemaVersions('tank_level_sensor', 'Tank Level Sensor Contract'))->toBe([1, 2, 3, 4, 5, 6, 7])
         ->and($schemaVersions('fabric_length_counter', 'Fabric Length Contract'))->toBe([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
         ->and($stenterStandard?->isVirtual())->toBeTrue()
