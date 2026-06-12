@@ -141,6 +141,45 @@ new class extends Component implements HasForms {
         $this->messageCount = 0;
     }
 
+    /**
+     * @param  array<string, mixed>  $entry
+     */
+    private function eventMatchesSelectedDevice(array $entry): bool
+    {
+        if (!$this->selectedDevice) {
+            return false;
+        }
+
+        $entryDeviceExternalId = $entry['device_external_id'] ?? null;
+        $entryDeviceUuid = $entry['device_uuid'] ?? null;
+        $selectedDevice = (string) $this->selectedDevice;
+
+        return $selectedDevice === $entryDeviceExternalId || $selectedDevice === $entryDeviceUuid;
+    }
+
+    /**
+     * @param  array<string, mixed>  $entry
+     */
+    private function eventMatchesSelectedTopic(array $entry): bool
+    {
+        if (!$this->selectedTopicSuffix) {
+            return false;
+        }
+
+        $entryTopic = $entry['topic'] ?? null;
+
+        if (!is_string($entryTopic) || trim($entryTopic) === '') {
+            return false;
+        }
+
+        $selectedTopicSuffix = trim((string) $this->selectedTopicSuffix, '/.');
+        $entryTopic = trim($entryTopic);
+
+        return $entryTopic === $selectedTopicSuffix
+            || str_ends_with($entryTopic, '/' . $selectedTopicSuffix)
+            || str_ends_with($entryTopic, '.' . $selectedTopicSuffix);
+    }
+
     private function loadTopicOptionsForDevice(?string $selectedDevice): void
     {
         $this->topicOptions = [];
@@ -180,15 +219,7 @@ new class extends Component implements HasForms {
             return;
         }
 
-        $entryDeviceExternalId = $entry['device_external_id'] ?? null;
-        $entryDeviceUuid = $entry['device_uuid'] ?? null;
-        $entryTopic = $entry['topic'] ?? null;
-
-        $deviceMatches = $this->selectedDevice === $entryDeviceExternalId || $this->selectedDevice === $entryDeviceUuid;
-
-        $topicMatches = is_string($entryTopic) && str_ends_with($entryTopic, '/' . $this->selectedTopicSuffix);
-
-        if (!$deviceMatches || !$topicMatches) {
+        if (!$this->eventMatchesSelectedDevice($entry) || !$this->eventMatchesSelectedTopic($entry)) {
             return;
         }
 

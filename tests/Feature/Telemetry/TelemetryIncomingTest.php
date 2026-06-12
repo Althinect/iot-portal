@@ -10,6 +10,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 uses(RefreshDatabase::class);
 
 it('does not broadcast raw telemetry by default', function (): void {
+    config()->set('iot.broadcast.raw_telemetry', false);
+
     $event = new TelemetryIncoming(
         topic: 'devices/fan/external-1/status',
         deviceUuid: 'uuid-1',

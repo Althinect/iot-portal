@@ -14,6 +14,8 @@ use Illuminate\Database\Eloquent\Factories\Factory;
  */
 class DeviceSignalBindingFactory extends Factory
 {
+    protected $model = DeviceSignalBinding::class;
+
     /**
      * Define the model's default state.
      *

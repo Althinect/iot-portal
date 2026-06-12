@@ -13,6 +13,7 @@ use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceSchema\Models\ParameterDefinition;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
 use App\Domain\Shared\Services\RuntimeSettingManager;
+use App\Domain\Telemetry\Enums\ValidationStatus;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use App\Events\TelemetryReceived;
 use Illuminate\Support\Collection;
@@ -111,7 +112,7 @@ class TelemetryIngestionService
             return $ingestionMessage;
         }
 
-        $schemaVersion = $device->schemaVersion;
+        $schemaVersion = $device->schemaVersion ?? null;
         $messageContext = [
             'organization_id' => $device->organization_id,
             'device_id' => $device->id,
@@ -172,7 +173,7 @@ class TelemetryIngestionService
             errors: $validationResult['validation_errors'],
         );
 
-        if ($validationResult['passes'] !== true) {
+        if ($validationResult['status'] === ValidationStatus::Invalid) {
             $telemetryLog = $this->persistenceService->persist(
                 device: $device,
                 schemaVersion: $schemaVersion,
@@ -209,6 +210,7 @@ class TelemetryIngestionService
                 validationStatus: $validationResult['status'],
                 ingestionMessage: $ingestionMessage,
                 processingState: 'inactive_skipped',
+                validationErrors: $validationResult['validation_errors'],
                 receivedAt: $envelope->resolveReceivedAt(),
             );
 
@@ -268,6 +270,7 @@ class TelemetryIngestionService
             ingestionMessage: $ingestionMessage,
             processingState: 'processed',
             mutatedValues: $mutationResult['mutated_values'],
+            validationErrors: $validationResult['validation_errors'],
             receivedAt: $envelope->resolveReceivedAt(),
         );
 

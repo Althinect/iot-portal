@@ -8,6 +8,7 @@ use App\Domain\DataIngestion\DTO\IncomingTelemetryEnvelope;
 use App\Domain\DataIngestion\Jobs\ProcessInboundTelemetryJob;
 use App\Domain\DataIngestion\Services\DeviceSignalBindingResolver;
 use App\Domain\DataIngestion\Services\DeviceTelemetryTopicResolver;
+use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\Shared\Services\BasisNatsClientHeartbeatProbe;
 use App\Domain\Shared\Services\NatsConnectionHeartbeat;
 use App\Events\TelemetryIncoming;
@@ -16,6 +17,7 @@ use Basis\Nats\Configuration;
 use Basis\Nats\Message\Payload;
 use Illuminate\Console\Command;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Laravel\Telescope\Telescope;
 
@@ -73,7 +75,10 @@ class IngestTelemetryCommand extends Command
                         return;
                     }
 
-                    if ($topicResolver->resolve($mqttTopic) === null && ! $bindingResolver->supportsTopic($mqttTopic)) {
+                    $resolvedTopic = $topicResolver->resolve($mqttTopic);
+                    $supportsBindingTopic = $bindingResolver->supportsTopic($mqttTopic);
+
+                    if ($resolvedTopic === null && ! $supportsBindingTopic) {
                         return;
                     }
 
@@ -96,13 +101,17 @@ class IngestTelemetryCommand extends Command
                         receivedAt: now(),
                     );
 
-                    event(new TelemetryIncoming(
-                        topic: $mqttTopic,
-                        deviceUuid: $envelope->deviceUuid,
-                        deviceExternalId: $envelope->deviceExternalId,
-                        payload: $decodedPayload,
-                        receivedAt: $envelope->resolveReceivedAt(),
-                    ));
+                    $this
+                        ->resolveTelemetryBroadcastEnvelopes($envelope, $resolvedTopic, $supportsBindingTopic, $bindingResolver)
+                        ->each(function (IncomingTelemetryEnvelope $broadcastEnvelope): void {
+                            event(new TelemetryIncoming(
+                                topic: $broadcastEnvelope->mqttTopic,
+                                deviceUuid: $broadcastEnvelope->deviceUuid,
+                                deviceExternalId: $broadcastEnvelope->deviceExternalId,
+                                payload: $broadcastEnvelope->payload,
+                                receivedAt: $broadcastEnvelope->resolveReceivedAt(),
+                            ));
+                        });
 
                     try {
                         ProcessInboundTelemetryJob::dispatch($envelope->toArray())
@@ -141,6 +150,47 @@ class IngestTelemetryCommand extends Command
 
         /** @phpstan-ignore deadCode.unreachable */
         return self::SUCCESS;
+    }
+
+    /**
+     * @param  array{device: Device, topic: mixed}|null  $resolvedTopic
+     * @return Collection<int, IncomingTelemetryEnvelope>
+     */
+    private function resolveTelemetryBroadcastEnvelopes(
+        IncomingTelemetryEnvelope $envelope,
+        ?array $resolvedTopic,
+        bool $supportsBindingTopic,
+        DeviceSignalBindingResolver $bindingResolver,
+    ): Collection {
+        if ($supportsBindingTopic) {
+            $expandedEnvelopes = $bindingResolver->expand($envelope);
+
+            if ($expandedEnvelopes->isNotEmpty()) {
+                return $expandedEnvelopes;
+            }
+        }
+
+        return collect([
+            $this->enrichTelemetryEnvelope($envelope, $resolvedTopic),
+        ]);
+    }
+
+    /**
+     * @param  array{device: Device, topic: mixed}|null  $resolvedTopic
+     */
+    private function enrichTelemetryEnvelope(IncomingTelemetryEnvelope $envelope, ?array $resolvedTopic): IncomingTelemetryEnvelope
+    {
+        $device = $resolvedTopic['device'] ?? null;
+
+        return new IncomingTelemetryEnvelope(
+            sourceSubject: $envelope->sourceSubject,
+            mqttTopic: $envelope->mqttTopic,
+            payload: $envelope->payload,
+            deviceUuid: $envelope->deviceUuid ?? ($device instanceof Device ? $device->uuid : null),
+            deviceExternalId: $envelope->deviceExternalId ?? ($device instanceof Device ? $device->external_id : null),
+            messageId: $envelope->messageId,
+            receivedAt: $envelope->receivedAt,
+        );
     }
 
     private function resolveHost(): string

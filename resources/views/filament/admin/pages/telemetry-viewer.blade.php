@@ -287,50 +287,64 @@
     @endphp
 
     @if ($rawTelemetryDiagnosticsEnabled)
+        <meta name="enable-echo" content="true">
+
         <livewire:admin.telemetry-live-stream />
 
         @push('scripts')
             <script>
                 document.addEventListener('livewire:init', () => {
-                    if (window.__telemetryPusherBound || ! window.Pusher) {
+                    if (window.__telemetryPusherBound) {
+                        return;
+                    }
+
+                    const handleIncomingTelemetry = (event) => {
+                        Livewire.dispatch('telemetryIncoming', { entry: event });
+                    };
+
+                    if (window.Echo && typeof window.Echo.channel === 'function') {
+                        window.__telemetryPusherBound = true;
+                        window.__telemetryChannel = window.Echo.channel('telemetry');
+                        window.__telemetryChannel.listen('.telemetry.incoming', handleIncomingTelemetry);
+
+                        return;
+                    }
+
+                    const echoPusher = window.Echo?.connector?.pusher ?? null;
+
+                    if (echoPusher) {
+                        window.__telemetryPusher = echoPusher;
+                    } else if (! window.__telemetryPusher && window.Pusher) {
+                        const configuredHost = @js(config('filament.broadcasting.echo.wsHost'));
+                        const configuredPort = Number(@js(config('filament.broadcasting.echo.wsPort')));
+                        const configuredForceTls = @js((bool) config('filament.broadcasting.echo.forceTLS'));
+                        const originScheme = window.location.protocol.replace(':', '');
+                        const wsScheme = configuredForceTls ? 'https' : 'http';
+                        const wsHost = configuredHost || window.location.hostname;
+                        const wsPort = Number.isFinite(configuredPort) && configuredPort > 0
+                            ? configuredPort
+                            : (window.location.port ? Number(window.location.port) : (originScheme === 'https' ? 443 : 80));
+
+                        window.__telemetryPusher = new window.Pusher(@js(config('broadcasting.connections.reverb.key')), {
+                            cluster: 'mt1',
+                            wsHost,
+                            wsPort,
+                            wssPort: wsPort,
+                            forceTLS: wsScheme === 'https',
+                            enabledTransports: ['ws', 'wss'],
+                            disableStats: true,
+                        });
+                    }
+
+                    if (! window.__telemetryPusher) {
+                        console.warn('Telemetry websocket client not available.');
+
                         return;
                     }
 
                     window.__telemetryPusherBound = true;
-
-                    const pusher = new window.Pusher(@js(config('broadcasting.connections.reverb.key')), {
-                        cluster: 'mt1',
-                        wsHost: @js(config('broadcasting.connections.reverb.options.host')),
-                        wsPort: @js(config('broadcasting.connections.reverb.options.port')),
-                        wssPort: @js(config('broadcasting.connections.reverb.options.port')),
-                        forceTLS: @js(config('broadcasting.connections.reverb.options.scheme') === 'https'),
-                        enabledTransports: ['ws', 'wss'],
-                        disableStats: true,
-                    });
-
-                    const channel = pusher.subscribe('telemetry');
-
-                    channel.bind('telemetry.incoming', (event) => {
-                        const params = new URLSearchParams(window.location.search);
-                        const selectedDevice = params.get('device');
-                        const selectedTopicSuffix = params.get('topic');
-
-                        if (!selectedDevice || !selectedTopicSuffix) {
-                            return;
-                        }
-
-                        const deviceMatches = selectedDevice === event?.device_external_id
-                            || selectedDevice === event?.device_uuid;
-
-                        const topicMatches = typeof event?.topic === 'string'
-                            && event.topic.endsWith('/' + selectedTopicSuffix);
-
-                        if (!deviceMatches || !topicMatches) {
-                            return;
-                        }
-
-                        Livewire.dispatch('telemetryIncoming', { entry: event });
-                    });
+                    window.__telemetryChannel = window.__telemetryPusher.subscribe('telemetry');
+                    window.__telemetryChannel.bind('telemetry.incoming', handleIncomingTelemetry);
                 });
             </script>
         @endpush

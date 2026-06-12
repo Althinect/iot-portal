@@ -16,6 +16,7 @@ use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
 use App\Domain\DeviceSchema\Models\ParameterDefinition;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
 use App\Domain\Shared\Services\RuntimeSettingManager;
+use App\Domain\Telemetry\Enums\ValidationStatus;
 use App\Events\TelemetryReceived;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -215,6 +216,61 @@ it('halts processing on validation failure and publishes invalid telemetry event
         ->and($telemetryLog?->processing_state)->toBe('invalid')
         ->and($telemetryLog?->validation_errors)->toHaveKey('temp_c')
         ->and($telemetryLog?->mutated_values)->toBeNull();
+
+    Event::assertDispatched(TelemetryReceived::class, 1);
+});
+
+it('continues mutation and derivation when validation only has non-critical warnings', function (): void {
+    $context = buildTelemetryContext(true);
+
+    ParameterDefinition::factory()->create([
+        'schema_version_topic_id' => $context['topic']->id,
+        'key' => 'power_factor',
+        'json_path' => 'power_factor',
+        'type' => ParameterDataType::Decimal,
+        'required' => false,
+        'is_critical' => false,
+        'mutation_expression' => null,
+        'validation_rules' => [
+            'min' => 0,
+            'max' => 1,
+        ],
+        'sequence' => 2,
+        'is_active' => true,
+    ]);
+
+    /** @var TelemetryIngestionService $service */
+    $service = app(TelemetryIngestionService::class);
+
+    $message = $service->ingest(new IncomingTelemetryEnvelope(
+        sourceSubject: str_replace('/', '.', $context['mqtt_topic']),
+        mqttTopic: $context['mqtt_topic'],
+        payload: [
+            'temp_c' => 10,
+            'power_factor' => 797,
+        ],
+        deviceExternalId: 'sensor-01',
+        receivedAt: now(),
+    ));
+
+    expect($message)->toBeInstanceOf(IngestionMessage::class)
+        ->and($message?->status)->toBe(IngestionStatus::Completed);
+
+    $telemetryLog = $message?->telemetryLog()->first();
+
+    expect($telemetryLog)->not->toBeNull()
+        ->and($telemetryLog?->processing_state)->toBe('processed')
+        ->and($telemetryLog?->validation_status)->toBe(ValidationStatus::Warning)
+        ->and($telemetryLog?->validation_errors)->toHaveKey('power_factor')
+        ->and($telemetryLog?->mutated_values)->toMatchArray([
+            'temp_c' => 12.0,
+            'power_factor' => 797,
+        ])
+        ->and($telemetryLog?->transformed_values)->toMatchArray([
+            'temp_c' => 12.0,
+            'temp_f' => 53.6,
+            'power_factor' => 797,
+        ]);
 
     Event::assertDispatched(TelemetryReceived::class, 1);
 });

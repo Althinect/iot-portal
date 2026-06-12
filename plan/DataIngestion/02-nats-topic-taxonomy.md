@@ -11,22 +11,22 @@ Keep subjects deterministic and low-cardinality, avoid feedback loops, and prese
 ## Taxonomy Map
 ```mermaid
 flowchart TD
-    A[NATS Subjects]
-    A --> B[Inbound Telemetry]
-    A --> C[Analytics Outbound]
-    A --> D[Invalid Outbound]
-    A --> E[System/Internal]
+    A["NATS Subjects"]
+    A --> B["Inbound Telemetry"]
+    A --> C["Analytics Outbound"]
+    A --> D["Invalid Outbound"]
+    A --> E["System / Internal"]
 
-    B --> B1[energy.main-energy-meter-01.telemetry]
-    B --> B2[devices.rgb-led-01.state]
+    B --> B1["energy.main-energy-meter-01.telemetry"]
+    B --> B2["devices.rgb-led-01.state"]
 
-    C --> C1[iot.v1.analytics.local.1.device.telemetry]
-    D --> D1[iot.v1.invalid.local.1.validation]
+    C --> C1["iot.v1.analytics.local.1.device.telemetry"]
+    D --> D1["iot.v1.invalid.local.1.validation"]
 
-    E --> E1[$JS.*]
-    E --> E2[$KV.*]
-    E --> E3[_REQS.*]
-    E --> E4[_INBOX.*]
+    E --> E1["$JS.*"]
+    E --> E2["$KV.*"]
+    E --> E3["_REQS.*"]
+    E --> E4["_INBOX.*"]
 ```
 
 ## Listener Filtering (Current)
@@ -37,13 +37,13 @@ Even if listener subject is broad (`>`), ingestion command only queues messages 
 
 ```mermaid
 flowchart LR
-    A[Incoming NATS subject] --> B{Internal/system?}
-    B -->|Yes| X[Drop]
-    B -->|No| C{Analytics/invalid prefix?}
+    A["Incoming NATS subject"] --> B{"Internal / system?"}
+    B -->|Yes| X["Drop"]
+    B -->|No| C{"Analytics / invalid prefix?"}
     C -->|Yes| X
-    C -->|No| D{Resolvable topic?}
+    C -->|No| D{"Resolvable topic?"}
     D -->|No| X
-    D -->|Yes| E[Dispatch ingestion job]
+    D -->|Yes| E["Dispatch ingestion job"]
 ```
 
 ## Anti-Bloat Rules
