@@ -15,6 +15,7 @@ Required:
 
 Optional:
   PRODUCTION_COMPOSE_FILE=compose.production.yaml
+  PRODUCTION_COMPOSE_FILES=compose.production.yaml:compose.forge.yaml
   PRODUCTION_ENV_FILE=.env.production
 USAGE
 }
@@ -30,7 +31,7 @@ fi
 
 script_dir="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
-compose_file="${PRODUCTION_COMPOSE_FILE:-compose.production.yaml}"
+compose_files_config="${PRODUCTION_COMPOSE_FILES:-${PRODUCTION_COMPOSE_FILE:-compose.production.yaml}}"
 env_file="${PRODUCTION_ENV_FILE:-.env.production}"
 
 if ! command_exists docker; then
@@ -43,19 +44,28 @@ if ! docker compose version >/dev/null 2>&1; then
     exit 1
 fi
 
-if [[ ! -f "$repo_root/$compose_file" ]]; then
-    echo "Error: compose file not found at $repo_root/$compose_file" >&2
-    exit 1
-fi
-
 if [[ ! -f "$repo_root/$env_file" ]]; then
     echo "Error: production env file not found at $repo_root/$env_file" >&2
     exit 1
 fi
 
-compose=(docker compose --env-file "$env_file" -f "$compose_file")
-
 cd "$repo_root"
+
+IFS=':' read -r -a compose_files <<< "$compose_files_config"
+compose=(docker compose --env-file "$env_file")
+
+for compose_file in "${compose_files[@]}"; do
+    if [[ -z "$compose_file" ]]; then
+        continue
+    fi
+
+    if [[ ! -f "$repo_root/$compose_file" ]]; then
+        echo "Error: compose file not found at $repo_root/$compose_file" >&2
+        exit 1
+    fi
+
+    compose+=(-f "$compose_file")
+done
 
 echo "Pulling production images..."
 "${compose[@]}" pull

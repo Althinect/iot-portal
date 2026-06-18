@@ -1,0 +1,12 @@
+services:
+    proxy:
+        profiles:
+            - caddy-edge
+
+    web:
+        ports:
+            - '${FORGE_WEB_BIND:-127.0.0.1}:${FORGE_WEB_PORT:-18080}:8000'
+
+    reverb:
+        ports:
+            - '${FORGE_REVERB_BIND:-127.0.0.1}:${FORGE_REVERB_PORT:-18090}:8090'

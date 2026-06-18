@@ -78,7 +78,9 @@ it('ships deployment automation for release commands and horizon reloads', funct
 
     expect($deployScript)
         ->not->toBeFalse()
-        ->toContain('docker compose --env-file "$env_file" -f "$compose_file"')
+        ->toContain('PRODUCTION_COMPOSE_FILES=compose.production.yaml:compose.forge.yaml')
+        ->toContain('compose=(docker compose --env-file "$env_file")')
+        ->toContain('compose+=(-f "$compose_file")')
         ->toContain('pull')
         ->toContain('php artisan migrate --force --no-interaction')
         ->toContain('php artisan optimize')
@@ -104,7 +106,9 @@ it('ships s3-compatible production database backup automation', function (): voi
 
     expect($backupScript)
         ->not->toBeFalse()
-        ->toContain('docker compose --env-file "$env_file" -f "$compose_file"')
+        ->toContain('PRODUCTION_COMPOSE_FILES=compose.production.yaml:compose.forge.yaml')
+        ->toContain('compose=(docker compose --env-file "$env_file")')
+        ->toContain('compose+=(-f "$compose_file")')
         ->toContain('exec -T pgsql')
         ->toContain('pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"')
         ->toContain('--format=custom')
@@ -202,6 +206,22 @@ it('defines a local monitoring overlay for the sail network', function (): void 
         ->and($services['loki']['volumes'])->toContain('./docker/monitoring/loki/config.yaml:/etc/loki/config.yaml:ro')
         ->and($compose['networks']['sail']['external'])->toBeTrue()
         ->and($compose['networks']['sail']['name'])->toBe('${MONITORING_DOCKER_NETWORK:-iot-portal_sail}');
+});
+
+it('defines a forge reverse proxy overlay for docker production', function (): void {
+    $compose = Yaml::parseFile(base_path('compose.forge.yaml'));
+    $productionEnvironment = file_get_contents(base_path('.env.production.example'));
+
+    expect($compose['services']['proxy']['profiles'])->toContain('caddy-edge')
+        ->and($compose['services']['web']['ports'])->toContain('${FORGE_WEB_BIND:-127.0.0.1}:${FORGE_WEB_PORT:-18080}:8000')
+        ->and($compose['services']['reverb']['ports'])->toContain('${FORGE_REVERB_BIND:-127.0.0.1}:${FORGE_REVERB_PORT:-18090}:8090');
+
+    expect($productionEnvironment)
+        ->not->toBeFalse()
+        ->toContain('FORGE_WEB_BIND=127.0.0.1')
+        ->toContain('FORGE_WEB_PORT=18080')
+        ->toContain('FORGE_REVERB_BIND=127.0.0.1')
+        ->toContain('FORGE_REVERB_PORT=18090');
 });
 
 it('documents production environment variables for proxy and reverb separation', function (): void {
