@@ -10,6 +10,15 @@
         path /app/* /apps/*
     }
 
-    reverse_proxy @reverb reverb:8090
-    reverse_proxy web:8000
+    reverse_proxy @reverb reverb:8090 {
+        header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}
+        header_up X-Forwarded-Host {http.request.header.X-Forwarded-Host}
+        header_up X-Forwarded-Port {http.request.header.X-Forwarded-Port}
+    }
+
+    reverse_proxy web:8000 {
+        header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}
+        header_up X-Forwarded-Host {http.request.header.X-Forwarded-Host}
+        header_up X-Forwarded-Port {http.request.header.X-Forwarded-Port}
+    }
 }

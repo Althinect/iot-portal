@@ -241,7 +241,9 @@ it('defines a forge reverse proxy overlay for docker production', function (): v
         ->not->toBeFalse()
         ->toContain('auto_https off')
         ->toContain('reverse_proxy @reverb reverb:8090')
-        ->toContain('reverse_proxy web:8000');
+        ->toContain('reverse_proxy web:8000')
+        ->toContain('header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}')
+        ->toContain('header_up X-Forwarded-Port {http.request.header.X-Forwarded-Port}');
 });
 
 it('documents production environment variables for proxy and reverb separation', function (): void {
