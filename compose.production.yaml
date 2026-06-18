@@ -171,8 +171,8 @@ services:
             - '-c'
             - '/etc/nats/nats.conf'
         ports:
-            - '${NATS_CLIENT_BIND:-0.0.0.0}:${FORWARD_NATS_PORT:-4222}:4222'
-            - '${NATS_MQTT_BIND:-0.0.0.0}:${FORWARD_NATS_MQTT_PORT:-1883}:1883'
+            - '${NATS_CLIENT_BIND:-127.0.0.1}:${FORWARD_NATS_PORT:-4222}:4222'
+            - '${NATS_MQTT_BIND:-127.0.0.1}:${FORWARD_NATS_MQTT_PORT:-1883}:1883'
             - '${NATS_MONITORING_BIND:-127.0.0.1}:${FORWARD_NATS_MONITORING_PORT:-8222}:8222'
         volumes:
             - './docker/nats/nats.conf:/etc/nats/nats.conf:ro'

@@ -61,7 +61,7 @@ echo "Pulling production images..."
 "${compose[@]}" pull
 
 echo "Starting stateful dependencies..."
-"${compose[@]}" up -d pgsql redis nats
+"${compose[@]}" up -d --wait --wait-timeout 300 pgsql redis nats
 
 echo "Running database migrations..."
 "${compose[@]}" run --rm --no-deps web php artisan migrate --force --no-interaction

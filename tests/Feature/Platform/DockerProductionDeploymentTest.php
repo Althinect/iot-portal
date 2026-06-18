@@ -74,6 +74,7 @@ it('ships deployment automation for release commands and horizon reloads', funct
         ->toContain('php artisan migrate --force --no-interaction')
         ->toContain('php artisan optimize')
         ->toContain('php artisan horizon:terminate')
+        ->toContain('up -d --wait --wait-timeout 300 pgsql redis nats')
         ->toContain('up -d --remove-orphans');
 
     expect($workflow)
@@ -130,6 +131,8 @@ it('documents production environment variables for proxy and reverb separation',
         ->toContain('REVERB_BROADCAST_SCHEME=http')
         ->toContain('REVERB_PUBLIC_HOST=iot.example.com')
         ->toContain('VITE_REVERB_HOST=iot.example.com')
+        ->toContain('NATS_CLIENT_BIND=127.0.0.1')
+        ->toContain('NATS_MQTT_BIND=127.0.0.1')
         ->toContain('IOT_NATS_PORT=4222')
         ->toContain('INGESTION_NATS_PORT=4222');
 
