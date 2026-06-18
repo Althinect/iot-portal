@@ -17,10 +17,19 @@ it('defines a production docker compose stack beside the local sail stack', func
         'iot-ingest-telemetry',
         'horizon',
         'scheduler',
+        'nightwatch',
+        'pulse-check',
+        'pulse-worker',
         'pgsql',
         'redis',
         'nats',
         'node-red',
+        'grafana',
+        'loki',
+        'prometheus',
+        'alloy',
+        'node-exporter',
+        'cadvisor',
     ]);
 
     expect(array_key_exists('mailpit', $services))->toBeFalse()
@@ -74,6 +83,7 @@ it('ships deployment automation for release commands and horizon reloads', funct
         ->toContain('php artisan migrate --force --no-interaction')
         ->toContain('php artisan optimize')
         ->toContain('php artisan horizon:terminate')
+        ->toContain('php artisan pulse:restart')
         ->toContain('up -d --wait --wait-timeout 300 pgsql redis nats')
         ->toContain('up -d --remove-orphans');
 
@@ -115,6 +125,61 @@ it('ships s3-compatible production database backup automation', function (): voi
     expect($dockerignore)
         ->not->toBeFalse()
         ->toContain('backups');
+});
+
+it('ships production monitoring services for laravel and container telemetry', function (): void {
+    $compose = Yaml::parseFile(base_path('compose.production.yaml'));
+    $services = $compose['services'];
+    $productionEnvironment = file_get_contents(base_path('.env.production.example'));
+    $alloyConfig = file_get_contents(base_path('docker/monitoring/alloy/config.alloy'));
+    $prometheusConfig = file_get_contents(base_path('docker/monitoring/prometheus/prometheus.yml'));
+    $grafanaDatasources = file_get_contents(base_path('docker/monitoring/grafana/provisioning/datasources/datasources.yaml'));
+    $lokiConfig = file_get_contents(base_path('docker/monitoring/loki/config.yaml'));
+
+    expect($services['nightwatch']['command'])->toContain('php artisan nightwatch:agent --listen-on=0.0.0.0:2407')
+        ->toContain('NIGHTWATCH_ENABLED')
+        ->toContain('NIGHTWATCH_TOKEN')
+        ->and($services['pulse-check']['command'])->toBe('php artisan pulse:check')
+        ->and($services['pulse-worker']['command'])->toBe('php artisan pulse:work')
+        ->and($services['web']['environment']['NIGHTWATCH_INGEST_URI'])->toBe('${NIGHTWATCH_INGEST_URI:-nightwatch:2407}')
+        ->and($services['web']['environment']['PULSE_INGEST_DRIVER'])->toBe('${PULSE_INGEST_DRIVER:-redis}')
+        ->and($services['grafana']['ports'])->toContain('${GRAFANA_BIND:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000')
+        ->and($services['grafana']['volumes'])->toContain('./docker/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro')
+        ->and($services['alloy']['volumes'])->toContain('/var/run/docker.sock:/var/run/docker.sock:ro')
+        ->and($services['prometheus']['volumes'])->toContain('./docker/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro')
+        ->and($services['loki']['volumes'])->toContain('./docker/monitoring/loki/config.yaml:/etc/loki/config.yaml:ro');
+
+    expect($productionEnvironment)
+        ->not->toBeFalse()
+        ->toContain('LOG_STACK=stderr')
+        ->toContain('NIGHTWATCH_ENABLED=false')
+        ->toContain('NIGHTWATCH_INGEST_URI=nightwatch:2407')
+        ->toContain('PULSE_INGEST_DRIVER=redis')
+        ->toContain('PULSE_REDIS_CONNECTION=default')
+        ->toContain('GRAFANA_BIND=127.0.0.1')
+        ->toContain('GRAFANA_ADMIN_PASSWORD=');
+
+    expect($alloyConfig)
+        ->not->toBeFalse()
+        ->toContain('discovery.docker "containers"')
+        ->toContain('loki.source.docker "containers"')
+        ->toContain('http://loki:3100/loki/api/v1/push');
+
+    expect($prometheusConfig)
+        ->not->toBeFalse()
+        ->toContain('node-exporter:9100')
+        ->toContain('cadvisor:8080')
+        ->toContain('alloy:12345');
+
+    expect($grafanaDatasources)
+        ->not->toBeFalse()
+        ->toContain('http://prometheus:9090')
+        ->toContain('http://loki:3100');
+
+    expect($lokiConfig)
+        ->not->toBeFalse()
+        ->toContain('retention_period: 168h')
+        ->toContain('schema: v13');
 });
 
 it('documents production environment variables for proxy and reverb separation', function (): void {

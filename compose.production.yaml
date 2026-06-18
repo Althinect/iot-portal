@@ -16,6 +16,10 @@ x-app-environment: &app-environment
     DB_PORT: 5432
     REDIS_HOST: redis
     REDIS_PORT: 6379
+    NIGHTWATCH_INGEST_URI: '${NIGHTWATCH_INGEST_URI:-nightwatch:2407}'
+    PULSE_INGEST_DRIVER: '${PULSE_INGEST_DRIVER:-redis}'
+    PULSE_REDIS_CONNECTION: '${PULSE_REDIS_CONNECTION:-default}'
+    PULSE_SERVER_NAME: '${PULSE_SERVER_NAME:-iot-portal-production}'
     IOT_NATS_HOST: nats
     IOT_NATS_PORT: 4222
     IOT_MQTT_HOST: nats
@@ -115,6 +119,21 @@ services:
         <<: *app-service
         command: php artisan schedule:work
 
+    nightwatch:
+        <<: *app-service
+        command: sh -lc 'if [ "$${NIGHTWATCH_ENABLED:-false}" = "true" ] && [ -n "$${NIGHTWATCH_TOKEN:-}" ]; then exec php artisan nightwatch:agent --listen-on=0.0.0.0:2407; fi; echo "Nightwatch disabled; set NIGHTWATCH_ENABLED=true and NIGHTWATCH_TOKEN to start the agent."; exec tail -f /dev/null'
+        stop_grace_period: 30s
+
+    pulse-check:
+        <<: *app-service
+        command: php artisan pulse:check
+        stop_grace_period: 30s
+
+    pulse-worker:
+        <<: *app-service
+        command: php artisan pulse:work
+        stop_grace_period: 30s
+
     pgsql:
         image: timescale/timescaledb:2.18.2-pg16
         env_file:
@@ -207,6 +226,90 @@ services:
                 condition: service_healthy
         restart: unless-stopped
 
+    grafana:
+        image: '${GRAFANA_IMAGE:-grafana/grafana-oss:13.0.2}'
+        env_file:
+            - '${PRODUCTION_ENV_FILE:-.env.production}'
+        environment:
+            GF_SECURITY_ADMIN_USER: '${GRAFANA_ADMIN_USER:-admin}'
+            GF_SECURITY_ADMIN_PASSWORD: '${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env.production}'
+            GF_SERVER_ROOT_URL: '${GRAFANA_ROOT_URL:-http://localhost:3000}'
+            GF_USERS_ALLOW_SIGN_UP: 'false'
+        ports:
+            - '${GRAFANA_BIND:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000'
+        volumes:
+            - grafana-data:/var/lib/grafana
+            - './docker/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro'
+        networks:
+            - production
+        depends_on:
+            - loki
+            - prometheus
+        restart: unless-stopped
+
+    loki:
+        image: '${LOKI_IMAGE:-grafana/loki:3.7.2}'
+        command:
+            - '-config.file=/etc/loki/config.yaml'
+        volumes:
+            - './docker/monitoring/loki/config.yaml:/etc/loki/config.yaml:ro'
+            - loki-data:/loki
+        networks:
+            - production
+        restart: unless-stopped
+
+    prometheus:
+        image: '${PROMETHEUS_IMAGE:-prom/prometheus:v3.5.4}'
+        command:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}'
+            - '--web.enable-lifecycle'
+        volumes:
+            - './docker/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro'
+            - prometheus-data:/prometheus
+        networks:
+            - production
+        restart: unless-stopped
+
+    alloy:
+        image: '${ALLOY_IMAGE:-grafana/alloy:v1.17.0}'
+        command:
+            - run
+            - '--server.http.listen-addr=0.0.0.0:12345'
+            - /etc/alloy/config.alloy
+        volumes:
+            - './docker/monitoring/alloy/config.alloy:/etc/alloy/config.alloy:ro'
+            - '/var/run/docker.sock:/var/run/docker.sock:ro'
+        networks:
+            - production
+        depends_on:
+            - loki
+        restart: unless-stopped
+
+    node-exporter:
+        image: '${NODE_EXPORTER_IMAGE:-prom/node-exporter:v1.11.1}'
+        command:
+            - '--path.rootfs=/host'
+        pid: host
+        volumes:
+            - '/:/host:ro,rslave'
+        networks:
+            - production
+        restart: unless-stopped
+
+    cadvisor:
+        image: '${CADVISOR_IMAGE:-gcr.io/cadvisor/cadvisor:v0.55.1}'
+        volumes:
+            - '/:/rootfs:ro'
+            - '/var/run:/var/run:ro'
+            - '/sys:/sys:ro'
+            - '/var/lib/docker/:/var/lib/docker:ro'
+            - '/dev/disk/:/dev/disk:ro'
+        networks:
+            - production
+        restart: unless-stopped
+
 networks:
     production:
         driver: bridge
@@ -227,4 +330,10 @@ volumes:
     nats-data:
         driver: local
     node-red-data:
+        driver: local
+    grafana-data:
+        driver: local
+    loki-data:
+        driver: local
+    prometheus-data:
         driver: local

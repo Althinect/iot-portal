@@ -72,6 +72,9 @@ echo "Caching Laravel deployment artifacts..."
 echo "Signaling Horizon to reload after current jobs finish..."
 "${compose[@]}" run --rm --no-deps web php artisan horizon:terminate || true
 
+echo "Signaling Pulse daemons to restart..."
+"${compose[@]}" run --rm --no-deps web php artisan pulse:restart || true
+
 echo "Reconciling production stack..."
 "${compose[@]}" up -d --remove-orphans
 
