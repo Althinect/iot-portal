@@ -14,7 +14,7 @@ use App\Domain\IoTDashboard\Contracts\WidgetConfig;
 use App\Domain\IoTDashboard\Contracts\WidgetSnapshotResolver;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
 use App\Domain\IoTDashboard\Widgets\Concerns\InterpretsThresholdStatusSnapshot;
-use App\Domain\Telemetry\Models\DeviceTelemetryLog;
+use App\Domain\Telemetry\Services\TelemetryQueryService;
 use App\Filament\Admin\Resources\AutomationThresholdPolicies\AutomationThresholdPolicyResource;
 use InvalidArgumentException;
 
@@ -24,6 +24,7 @@ class ThresholdStatusCardSnapshotResolver implements WidgetSnapshotResolver
 
     public function __construct(
         private readonly JsonLogicEvaluator $jsonLogicEvaluator,
+        private readonly TelemetryQueryService $telemetryQuery,
     ) {}
 
     /**
@@ -67,21 +68,10 @@ class ThresholdStatusCardSnapshotResolver implements WidgetSnapshotResolver
 
         $latestLog = $topicId === null
             ? null
-            : DeviceTelemetryLog::query()
-                ->where('device_id', (int) $policy->device_id)
-                ->where('schema_version_topic_id', $topicId)
-                ->where('recorded_at', '>=', now()->subMinutes($config->lookbackMinutes()))
-                ->latest('recorded_at')
-                ->latest('id')
-                ->first();
+            : $this->telemetryQuery->latestLog((int) $policy->device_id, $topicId, $config->lookbackMinutes());
         $latestAvailableLog = $topicId === null
             ? null
-            : DeviceTelemetryLog::query()
-                ->where('device_id', (int) $policy->device_id)
-                ->where('schema_version_topic_id', $topicId)
-                ->latest('recorded_at')
-                ->latest('id')
-                ->first();
+            : $this->telemetryQuery->latestLog((int) $policy->device_id, $topicId);
 
         $payload = is_array($latestLog?->transformed_values) ? $latestLog->transformed_values : [];
         $value = $parameter?->extractValue($payload);

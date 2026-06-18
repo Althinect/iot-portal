@@ -11,12 +11,16 @@ use App\Domain\IoTDashboard\Application\DashboardHistoryRange;
 use App\Domain\IoTDashboard\Contracts\WidgetConfig;
 use App\Domain\IoTDashboard\Contracts\WidgetSnapshotResolver;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
-use App\Domain\Telemetry\Models\DeviceTelemetryLog;
-use Illuminate\Support\Collection;
+use App\Domain\Telemetry\Services\TelemetryQueryService;
+use Carbon\CarbonInterface;
 use InvalidArgumentException;
 
 class LineChartSnapshotResolver implements WidgetSnapshotResolver
 {
+    public function __construct(
+        private readonly TelemetryQueryService $telemetryQuery,
+    ) {}
+
     /**
      * @return array<string, mixed>
      */
@@ -30,42 +34,24 @@ class LineChartSnapshotResolver implements WidgetSnapshotResolver
         }
 
         $series = [];
-        $logsBySourceKey = [];
+        $pointsBySourceAndParameter = [];
+        $range = $this->resolveHistoryWindow($config, $historyRange);
 
         foreach ($config->series() as $seriesConfiguration) {
-            $points = [];
             $key = $seriesConfiguration['key'];
             $source = array_key_exists('source', $seriesConfiguration) ? $seriesConfiguration['source'] : [];
             $sourceBinding = $this->resolveSeriesSourceBinding($widget, $source);
-            $sourceKey = $this->sourceCacheKey($sourceBinding);
-            $logs = $logsBySourceKey[$sourceKey] ??= $sourceBinding === null
-                ? collect()
-                : $this->fetchTelemetryLogs(
-                    schemaVersionTopicId: $sourceBinding['schema_version_topic_id'],
+            $sourceKey = $this->sourceCacheKey($sourceBinding).':'.$key;
+            $points = $pointsBySourceAndParameter[$sourceKey] ??= $sourceBinding === null
+                ? []
+                : $this->telemetryQuery->numericSeries(
                     deviceId: $sourceBinding['device_id'],
-                    lookbackMinutes: $config->lookbackMinutes(),
+                    schemaVersionTopicId: $sourceBinding['schema_version_topic_id'],
+                    parameterKey: $key,
+                    fromAt: $range['from_at'],
+                    untilAt: $range['until_at'],
                     maxPoints: $config->maxPoints(),
-                    historyRange: $historyRange,
                 );
-
-            foreach ($logs as $log) {
-                $value = $this->extractNumericValue($log->transformed_values, $key);
-
-                if ($value === null) {
-                    continue;
-                }
-
-                $timestamp = $log->recorded_at?->toIso8601String();
-
-                if (! is_string($timestamp)) {
-                    continue;
-                }
-
-                $points[] = [
-                    'timestamp' => $timestamp,
-                    'value' => $value,
-                ];
-            }
 
             $resolvedSeries = [
                 'key' => $seriesConfiguration['key'],
@@ -173,50 +159,20 @@ class LineChartSnapshotResolver implements WidgetSnapshotResolver
     }
 
     /**
-     * @return Collection<int, DeviceTelemetryLog>
+     * @return array{from_at: CarbonInterface, until_at: CarbonInterface}
      */
-    private function fetchTelemetryLogs(
-        int $schemaVersionTopicId,
-        int $deviceId,
-        int $lookbackMinutes,
-        int $maxPoints,
-        ?DashboardHistoryRange $historyRange,
-    ): Collection {
-        $query = DeviceTelemetryLog::query()
-            ->where('schema_version_topic_id', $schemaVersionTopicId)
-            ->where('device_id', $deviceId);
-
-        if ($historyRange instanceof DashboardHistoryRange) {
-            $query
-                ->where('recorded_at', '>=', $historyRange->fromAt())
-                ->where('recorded_at', '<=', $historyRange->untilAt());
-        } else {
-            $query->where('recorded_at', '>=', now()->subMinutes($lookbackMinutes));
-        }
-
-        return $query
-            ->orderByDesc('recorded_at')
-            ->limit($maxPoints)
-            ->get(['id', 'recorded_at', 'transformed_values'])
-            ->sortBy('recorded_at')
-            ->values();
-    }
-
-    /**
-     * @param  array<string, mixed>|null  $values
-     */
-    private function extractNumericValue(?array $values, string $parameterKey): int|float|null
+    private function resolveHistoryWindow(LineChartConfig $config, ?DashboardHistoryRange $historyRange): array
     {
-        if (! is_array($values)) {
-            return null;
+        if ($historyRange instanceof DashboardHistoryRange) {
+            return [
+                'from_at' => $historyRange->fromAt(),
+                'until_at' => $historyRange->untilAt(),
+            ];
         }
 
-        $value = data_get($values, $parameterKey);
-
-        if (is_numeric($value)) {
-            return $value + 0;
-        }
-
-        return null;
+        return [
+            'from_at' => now()->subMinutes($config->lookbackMinutes()),
+            'until_at' => now(),
+        ];
     }
 }

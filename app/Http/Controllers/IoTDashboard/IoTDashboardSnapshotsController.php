@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\IoTDashboard;
 
+use App\Domain\IoTDashboard\Application\DashboardSnapshotCache;
 use App\Domain\IoTDashboard\Application\WidgetRegistry;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
@@ -18,6 +19,7 @@ class IoTDashboardSnapshotsController extends Controller
         ShowIoTDashboardSnapshotsRequest $request,
         IoTDashboard $dashboard,
         WidgetRegistry $widgetRegistry,
+        DashboardSnapshotCache $snapshotCache,
     ): JsonResponse {
         Gate::authorize('view', $dashboard);
 
@@ -25,7 +27,8 @@ class IoTDashboardSnapshotsController extends Controller
             'widgets' => fn ($query) => $query
                 ->with([
                     'topic:id,label,suffix',
-                    'device:id,uuid,name,organization_id,connection_state,last_seen_at,offline_deadline_at,presence_timeout_seconds',
+                    'device:id,uuid,name,external_id,device_type_id,organization_id,connection_state,last_seen_at,offline_deadline_at,presence_timeout_seconds',
+                    'device.deviceType:id,protocol_config',
                 ])
                 ->orderBy('sequence')
                 ->orderBy('id'),
@@ -46,18 +49,23 @@ class IoTDashboardSnapshotsController extends Controller
             )
             ->values();
 
-        $snapshots = $widgets
-            ->map(function (IoTDashboardWidget $widget) use ($historyRange, $widgetRegistry): array {
-                $definition = $widgetRegistry->forWidget($widget);
-                $snapshot = $definition->resolveSnapshot($widget, $historyRange);
+        $snapshots = $snapshotCache->remember(
+            dashboard: $dashboard,
+            widgets: $widgets,
+            historyRange: $historyRange,
+            callback: fn (): array => $widgets
+                ->map(function (IoTDashboardWidget $widget) use ($historyRange, $widgetRegistry): array {
+                    $definition = $widgetRegistry->forWidget($widget);
+                    $snapshot = $definition->resolveSnapshot($widget, $historyRange);
 
-                return [
-                    'id' => (int) $widget->id,
-                    'type' => $widget->type,
-                    ...$snapshot,
-                ];
-            })
-            ->all();
+                    return [
+                        'id' => (int) $widget->id,
+                        'type' => $widget->type,
+                        ...$snapshot,
+                    ];
+                })
+                ->all(),
+        );
 
         return response()->json([
             'version' => '2.0',

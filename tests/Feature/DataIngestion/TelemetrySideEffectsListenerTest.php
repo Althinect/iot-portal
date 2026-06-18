@@ -22,13 +22,19 @@ class FakeHotStateStore implements HotStateStore
     /** @var array<int, array<string, mixed>> */
     public array $writes = [];
 
-    public function store(Device $device, SchemaVersionTopic $topic, array $finalValues, IngestionMessage $ingestionMessage): void
-    {
+    public function store(
+        Device $device,
+        SchemaVersionTopic $topic,
+        array $finalValues,
+        IngestionMessage $ingestionMessage,
+        ?DeviceTelemetryLog $telemetryLog = null,
+    ): void {
         $this->writes[] = [
             'device_uuid' => $device->uuid,
             'topic_key' => $topic->key,
             'values' => $finalValues,
             'ingestion_message_id' => $ingestionMessage->id,
+            'telemetry_log_id' => $telemetryLog?->id,
             'status' => $ingestionMessage->status->value,
         ];
     }
@@ -155,6 +161,7 @@ it('writes hot state for processed ingestion telemetry on the side effects queue
             'device_uuid' => $context['device']->uuid,
             'topic_key' => $context['topic']->key,
             'ingestion_message_id' => $context['ingestionMessage']->id,
+            'telemetry_log_id' => $context['telemetryLog']->id,
             'status' => 'completed',
         ]);
 });
@@ -231,8 +238,13 @@ it('skips transient hot-state timeout failures without failing the listener', fu
 
     app()->instance(HotStateStore::class, new class implements HotStateStore
     {
-        public function store(Device $device, SchemaVersionTopic $topic, array $finalValues, IngestionMessage $ingestionMessage): void
-        {
+        public function store(
+            Device $device,
+            SchemaVersionTopic $topic,
+            array $finalValues,
+            IngestionMessage $ingestionMessage,
+            ?DeviceTelemetryLog $telemetryLog = null,
+        ): void {
             throw new LogicException('Processing timeout');
         }
     });
@@ -248,8 +260,13 @@ it('still bubbles non-transient hot-state failures', function (): void {
 
     app()->instance(HotStateStore::class, new class implements HotStateStore
     {
-        public function store(Device $device, SchemaVersionTopic $topic, array $finalValues, IngestionMessage $ingestionMessage): void
-        {
+        public function store(
+            Device $device,
+            SchemaVersionTopic $topic,
+            array $finalValues,
+            IngestionMessage $ingestionMessage,
+            ?DeviceTelemetryLog $telemetryLog = null,
+        ): void {
             throw new RuntimeException('Boom');
         }
     });

@@ -9,6 +9,7 @@ use App\Domain\DataIngestion\Models\IngestionMessage;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Publishing\Nats\NatsDeviceStateStore;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 
 class NatsKvHotStateStore implements HotStateStore
 {
@@ -19,10 +20,16 @@ class NatsKvHotStateStore implements HotStateStore
     /**
      * @param  array<string, mixed>  $finalValues
      */
-    public function store(Device $device, SchemaVersionTopic $topic, array $finalValues, IngestionMessage $ingestionMessage): void
-    {
+    public function store(
+        Device $device,
+        SchemaVersionTopic $topic,
+        array $finalValues,
+        IngestionMessage $ingestionMessage,
+        ?DeviceTelemetryLog $telemetryLog = null,
+    ): void {
         $mqttTopic = $topic->resolvedTopic($device);
         $status = $ingestionMessage->status;
+        $recordedAt = $telemetryLog?->recorded_at ?? $ingestionMessage->received_at ?? now();
         $host = config('ingestion.nats.host', '127.0.0.1');
         $port = config('ingestion.nats.port', 4223);
 
@@ -32,8 +39,9 @@ class NatsKvHotStateStore implements HotStateStore
             payload: [
                 'values' => $finalValues,
                 'ingestion_message_id' => $ingestionMessage->id,
+                'telemetry_log_id' => $telemetryLog?->id,
                 'status' => $status,
-                'recorded_at' => now()->toIso8601String(),
+                'recorded_at' => $recordedAt->toIso8601String(),
             ],
             host: is_string($host) && $host !== '' ? $host : '127.0.0.1',
             port: is_numeric($port) ? (int) $port : 4223,

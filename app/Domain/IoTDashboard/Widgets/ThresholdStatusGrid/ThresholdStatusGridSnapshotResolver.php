@@ -18,6 +18,7 @@ use App\Domain\IoTDashboard\Contracts\WidgetSnapshotResolver;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
 use App\Domain\IoTDashboard\Widgets\Concerns\InterpretsThresholdStatusSnapshot;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
+use App\Domain\Telemetry\Services\TelemetryQueryService;
 use App\Filament\Admin\Resources\AutomationThresholdPolicies\AutomationThresholdPolicyResource;
 use Illuminate\Support\Collection;
 use InvalidArgumentException;
@@ -29,6 +30,7 @@ class ThresholdStatusGridSnapshotResolver implements WidgetSnapshotResolver
     public function __construct(
         private readonly JsonLogicEvaluator $jsonLogicEvaluator,
         private readonly AlertIncidentManager $alertIncidentManager,
+        private readonly TelemetryQueryService $telemetryQuery,
     ) {}
 
     /**
@@ -136,35 +138,7 @@ class ThresholdStatusGridSnapshotResolver implements WidgetSnapshotResolver
      */
     private function fetchLatestLogsForPairs(Collection $pairs, ?int $lookbackMinutes = null): Collection
     {
-        if ($pairs->isEmpty()) {
-            return collect();
-        }
-
-        $deviceIds = $pairs->pluck('device_id')->unique()->all();
-        $topicIds = $pairs->pluck('topic_id')->unique()->all();
-
-        $query = DeviceTelemetryLog::query()
-            ->whereIn('device_id', $deviceIds)
-            ->whereIn('schema_version_topic_id', $topicIds);
-
-        if ($lookbackMinutes !== null) {
-            $query->where('recorded_at', '>=', now()->subMinutes($lookbackMinutes));
-        }
-
-        return $query
-            ->orderByDesc('recorded_at')
-            ->orderByDesc('id')
-            ->get(['id', 'device_id', 'schema_version_topic_id', 'recorded_at', 'transformed_values'])
-            ->groupBy(fn (DeviceTelemetryLog $log): string => $this->pairKey((int) $log->device_id, (int) $log->schema_version_topic_id))
-            ->map(function (Collection $logs): DeviceTelemetryLog {
-                $latestLog = $logs->first();
-
-                if (! $latestLog instanceof DeviceTelemetryLog) {
-                    throw new InvalidArgumentException('Threshold status grid expected grouped telemetry logs.');
-                }
-
-                return $latestLog;
-            });
+        return $this->telemetryQuery->latestLogsForPairs($pairs, $lookbackMinutes);
     }
 
     /**

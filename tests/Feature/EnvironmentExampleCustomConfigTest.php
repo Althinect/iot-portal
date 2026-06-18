@@ -32,6 +32,11 @@ it('documents the custom platform environment variables in the example file', fu
         'REDIS_SIMULATIONS_QUEUE_CONNECTION',
         'REDIS_SIMULATIONS_QUEUE',
         'REDIS_SIMULATIONS_QUEUE_RETRY_AFTER',
+        'REDIS_SIMULATIONS_QUEUE_BLOCK_FOR',
+        'REDIS_QUEUE_BLOCK_FOR',
+        'REDIS_QUEUE_RETRY_AFTER',
+        'IOT_DASHBOARD_SNAPSHOT_CACHE_SECONDS',
+        'IOT_DASHBOARD_HOT_STATE_READS_ENABLED',
     ];
 
     $documentedVariables = [];

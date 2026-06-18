@@ -7,11 +7,18 @@ namespace App\Domain\DataIngestion\Contracts;
 use App\Domain\DataIngestion\Models\IngestionMessage;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 
 interface HotStateStore
 {
     /**
      * @param  array<string, mixed>  $finalValues
      */
-    public function store(Device $device, SchemaVersionTopic $topic, array $finalValues, IngestionMessage $ingestionMessage): void;
+    public function store(
+        Device $device,
+        SchemaVersionTopic $topic,
+        array $finalValues,
+        IngestionMessage $ingestionMessage,
+        ?DeviceTelemetryLog $telemetryLog = null,
+    ): void;
 }

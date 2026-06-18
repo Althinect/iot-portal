@@ -8,11 +8,11 @@ use App\Domain\DeviceSchema\Models\DerivedParameterDefinition;
 use App\Domain\DeviceSchema\Models\ParameterDefinition;
 use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
 use App\Domain\IoTDashboard\Application\DashboardHistoryRange;
+use App\Domain\IoTDashboard\Application\HotStateLatestTelemetryReader;
 use App\Domain\IoTDashboard\Contracts\WidgetConfig;
 use App\Domain\IoTDashboard\Contracts\WidgetSnapshotResolver;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
 use App\Domain\IoTDashboard\Widgets\Concerns\InterpretsThresholdStatusSnapshot;
-use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
@@ -22,6 +22,7 @@ class StatusSummarySnapshotResolver implements WidgetSnapshotResolver
 
     public function __construct(
         private readonly LatestParameterMetricSourceResolver $latestParameterResolver,
+        private readonly HotStateLatestTelemetryReader $latestTelemetryReader,
     ) {}
 
     /**
@@ -37,14 +38,12 @@ class StatusSummarySnapshotResolver implements WidgetSnapshotResolver
         }
 
         $series = [];
-        $latestLog = $this->fetchLatestTelemetryLog(
-            schemaVersionTopicId: (int) $widget->schema_version_topic_id,
-            deviceId: is_numeric($widget->device_id) ? (int) $widget->device_id : null,
-            lookbackMinutes: $config->lookbackMinutes(),
-        );
+        $latestState = $widget->device === null || $widget->topic === null
+            ? null
+            : $this->latestTelemetryReader->read($widget->device, $widget->topic, $config->lookbackMinutes());
 
         foreach ($config->tiles() as $tile) {
-            $resolvedTile = $this->latestParameterResolver->resolve($widget, $tile, $latestLog);
+            $resolvedTile = $this->latestParameterResolver->resolve($widget, $tile, $latestState);
             $resolvedColor = $this->resolveTileColor($tile, $resolvedTile['value']);
             $resolvedUnit = $this->resolveTileUnit($widget, $tile);
 
@@ -71,24 +70,6 @@ class StatusSummarySnapshotResolver implements WidgetSnapshotResolver
             'device_last_seen_at' => $device?->lastSeenAt()?->toIso8601String(),
             'series' => $series,
         ];
-    }
-
-    private function fetchLatestTelemetryLog(
-        int $schemaVersionTopicId,
-        ?int $deviceId,
-        int $lookbackMinutes,
-    ): ?DeviceTelemetryLog {
-        if ($deviceId === null || $schemaVersionTopicId < 1) {
-            return null;
-        }
-
-        return DeviceTelemetryLog::query()
-            ->where('schema_version_topic_id', $schemaVersionTopicId)
-            ->where('device_id', $deviceId)
-            ->where('recorded_at', '>=', now()->subMinutes($lookbackMinutes))
-            ->orderByDesc('recorded_at')
-            ->orderByDesc('id')
-            ->first(['id', 'recorded_at', 'transformed_values']);
     }
 
     /**

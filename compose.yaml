@@ -22,8 +22,8 @@ x-laravel-service: &laravel-service
         OCTANE_ADMIN_HOST: 127.0.0.1
         OCTANE_ADMIN_PORT: 2019
         OCTANE_MAX_REQUESTS: 500
-        OCTANE_WATCH: 'true'
-        OCTANE_POLL: 'true'
+        OCTANE_WATCH: '${OCTANE_WATCH:-false}'
+        OCTANE_POLL: '${OCTANE_POLL:-false}'
         XDG_CONFIG_HOME: /var/www/html/storage/octane/xdg/config
         XDG_DATA_HOME: /var/www/html/storage/octane/xdg/data
         DB_HOST: pgsql

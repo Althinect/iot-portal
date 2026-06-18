@@ -68,7 +68,7 @@ return [
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
             'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
-            'block_for' => null,
+            'block_for' => env('REDIS_QUEUE_BLOCK_FOR') === null ? null : (int) env('REDIS_QUEUE_BLOCK_FOR'),
             'after_commit' => false,
         ],
 
@@ -78,7 +78,7 @@ return [
             'queue' => env('REDIS_SIMULATIONS_QUEUE', 'simulations'),
             // Simulation jobs are short-lived publish iterations, so keep retry_after tight.
             'retry_after' => (int) env('REDIS_SIMULATIONS_QUEUE_RETRY_AFTER', 300),
-            'block_for' => null,
+            'block_for' => env('REDIS_SIMULATIONS_QUEUE_BLOCK_FOR') === null ? null : (int) env('REDIS_SIMULATIONS_QUEUE_BLOCK_FOR'),
             'after_commit' => false,
         ],
 

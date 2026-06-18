@@ -41,8 +41,8 @@ it('starts the docker web service with octane and frankenphp', function (): void
         ->not->toBeFalse()
         ->toContain('command: /var/www/html/scripts/start-octane-frankenphp.sh')
         ->toContain('OCTANE_SERVER: frankenphp')
-        ->toContain("OCTANE_WATCH: 'true'")
-        ->toContain("OCTANE_POLL: 'true'")
+        ->toContain("OCTANE_WATCH: '\${OCTANE_WATCH:-false}'")
+        ->toContain("OCTANE_POLL: '\${OCTANE_POLL:-false}'")
         ->toContain('XDG_CONFIG_HOME: /var/www/html/storage/octane/xdg/config')
         ->toContain('XDG_DATA_HOME: /var/www/html/storage/octane/xdg/data');
 
