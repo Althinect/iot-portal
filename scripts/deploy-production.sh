@@ -17,6 +17,7 @@ Optional:
   PRODUCTION_COMPOSE_FILE=compose.production.yaml
   PRODUCTION_COMPOSE_FILES=compose.production.yaml:compose.forge.yaml
   PRODUCTION_ENV_FILE=.env.production
+  PRODUCTION_SKIP_PULL=false
 USAGE
 }
 
@@ -33,6 +34,7 @@ script_dir="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
 compose_files_config="${PRODUCTION_COMPOSE_FILES:-${PRODUCTION_COMPOSE_FILE:-compose.production.yaml}}"
 env_file="${PRODUCTION_ENV_FILE:-.env.production}"
+skip_pull="${PRODUCTION_SKIP_PULL:-false}"
 
 if ! command_exists docker; then
     echo "Error: docker is required." >&2
@@ -67,8 +69,12 @@ for compose_file in "${compose_files[@]}"; do
     compose+=(-f "$compose_file")
 done
 
-echo "Pulling production images..."
-"${compose[@]}" pull
+if [[ "$skip_pull" == "true" || "$skip_pull" == "1" ]]; then
+    echo "Skipping production image pull because PRODUCTION_SKIP_PULL is enabled..."
+else
+    echo "Pulling production images..."
+    "${compose[@]}" pull
+fi
 
 echo "Starting stateful dependencies..."
 "${compose[@]}" up -d --wait --wait-timeout 300 pgsql redis nats
