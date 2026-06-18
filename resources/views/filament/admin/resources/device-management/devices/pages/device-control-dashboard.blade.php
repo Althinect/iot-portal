@@ -477,13 +477,13 @@
                         if (echoPusher) {
                             window.__deviceControlPusher = echoPusher;
                         } else if (!window.__deviceControlPusher && window.Pusher) {
-                            const configuredHost = @js(config('broadcasting.connections.reverb.options.host'));
-                            const configuredPort = Number(@js(config('broadcasting.connections.reverb.options.port')));
-                            const configuredScheme = @js(config('broadcasting.connections.reverb.options.scheme'));
+                            const configuredHost = @js(config('filament.broadcasting.echo.wsHost'));
+                            const configuredPort = Number(@js(config('filament.broadcasting.echo.wsPort')));
+                            const configuredForceTls = @js((bool) config('filament.broadcasting.echo.forceTLS'));
                             const originScheme = window.location.protocol.replace(':', '');
                             const runtimeHost = window.location.hostname;
                             const isLocalRuntimeHost = runtimeHost === 'localhost' || runtimeHost === '127.0.0.1' || runtimeHost.endsWith('.test');
-                            const wsScheme = isLocalRuntimeHost ? originScheme : (configuredScheme || originScheme || 'http');
+                            const wsScheme = configuredForceTls ? 'https' : (isLocalRuntimeHost ? originScheme : originScheme || 'http');
                             const wsHost = isLocalRuntimeHost || !configuredHost || configuredHost === '127.0.0.1'
                                 ? runtimeHost
                                 : configuredHost;

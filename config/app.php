@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 return [
 
     /*
@@ -53,6 +55,16 @@ return [
     */
 
     'url' => env('APP_URL', 'http://localhost'),
+
+    'trusted_proxies' => array_values(array_filter(array_map(
+        static fn (string $proxy): string => trim($proxy),
+        explode(',', (string) env('TRUSTED_PROXIES', ''))
+    ))),
+
+    'trusted_hosts' => array_values(array_filter(array_map(
+        static fn (string $host): string => trim($host),
+        explode(',', (string) env('TRUSTED_HOSTS', ''))
+    ))),
 
     /*
     |--------------------------------------------------------------------------
