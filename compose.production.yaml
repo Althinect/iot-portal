@@ -55,6 +55,11 @@ x-app-service: &app-service
         nats:
             condition: service_healthy
 
+x-app-command-service: &app-command-service
+    <<: *app-service
+    healthcheck:
+        disable: true
+
 services:
     proxy:
         image: caddy:2-alpine
@@ -88,20 +93,20 @@ services:
             start_period: 30s
 
     reverb:
-        <<: *app-service
+        <<: *app-command-service
         command: php artisan reverb:start --host=0.0.0.0 --port=8090
         stop_grace_period: 30s
 
     iot-listen-states:
-        <<: *app-service
+        <<: *app-command-service
         command: php artisan iot:listen-for-device-states --host=nats --port=4222
 
     iot-listen-presence:
-        <<: *app-service
+        <<: *app-command-service
         command: php artisan iot:listen-for-device-presence --host=nats --port=4222
 
     iot-ingest-telemetry:
-        <<: *app-service
+        <<: *app-command-service
         command:
             - php
             - artisan
@@ -111,26 +116,26 @@ services:
             - '--subject=${INGESTION_NATS_SUBJECT:->}'
 
     horizon:
-        <<: *app-service
+        <<: *app-command-service
         command: php artisan horizon
         stop_grace_period: 1h
 
     scheduler:
-        <<: *app-service
+        <<: *app-command-service
         command: php artisan schedule:work
 
     nightwatch:
-        <<: *app-service
+        <<: *app-command-service
         command: sh -lc 'if [ "$${NIGHTWATCH_ENABLED:-false}" = "true" ] && [ -n "$${NIGHTWATCH_TOKEN:-}" ]; then exec php artisan nightwatch:agent --listen-on=0.0.0.0:2407; fi; echo "Nightwatch disabled; set NIGHTWATCH_ENABLED=true and NIGHTWATCH_TOKEN to start the agent."; exec tail -f /dev/null'
         stop_grace_period: 30s
 
     pulse-check:
-        <<: *app-service
+        <<: *app-command-service
         command: php artisan pulse:check
         stop_grace_period: 30s
 
     pulse-worker:
-        <<: *app-service
+        <<: *app-command-service
         command: php artisan pulse:work
         stop_grace_period: 30s
 
