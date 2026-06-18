@@ -8,7 +8,10 @@ WORKDIR /app
 
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
-RUN install-php-extensions \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends procps \
+    && rm -rf /var/lib/apt/lists/* \
+    && install-php-extensions \
     bcmath \
     gd \
     intl \

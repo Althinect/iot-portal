@@ -67,6 +67,7 @@ it('builds an immutable frankenphp image with composer and vite assets', functio
         ->toContain('--no-dev')
         ->toContain('npm run build')
         ->toContain('install-php-extensions')
+        ->toContain('procps')
         ->toContain('pdo_pgsql')
         ->toContain('redis')
         ->toContain('public/frankenphp-worker.php')
