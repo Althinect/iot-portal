@@ -116,6 +116,19 @@ function configureLegacyIotConnectionForSriLankanImportTests(): void
         throw new RuntimeException('Default database connection is not configured.');
     }
 
+    if (($defaultConnection['driver'] ?? null) === 'sqlite') {
+        $legacyDatabasePath = sys_get_temp_dir().DIRECTORY_SEPARATOR.sprintf(
+            'legacy_iot_import_%s.sqlite',
+            env('TEST_TOKEN', 'default')
+        );
+
+        if (! file_exists($legacyDatabasePath)) {
+            touch($legacyDatabasePath);
+        }
+
+        $defaultConnection['database'] = $legacyDatabasePath;
+    }
+
     if (($defaultConnection['driver'] ?? null) === 'pgsql') {
         $defaultConnection['search_path'] = 'legacy_iot';
     }
