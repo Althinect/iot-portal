@@ -211,17 +211,24 @@ it('defines a local monitoring overlay for the sail network', function (): void 
 it('defines a forge reverse proxy overlay for docker production', function (): void {
     $compose = Yaml::parseFile(base_path('compose.forge.yaml'));
     $productionEnvironment = file_get_contents(base_path('.env.production.example'));
+    $caddyfile = file_get_contents(base_path('docker/production/Caddyfile.forge'));
 
     expect($compose['services']['proxy']['profiles'])->toContain('caddy-edge')
-        ->and($compose['services']['web']['ports'])->toContain('${FORGE_WEB_BIND:-127.0.0.1}:${FORGE_WEB_PORT:-18080}:8000')
-        ->and($compose['services']['reverb']['ports'])->toContain('${FORGE_REVERB_BIND:-127.0.0.1}:${FORGE_REVERB_PORT:-18090}:8090');
+        ->and($compose['services']['proxy-forge']['ports'])->toContain('${FORGE_PROXY_BIND:-127.0.0.1}:${FORGE_PROXY_PORT:-18080}:80')
+        ->and($compose['services']['proxy-forge']['volumes'])->toContain('./docker/production/Caddyfile.forge:/etc/caddy/Caddyfile:ro')
+        ->and($compose['services']['proxy-forge']['depends_on'])->toContain('web', 'reverb')
+        ->and($compose['volumes'])->toHaveKeys(['caddy-forge-data', 'caddy-forge-config']);
 
     expect($productionEnvironment)
         ->not->toBeFalse()
-        ->toContain('FORGE_WEB_BIND=127.0.0.1')
-        ->toContain('FORGE_WEB_PORT=18080')
-        ->toContain('FORGE_REVERB_BIND=127.0.0.1')
-        ->toContain('FORGE_REVERB_PORT=18090');
+        ->toContain('FORGE_PROXY_BIND=127.0.0.1')
+        ->toContain('FORGE_PROXY_PORT=18080');
+
+    expect($caddyfile)
+        ->not->toBeFalse()
+        ->toContain('auto_https off')
+        ->toContain('reverse_proxy @reverb reverb:8090')
+        ->toContain('reverse_proxy web:8000');
 });
 
 it('documents production environment variables for proxy and reverb separation', function (): void {
