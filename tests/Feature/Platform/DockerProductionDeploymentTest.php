@@ -182,6 +182,28 @@ it('ships production monitoring services for laravel and container telemetry', f
         ->toContain('schema: v13');
 });
 
+it('defines a local monitoring overlay for the sail network', function (): void {
+    $compose = Yaml::parseFile(base_path('compose.monitoring.yaml'));
+    $services = $compose['services'];
+
+    expect($services)->toHaveKeys([
+        'grafana',
+        'loki',
+        'prometheus',
+        'alloy',
+        'node-exporter',
+        'cadvisor',
+    ]);
+
+    expect($services['grafana']['image'])->toBe('${GRAFANA_IMAGE:-grafana/grafana-oss:13.0.2}')
+        ->and($services['grafana']['ports'])->toContain('${GRAFANA_BIND:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000')
+        ->and($services['alloy']['volumes'])->toContain('/var/run/docker.sock:/var/run/docker.sock:ro')
+        ->and($services['prometheus']['volumes'])->toContain('./docker/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro')
+        ->and($services['loki']['volumes'])->toContain('./docker/monitoring/loki/config.yaml:/etc/loki/config.yaml:ro')
+        ->and($compose['networks']['sail']['external'])->toBeTrue()
+        ->and($compose['networks']['sail']['name'])->toBe('${MONITORING_DOCKER_NETWORK:-iot-portal_sail}');
+});
+
 it('documents production environment variables for proxy and reverb separation', function (): void {
     $productionEnvironment = file_get_contents(base_path('.env.production.example'));
     $exampleEnvironment = file_get_contents(base_path('.env.example'));

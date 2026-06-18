@@ -1,0 +1,95 @@
+services:
+    grafana:
+        image: '${GRAFANA_IMAGE:-grafana/grafana-oss:13.0.2}'
+        environment:
+            GF_SECURITY_ADMIN_USER: '${GRAFANA_ADMIN_USER:-admin}'
+            GF_SECURITY_ADMIN_PASSWORD: '${GRAFANA_ADMIN_PASSWORD:-admin}'
+            GF_SERVER_ROOT_URL: '${GRAFANA_ROOT_URL:-http://localhost:3000}'
+            GF_USERS_ALLOW_SIGN_UP: 'false'
+        ports:
+            - '${GRAFANA_BIND:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000'
+        volumes:
+            - monitoring-grafana-data:/var/lib/grafana
+            - './docker/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro'
+        networks:
+            - sail
+        depends_on:
+            - loki
+            - prometheus
+        restart: unless-stopped
+
+    loki:
+        image: '${LOKI_IMAGE:-grafana/loki:3.7.2}'
+        command:
+            - '-config.file=/etc/loki/config.yaml'
+        volumes:
+            - './docker/monitoring/loki/config.yaml:/etc/loki/config.yaml:ro'
+            - monitoring-loki-data:/loki
+        networks:
+            - sail
+        restart: unless-stopped
+
+    prometheus:
+        image: '${PROMETHEUS_IMAGE:-prom/prometheus:v3.5.4}'
+        command:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}'
+            - '--web.enable-lifecycle'
+        volumes:
+            - './docker/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro'
+            - monitoring-prometheus-data:/prometheus
+        networks:
+            - sail
+        restart: unless-stopped
+
+    alloy:
+        image: '${ALLOY_IMAGE:-grafana/alloy:v1.17.0}'
+        command:
+            - run
+            - '--server.http.listen-addr=0.0.0.0:12345'
+            - /etc/alloy/config.alloy
+        volumes:
+            - './docker/monitoring/alloy/config.alloy:/etc/alloy/config.alloy:ro'
+            - '/var/run/docker.sock:/var/run/docker.sock:ro'
+        networks:
+            - sail
+        depends_on:
+            - loki
+        restart: unless-stopped
+
+    node-exporter:
+        image: '${NODE_EXPORTER_IMAGE:-prom/node-exporter:v1.11.1}'
+        command:
+            - '--path.rootfs=/host'
+        pid: host
+        volumes:
+            - '/:/host:ro'
+        networks:
+            - sail
+        restart: unless-stopped
+
+    cadvisor:
+        image: '${CADVISOR_IMAGE:-gcr.io/cadvisor/cadvisor:v0.55.1}'
+        volumes:
+            - '/:/rootfs:ro'
+            - '/var/run:/var/run:ro'
+            - '/sys:/sys:ro'
+            - '/var/lib/docker/:/var/lib/docker:ro'
+            - '/dev/disk/:/dev/disk:ro'
+        networks:
+            - sail
+        restart: unless-stopped
+
+networks:
+    sail:
+        external: true
+        name: '${MONITORING_DOCKER_NETWORK:-iot-portal_sail}'
+
+volumes:
+    monitoring-grafana-data:
+        driver: local
+    monitoring-loki-data:
+        driver: local
+    monitoring-prometheus-data:
+        driver: local
