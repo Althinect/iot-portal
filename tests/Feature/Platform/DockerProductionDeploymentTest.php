@@ -151,7 +151,14 @@ it('ships production monitoring services for laravel and container telemetry', f
     $alloyConfig = file_get_contents(base_path('docker/monitoring/alloy/config.alloy'));
     $prometheusConfig = file_get_contents(base_path('docker/monitoring/prometheus/prometheus.yml'));
     $grafanaDatasources = file_get_contents(base_path('docker/monitoring/grafana/provisioning/datasources/datasources.yaml'));
+    $grafanaDashboardProvider = file_get_contents(base_path('docker/monitoring/grafana/provisioning/dashboards/dashboards.yaml'));
+    $grafanaOverviewDashboardJson = file_get_contents(base_path('docker/monitoring/grafana/provisioning/dashboards/iot-portal-overview.json'));
+    $grafanaContainerMetricsDashboardJson = file_get_contents(base_path('docker/monitoring/grafana/provisioning/dashboards/iot-portal-container-metrics.json'));
+    $grafanaLogsRuntimeDashboardJson = file_get_contents(base_path('docker/monitoring/grafana/provisioning/dashboards/iot-portal-logs-runtime.json'));
     $lokiConfig = file_get_contents(base_path('docker/monitoring/loki/config.yaml'));
+    $grafanaOverviewDashboard = json_decode($grafanaOverviewDashboardJson ?: '[]', true, flags: JSON_THROW_ON_ERROR);
+    $grafanaContainerMetricsDashboard = json_decode($grafanaContainerMetricsDashboardJson ?: '[]', true, flags: JSON_THROW_ON_ERROR);
+    $grafanaLogsRuntimeDashboard = json_decode($grafanaLogsRuntimeDashboardJson ?: '[]', true, flags: JSON_THROW_ON_ERROR);
 
     expect($services['nightwatch']['command'])->toContain('php artisan nightwatch:agent --listen-on=0.0.0.0:2407')
         ->toContain('NIGHTWATCH_ENABLED')
@@ -190,8 +197,52 @@ it('ships production monitoring services for laravel and container telemetry', f
 
     expect($grafanaDatasources)
         ->not->toBeFalse()
+        ->toContain('uid: PBFA97CFB590B2093')
         ->toContain('http://prometheus:9090')
+        ->toContain('uid: P8E80F9AEF21F6940')
         ->toContain('http://loki:3100');
+
+    expect($grafanaDashboardProvider)
+        ->not->toBeFalse()
+        ->toContain('IoT Portal Monitoring')
+        ->toContain('/etc/grafana/provisioning/dashboards');
+
+    expect($grafanaOverviewDashboard)
+        ->toHaveKey('uid', 'iot-portal-overview')
+        ->toHaveKey('title', 'IoT Portal - Overview');
+
+    expect($grafanaContainerMetricsDashboard)
+        ->toHaveKey('uid', 'iot-portal-container-metrics')
+        ->toHaveKey('title', 'IoT Portal - Container Metrics');
+
+    expect($grafanaLogsRuntimeDashboard)
+        ->toHaveKey('uid', 'iot-portal-logs-runtime')
+        ->toHaveKey('title', 'IoT Portal - Logs & Runtime');
+
+    expect($grafanaOverviewDashboardJson)
+        ->not->toBeFalse()
+        ->toContain('"uid": "PBFA97CFB590B2093"')
+        ->toContain('node_cpu_seconds_total')
+        ->toContain('node_memory_MemAvailable_bytes')
+        ->toContain('node_filesystem_avail_bytes');
+
+    expect($grafanaContainerMetricsDashboardJson)
+        ->not->toBeFalse()
+        ->toContain('"uid": "PBFA97CFB590B2093"')
+        ->toContain('container_cpu_usage_seconds_total')
+        ->toContain('container_memory_working_set_bytes')
+        ->toContain('container_fs_usage_bytes')
+        ->toContain('container_network_receive_bytes_total')
+        ->toContain('container_network_transmit_bytes_total');
+
+    expect($grafanaLogsRuntimeDashboardJson)
+        ->not->toBeFalse()
+        ->toContain('"uid": "PBFA97CFB590B2093"')
+        ->toContain('"uid": "P8E80F9AEF21F6940"')
+        ->toContain('{compose_project=\\"$compose_project\\", service=~\\"$service\\", container=~\\"$container\\"}')
+        ->toContain('count_over_time')
+        ->toContain('(?i)(error|exception|critical|fatal|panic)')
+        ->toContain('web|horizon|scheduler|reverb|iot-ingest-telemetry|iot-listen-presence|iot-listen-states');
 
     expect($lokiConfig)
         ->not->toBeFalse()
