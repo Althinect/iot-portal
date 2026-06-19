@@ -22,7 +22,7 @@ x-app-environment: &app-environment
     PULSE_SERVER_NAME: '${PULSE_SERVER_NAME:-iot-portal-production}'
     IOT_NATS_HOST: nats
     IOT_NATS_PORT: 4222
-    IOT_MQTT_HOST: nats
+    IOT_MQTT_HOST: emqx
     IOT_MQTT_PORT: 1883
     INGESTION_NATS_HOST: nats
     INGESTION_NATS_PORT: 4222
@@ -53,6 +53,8 @@ x-app-service: &app-service
         redis:
             condition: service_healthy
         nats:
+            condition: service_healthy
+        emqx:
             condition: service_healthy
 
 x-app-command-service: &app-command-service
@@ -99,11 +101,17 @@ services:
 
     iot-listen-states:
         <<: *app-command-service
-        command: php artisan iot:listen-for-device-states --host=nats --port=4222
+        command:
+            - php
+            - artisan
+            - iot:listen-for-device-states
+            - --host=emqx
+            - --port=4222
+            - '--subject=${IOT_DEVICE_STATE_NATS_SUBJECT:-devices.*.state,devices.*.*.state,devices.*.*.*.state}'
 
     iot-listen-presence:
         <<: *app-command-service
-        command: php artisan iot:listen-for-device-presence --host=nats --port=4222
+        command: php artisan iot:listen-for-device-presence --host=emqx --port=4222
 
     iot-ingest-telemetry:
         <<: *app-command-service
@@ -111,9 +119,9 @@ services:
             - php
             - artisan
             - iot:ingest-telemetry
-            - --host=nats
+            - --host=emqx
             - --port=4222
-            - '--subject=${INGESTION_NATS_SUBJECT:->}'
+            - '--subject=${INGESTION_NATS_SUBJECT:-devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry}'
 
     horizon:
         <<: *app-command-service
@@ -190,13 +198,12 @@ services:
         restart: unless-stopped
 
     nats:
-        image: nats:2.11-alpine
+        image: nats:2.12.5-alpine
         command:
             - '-c'
             - '/etc/nats/nats.conf'
         ports:
             - '${NATS_CLIENT_BIND:-127.0.0.1}:${FORWARD_NATS_PORT:-4222}:4222'
-            - '${NATS_MQTT_BIND:-127.0.0.1}:${FORWARD_NATS_MQTT_PORT:-1883}:1883'
             - '${NATS_MONITORING_BIND:-127.0.0.1}:${FORWARD_NATS_MONITORING_PORT:-8222}:8222'
         volumes:
             - './docker/nats/nats.conf:/etc/nats/nats.conf:ro'
@@ -212,14 +219,46 @@ services:
             retries: 5
         restart: unless-stopped
 
+    emqx:
+        image: '${EMQX_IMAGE:-emqx/emqx-enterprise:6.2.1}'
+        hostname: emqx.local
+        env_file:
+            - '${PRODUCTION_ENV_FILE:-.env.production}'
+        environment:
+            EMQX_NODE__NAME: 'emqx@emqx.local'
+            EMQX_DASHBOARD__DEFAULT_USERNAME: '${EMQX_DASHBOARD_USER:-admin}'
+            EMQX_DASHBOARD__DEFAULT_PASSWORD: '${EMQX_DASHBOARD_PASSWORD:?Set EMQX_DASHBOARD_PASSWORD in .env.production}'
+        ports:
+            - '${EMQX_MQTT_BIND:-127.0.0.1}:${FORWARD_EMQX_MQTT_PORT:-1883}:1883'
+            - '${EMQX_DASHBOARD_BIND:-127.0.0.1}:${FORWARD_EMQX_DASHBOARD_PORT:-18083}:18083'
+        volumes:
+            - './docker/emqx/base.hocon:/opt/emqx/etc/base.hocon:ro'
+            - emqx-data:/opt/emqx/data
+            - emqx-log:/opt/emqx/log
+        networks:
+            - production
+        healthcheck:
+            test:
+                - CMD
+                - /opt/emqx/bin/emqx
+                - ctl
+                - status
+            interval: 10s
+            timeout: 10s
+            retries: 12
+            start_period: 30s
+        restart: unless-stopped
+
     node-red:
         image: nodered/node-red:4.1.1
         env_file:
             - '${PRODUCTION_ENV_FILE:-.env.production}'
         environment:
             TZ: '${APP_TIMEZONE:-UTC}'
-            MQTT_BROKER_HOST: '${NODE_RED_MQTT_BROKER_HOST:-nats}'
+            MQTT_BROKER_HOST: '${NODE_RED_MQTT_BROKER_HOST:-emqx}'
             MQTT_BROKER_PORT: '${NODE_RED_MQTT_BROKER_PORT:-1883}'
+            MQTT_BROKER_USERNAME: '${NODE_RED_MQTT_USERNAME:-}'
+            MQTT_BROKER_PASSWORD: '${NODE_RED_MQTT_PASSWORD:?Set NODE_RED_MQTT_PASSWORD in .env.production}'
         ports:
             - '${NODE_RED_BIND:-127.0.0.1}:${FORWARD_NODE_RED_PORT:-1880}:1880'
         volumes:
@@ -227,7 +266,7 @@ services:
         networks:
             - production
         depends_on:
-            nats:
+            emqx:
                 condition: service_healthy
         restart: unless-stopped
 
@@ -333,6 +372,10 @@ volumes:
     redis-data:
         driver: local
     nats-data:
+        driver: local
+    emqx-data:
+        driver: local
+    emqx-log:
         driver: local
     node-red-data:
         driver: local

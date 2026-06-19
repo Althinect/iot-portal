@@ -11,7 +11,7 @@ Usage: ./scripts/deploy-production.sh
 Pulls the immutable production image and reconciles the Docker Compose stack.
 
 Required:
-  .env.production with APP_IMAGE, APP_URL, APP_DOMAIN, database, Redis, Reverb, and NATS settings.
+  .env.production with APP_IMAGE, APP_URL, APP_DOMAIN, database, Redis, Reverb, NATS, and EMQX settings.
 
 Optional:
   PRODUCTION_COMPOSE_FILE=compose.production.yaml
@@ -77,7 +77,7 @@ else
 fi
 
 echo "Starting stateful dependencies..."
-"${compose[@]}" up -d --wait --wait-timeout 300 pgsql redis nats
+"${compose[@]}" up -d --wait --wait-timeout 300 pgsql redis nats emqx
 
 echo "Running database migrations..."
 "${compose[@]}" run --rm --no-deps web php artisan migrate --force --no-interaction

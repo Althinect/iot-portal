@@ -37,13 +37,13 @@ class IngestTelemetryCommand extends Command
 
         $host = $this->resolveHost();
         $port = $this->resolvePort();
-        $subject = $this->resolveSubject();
+        $subjects = $this->resolveSubjects();
         $queue = $this->resolveQueue();
         $queueConnection = $this->resolveQueueConnection();
 
         $this->info('Starting telemetry ingestion listener...');
         $this->info("Connecting to NATS at {$host}:{$port}");
-        $this->info("Listening on subject: {$subject}");
+        $this->info('Listening on subjects: '.implode(', ', $subjects));
         $this->info("Dispatching to queue connection: {$queueConnection}, queue: {$queue}");
 
         if ($queueConnection === 'redis' && config('database.redis.client') === 'phpredis' && ! extension_loaded('redis')) {
@@ -66,61 +66,63 @@ class IngestTelemetryCommand extends Command
                 $client = new Client($configuration);
                 $lastActivityAt = microtime(true);
 
-                $client->subscribe($subject, function (Payload $payload) use ($bindingResolver, $queue, $queueConnection, $topicResolver, &$lastActivityAt): void {
-                    $lastActivityAt = microtime(true);
-                    $sourceSubject = $payload->subject ?? '';
-                    $mqttTopic = str_replace('.', '/', $sourceSubject);
+                foreach ($subjects as $subject) {
+                    $client->subscribe($subject, function (Payload $payload) use ($bindingResolver, $queue, $queueConnection, $topicResolver, &$lastActivityAt): void {
+                        $lastActivityAt = microtime(true);
+                        $sourceSubject = $payload->subject ?? '';
+                        $mqttTopic = str_replace('.', '/', $sourceSubject);
 
-                    if ($this->shouldIgnoreSubject($sourceSubject)) {
-                        return;
-                    }
+                        if ($this->shouldIgnoreSubject($sourceSubject)) {
+                            return;
+                        }
 
-                    $resolvedTopic = $topicResolver->resolve($mqttTopic);
-                    $supportsBindingTopic = $bindingResolver->supportsTopic($mqttTopic);
+                        $resolvedTopic = $topicResolver->resolve($mqttTopic);
+                        $supportsBindingTopic = $bindingResolver->supportsTopic($mqttTopic);
 
-                    if ($resolvedTopic === null && ! $supportsBindingTopic) {
-                        return;
-                    }
+                        if ($resolvedTopic === null && ! $supportsBindingTopic) {
+                            return;
+                        }
 
-                    $decodedPayload = [];
-
-                    try {
-                        $decoded = json_decode($payload->body, true, flags: JSON_THROW_ON_ERROR);
-                        $decodedPayload = is_array($decoded) ? $decoded : [];
-                    } catch (\Throwable) {
                         $decodedPayload = [];
-                    }
 
-                    $envelope = new IncomingTelemetryEnvelope(
-                        sourceSubject: $sourceSubject,
-                        mqttTopic: $mqttTopic,
-                        payload: $decodedPayload,
-                        deviceUuid: is_string(Arr::get($decodedPayload, '_meta.device_uuid')) ? Arr::get($decodedPayload, '_meta.device_uuid') : null,
-                        deviceExternalId: is_string(Arr::get($decodedPayload, '_meta.device_external_id')) ? Arr::get($decodedPayload, '_meta.device_external_id') : null,
-                        messageId: is_string($payload->headers['Nats-Msg-Id'] ?? null) ? $payload->headers['Nats-Msg-Id'] : null,
-                        receivedAt: now(),
-                    );
+                        try {
+                            $decoded = json_decode($payload->body, true, flags: JSON_THROW_ON_ERROR);
+                            $decodedPayload = is_array($decoded) ? $decoded : [];
+                        } catch (\Throwable) {
+                            $decodedPayload = [];
+                        }
 
-                    $this
-                        ->resolveTelemetryBroadcastEnvelopes($envelope, $resolvedTopic, $supportsBindingTopic, $bindingResolver)
-                        ->each(function (IncomingTelemetryEnvelope $broadcastEnvelope): void {
-                            event(new TelemetryIncoming(
-                                topic: $broadcastEnvelope->mqttTopic,
-                                deviceUuid: $broadcastEnvelope->deviceUuid,
-                                deviceExternalId: $broadcastEnvelope->deviceExternalId,
-                                payload: $broadcastEnvelope->payload,
-                                receivedAt: $broadcastEnvelope->resolveReceivedAt(),
-                            ));
-                        });
+                        $envelope = new IncomingTelemetryEnvelope(
+                            sourceSubject: $sourceSubject,
+                            mqttTopic: $mqttTopic,
+                            payload: $decodedPayload,
+                            deviceUuid: is_string(Arr::get($decodedPayload, '_meta.device_uuid')) ? Arr::get($decodedPayload, '_meta.device_uuid') : null,
+                            deviceExternalId: is_string(Arr::get($decodedPayload, '_meta.device_external_id')) ? Arr::get($decodedPayload, '_meta.device_external_id') : null,
+                            messageId: is_string($payload->headers['Nats-Msg-Id'] ?? null) ? $payload->headers['Nats-Msg-Id'] : null,
+                            receivedAt: now(),
+                        );
 
-                    try {
-                        ProcessInboundTelemetryJob::dispatch($envelope->toArray())
-                            ->onConnection($queueConnection)
-                            ->onQueue($queue);
-                    } catch (\Throwable $exception) {
-                        $this->error("Queue dispatch failed for {$sourceSubject}: {$exception->getMessage()}");
-                    }
-                });
+                        $this
+                            ->resolveTelemetryBroadcastEnvelopes($envelope, $resolvedTopic, $supportsBindingTopic, $bindingResolver)
+                            ->each(function (IncomingTelemetryEnvelope $broadcastEnvelope): void {
+                                event(new TelemetryIncoming(
+                                    topic: $broadcastEnvelope->mqttTopic,
+                                    deviceUuid: $broadcastEnvelope->deviceUuid,
+                                    deviceExternalId: $broadcastEnvelope->deviceExternalId,
+                                    payload: $broadcastEnvelope->payload,
+                                    receivedAt: $broadcastEnvelope->resolveReceivedAt(),
+                                ));
+                            });
+
+                        try {
+                            ProcessInboundTelemetryJob::dispatch($envelope->toArray())
+                                ->onConnection($queueConnection)
+                                ->onQueue($queue);
+                        } catch (\Throwable $exception) {
+                            $this->error("Queue dispatch failed for {$sourceSubject}: {$exception->getMessage()}");
+                        }
+                    });
+                }
 
                 $lastHeartbeatAt = microtime(true);
 
@@ -215,15 +217,43 @@ class IngestTelemetryCommand extends Command
         return $this->resolveIntConfig('ingestion.nats.port', 4223);
     }
 
-    private function resolveSubject(): string
+    /**
+     * @return list<string>
+     */
+    private function resolveSubjects(): array
     {
         $subjectOption = $this->option('subject');
 
         if (is_string($subjectOption) && trim($subjectOption) !== '') {
-            return trim($subjectOption);
+            return $this->normalizeSubjects($subjectOption);
         }
 
-        return $this->resolveStringConfig('ingestion.nats.subject', '>');
+        return $this->normalizeSubjects($this->resolveStringConfig(
+            'ingestion.nats.subject',
+            'devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry',
+        ));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function normalizeSubjects(string $subjects): array
+    {
+        $normalizedSubjects = collect(explode(',', $subjects))
+            ->map(fn (string $subject): string => trim($subject))
+            ->filter(fn (string $subject): bool => $subject !== '')
+            ->values()
+            ->all();
+
+        return $normalizedSubjects === []
+            ? [
+                'devices.*.telemetry',
+                'devices.*.*.telemetry',
+                'devices.*.*.*.telemetry',
+                'migration.source.imoni.*.*.telemetry',
+                'migration.source.egravity.*.telemetry',
+            ]
+            : $normalizedSubjects;
     }
 
     private function resolveQueue(): string

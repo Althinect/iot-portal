@@ -23,6 +23,7 @@ it('defines a production docker compose stack beside the local sail stack', func
         'pgsql',
         'redis',
         'nats',
+        'emqx',
         'node-red',
         'grafana',
         'loki',
@@ -38,8 +39,13 @@ it('defines a production docker compose stack beside the local sail stack', func
         ->and($services['web']['healthcheck']['test'])->toContain('php artisan about --only=environment >/dev/null 2>&1')
         ->and($services['reverb']['command'])->toBe('php artisan reverb:start --host=0.0.0.0 --port=8090')
         ->and($services['reverb']['healthcheck']['disable'])->toBeTrue()
+        ->and($services['iot-listen-states']['command'])->toContain('--host=emqx')
+        ->and($services['iot-listen-states']['command'])->toContain('--subject=${IOT_DEVICE_STATE_NATS_SUBJECT:-devices.*.state,devices.*.*.state,devices.*.*.*.state}')
         ->and($services['iot-listen-states']['healthcheck']['disable'])->toBeTrue()
+        ->and($services['iot-listen-presence']['command'])->toContain('--host=emqx')
         ->and($services['iot-listen-presence']['healthcheck']['disable'])->toBeTrue()
+        ->and($services['iot-ingest-telemetry']['command'])->toContain('--host=emqx')
+        ->and($services['iot-ingest-telemetry']['command'])->toContain('--subject=${INGESTION_NATS_SUBJECT:-devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry}')
         ->and($services['iot-ingest-telemetry']['healthcheck']['disable'])->toBeTrue()
         ->and($services['horizon']['command'])->toBe('php artisan horizon')
         ->and($services['horizon']['healthcheck']['disable'])->toBeTrue()
@@ -51,8 +57,89 @@ it('defines a production docker compose stack beside the local sail stack', func
         ->and($services['web']['environment']['REVERB_BROADCAST_HOST'])->toBe('reverb')
         ->and($services['web']['environment']['REVERB_BROADCAST_SCHEME'])->toBe('http')
         ->and($services['web']['environment']['IOT_NATS_PORT'])->toBe(4222)
+        ->and($services['web']['environment']['IOT_MQTT_HOST'])->toBe('emqx')
+        ->and($services['emqx']['image'])->toBe('${EMQX_IMAGE:-emqx/emqx-enterprise:6.2.1}')
+        ->and($services['emqx']['hostname'])->toBe('emqx.local')
+        ->and($services['emqx']['ports'])->toContain('${EMQX_MQTT_BIND:-127.0.0.1}:${FORWARD_EMQX_MQTT_PORT:-1883}:1883')
+        ->and($services['emqx']['ports'])->toContain('${EMQX_DASHBOARD_BIND:-127.0.0.1}:${FORWARD_EMQX_DASHBOARD_PORT:-18083}:18083')
+        ->and($services['emqx']['volumes'])->toContain('./docker/emqx/base.hocon:/opt/emqx/etc/base.hocon:ro')
+        ->and($services['emqx']['healthcheck']['test'])->toBe(['CMD', '/opt/emqx/bin/emqx', 'ctl', 'status'])
+        ->and($services['nats']['ports'])->not->toContain('${NATS_MQTT_BIND:-127.0.0.1}:${FORWARD_NATS_MQTT_PORT:-1883}:1883')
+        ->and($services['node-red']['environment']['MQTT_BROKER_HOST'])->toBe('${NODE_RED_MQTT_BROKER_HOST:-emqx}')
+        ->and($services['node-red']['environment']['MQTT_BROKER_PASSWORD'])->toBe('${NODE_RED_MQTT_PASSWORD:?Set NODE_RED_MQTT_PASSWORD in .env.production}')
+        ->and($services['node-red']['depends_on']['emqx']['condition'])->toBe('service_healthy')
         ->and($services['web']['volumes'])->toContain('app-storage:/app/storage')
         ->and($services['web']['volumes'])->toContain('app-bootstrap-cache:/app/bootstrap/cache');
+});
+
+it('defines local EMQX MQTT services for sail development', function (): void {
+    $compose = Yaml::parseFile(base_path('compose.yaml'));
+    $services = $compose['services'];
+
+    expect($services)->toHaveKeys(['nats', 'emqx', 'node-red'])
+        ->and($services['laravel.test']['environment']['IOT_MQTT_HOST'])->toBe('emqx')
+        ->and($services['iot-listen-states']['command'])->toContain('--host=emqx')
+        ->and($services['iot-listen-presence']['command'])->toContain('--host=emqx')
+        ->and($services['iot-ingest-telemetry']['command'])->toContain('--host=emqx')
+        ->and($services['nats']['ports'])->not->toContain('${FORWARD_NATS_MQTT_PORT:-1883}:1883')
+        ->and($services['emqx']['ports'])->toContain('${EMQX_MQTT_BIND:-127.0.0.1}:${FORWARD_EMQX_MQTT_PORT:-1883}:1883')
+        ->and($services['emqx']['ports'])->toContain('${EMQX_DASHBOARD_BIND:-127.0.0.1}:${FORWARD_EMQX_DASHBOARD_PORT:-18083}:18083')
+        ->and($services['emqx']['volumes'])->toContain('./docker/emqx/local.hocon:/opt/emqx/etc/base.hocon:ro')
+        ->and($services['emqx']['volumes'])->toContain('./docker/emqx/local-auth-built-in-db-bootstrap.csv:/opt/emqx/etc/local-auth-built-in-db-bootstrap.csv:ro')
+        ->and($services['node-red']['environment']['MQTT_BROKER_HOST'])->toBe('${NODE_RED_MQTT_BROKER_HOST:-emqx}')
+        ->and($services['node-red']['depends_on']['emqx']['condition'])->toBe('service_healthy');
+});
+
+it('configures EMQX as the MQTT ingress broker and NATS gateway', function (): void {
+    $emqxConfig = file_get_contents(base_path('docker/emqx/base.hocon'));
+    $localEmqxConfig = file_get_contents(base_path('docker/emqx/local.hocon'));
+    $localEmqxBootstrap = file_get_contents(base_path('docker/emqx/local-auth-built-in-db-bootstrap.csv'));
+    $natsConfig = file_get_contents(base_path('docker/nats/nats.conf'));
+    $nodeRedSettings = file_get_contents(base_path('docker/node-red/data/settings.js'));
+    $nodeRedFlowsJson = file_get_contents(base_path('docker/node-red/data/flows.json'));
+    $nodeRedFlows = json_decode($nodeRedFlowsJson ?: '[]', true, flags: JSON_THROW_ON_ERROR);
+
+    $localBroker = collect($nodeRedFlows)->firstWhere('id', 'c5812f56b80b9a3e');
+    $normalizeNode = collect($nodeRedFlows)->firstWhere('id', 'nr_normalize_01');
+
+    expect($emqxConfig)
+        ->not->toBeFalse()
+        ->toContain('authentication = [')
+        ->toContain('backend = built_in_database')
+        ->toContain('gateway.nats')
+        ->toContain('mountpoint = ""')
+        ->toContain('bind = 4222')
+        ->toContain('prometheus');
+
+    expect($localEmqxConfig)
+        ->not->toBeFalse()
+        ->toContain('bootstrap_file = "/opt/emqx/etc/local-auth-built-in-db-bootstrap.csv"')
+        ->toContain('bootstrap_type = plain');
+
+    expect($localEmqxBootstrap)
+        ->not->toBeFalse()
+        ->toContain('node-red-migration,node-red-migration-local,false')
+        ->toContain('device-client,device-client-local,false');
+
+    expect($natsConfig)
+        ->not->toBeFalse()
+        ->toContain('server_name: "lmu_iot_portal_nats"')
+        ->not->toContain('mqtt {');
+
+    expect($localBroker)
+        ->toHaveKey('name', 'Local EMQX MQTT')
+        ->toHaveKey('broker', '${MQTT_BROKER_HOST}')
+        ->toHaveKey('port', '${MQTT_BROKER_PORT}')
+        ->toHaveKey('credentials', [
+            'user' => '${MQTT_BROKER_USERNAME}',
+            'password' => '${MQTT_BROKER_PASSWORD}',
+        ]);
+
+    expect($nodeRedSettings)
+        ->not->toBeFalse()
+        ->toContain('credentialSecret: false');
+
+    expect(data_get($normalizeNode, 'wires.0'))->toBe(['nr_mqtt_out_01']);
 });
 
 it('builds an immutable frankenphp image with composer and vite assets', function (): void {
@@ -99,7 +186,7 @@ it('ships deployment automation for release commands and horizon reloads', funct
         ->toContain('php artisan optimize')
         ->toContain('php artisan horizon:terminate')
         ->toContain('php artisan pulse:restart')
-        ->toContain('up -d --wait --wait-timeout 300 pgsql redis nats')
+        ->toContain('up -d --wait --wait-timeout 300 pgsql redis nats emqx')
         ->toContain('up -d --remove-orphans');
 
     expect($workflow)
@@ -181,7 +268,9 @@ it('ships production monitoring services for laravel and container telemetry', f
         ->toContain('PULSE_INGEST_DRIVER=redis')
         ->toContain('PULSE_REDIS_CONNECTION=default')
         ->toContain('GRAFANA_BIND=127.0.0.1')
-        ->toContain('GRAFANA_ADMIN_PASSWORD=');
+        ->toContain('GRAFANA_ADMIN_PASSWORD=')
+        ->toContain('EMQX_DASHBOARD_BIND=127.0.0.1')
+        ->toContain('EMQX_DASHBOARD_PASSWORD=replace-with-strong-emqx-dashboard-password');
 
     expect($alloyConfig)
         ->not->toBeFalse()
@@ -193,7 +282,14 @@ it('ships production monitoring services for laravel and container telemetry', f
         ->not->toBeFalse()
         ->toContain('node-exporter:9100')
         ->toContain('cadvisor:8080')
-        ->toContain('alloy:12345');
+        ->toContain('alloy:12345')
+        ->toContain('job_name: emqx_stats')
+        ->toContain('/api/v5/prometheus/stats')
+        ->toContain('job_name: emqx_auth')
+        ->toContain('/api/v5/prometheus/auth')
+        ->toContain('job_name: emqx_data_integration')
+        ->toContain('/api/v5/prometheus/data_integration')
+        ->toContain('emqx:18083');
 
     expect($grafanaDatasources)
         ->not->toBeFalse()
@@ -242,7 +338,7 @@ it('ships production monitoring services for laravel and container telemetry', f
         ->toContain('{compose_project=\\"$compose_project\\", service=~\\"$service\\", container=~\\"$container\\"}')
         ->toContain('count_over_time')
         ->toContain('(?i)(error|exception|critical|fatal|panic)')
-        ->toContain('web|horizon|scheduler|reverb|iot-ingest-telemetry|iot-listen-presence|iot-listen-states');
+        ->toContain('web|horizon|scheduler|reverb|iot-ingest-telemetry|iot-listen-presence|iot-listen-states|emqx');
 
     expect($lokiConfig)
         ->not->toBeFalse()
@@ -312,16 +408,29 @@ it('documents production environment variables for proxy and reverb separation',
         ->toContain('REVERB_PUBLIC_HOST=iot.example.com')
         ->toContain('VITE_REVERB_HOST=iot.example.com')
         ->toContain('NATS_CLIENT_BIND=127.0.0.1')
-        ->toContain('NATS_MQTT_BIND=127.0.0.1')
+        ->not->toContain('NATS_MQTT_BIND=')
         ->toContain('IOT_NATS_PORT=4222')
-        ->toContain('INGESTION_NATS_PORT=4222');
+        ->toContain('IOT_MQTT_HOST=emqx')
+        ->toContain('INGESTION_NATS_PORT=4222')
+        ->toContain("INGESTION_NATS_SUBJECT='devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry'")
+        ->toContain("IOT_DEVICE_STATE_NATS_SUBJECT='devices.*.state,devices.*.*.state,devices.*.*.*.state'")
+        ->toContain('EMQX_MQTT_BIND=127.0.0.1')
+        ->toContain('EMQX_DASHBOARD_BIND=127.0.0.1')
+        ->toContain('EMQX_DASHBOARD_PASSWORD=replace-with-strong-emqx-dashboard-password')
+        ->toContain('NODE_RED_MQTT_USERNAME=node-red-migration')
+        ->toContain('NODE_RED_MQTT_PASSWORD=replace-with-node-red-mqtt-password')
+        ->toContain('IOT_DEVICE_MQTT_USERNAME=device-client')
+        ->toContain('IOT_DEVICE_MQTT_PASSWORD=replace-with-device-mqtt-password')
+        ->toContain('NODE_RED_MQTT_BROKER_HOST=emqx');
 
     expect($exampleEnvironment)
         ->not->toBeFalse()
         ->toContain('TRUSTED_PROXIES=')
         ->toContain('TRUSTED_HOSTS=')
         ->toContain('REVERB_BROADCAST_HOST=')
-        ->toContain('REVERB_PUBLIC_HOST=');
+        ->toContain('REVERB_PUBLIC_HOST=')
+        ->toContain('IOT_MQTT_HOST=emqx')
+        ->toContain('NODE_RED_MQTT_BROKER_HOST=emqx');
 });
 
 it('configures laravel for reverse proxies and internal reverb broadcasting', function (): void {

@@ -27,3 +27,21 @@ scrape_configs:
     static_configs:
       - targets:
           - loki:3100
+
+  - job_name: emqx_stats
+    metrics_path: /api/v5/prometheus/stats
+    static_configs:
+      - targets:
+          - emqx:18083
+
+  - job_name: emqx_auth
+    metrics_path: /api/v5/prometheus/auth
+    static_configs:
+      - targets:
+          - emqx:18083
+
+  - job_name: emqx_data_integration
+    metrics_path: /api/v5/prometheus/data_integration
+    static_configs:
+      - targets:
+          - emqx:18083
