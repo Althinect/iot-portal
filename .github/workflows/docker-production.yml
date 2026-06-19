@@ -1,0 +1,101 @@
+name: Production Docker Image
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Composer metadata
+        run: docker run --rm -v "$PWD:/app" -w /app composer:2 composer validate --strict --no-interaction
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=raw,value=${{ github.sha }}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: production
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VITE_APP_NAME=${{ vars.VITE_APP_NAME || 'LMU IoT Portal' }}
+            VITE_REVERB_APP_KEY=${{ vars.VITE_REVERB_APP_KEY || 'lmu-iot-portal-key' }}
+            VITE_REVERB_HOST=${{ vars.VITE_REVERB_HOST }}
+            VITE_REVERB_PORT=${{ vars.VITE_REVERB_PORT || '443' }}
+            VITE_REVERB_SCHEME=${{ vars.VITE_REVERB_SCHEME || 'https' }}
+
+  deploy:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      IMAGE_REF: ${{ needs.build.outputs.image-ref }}
+      PRODUCTION_DEPLOY_PATH: ${{ vars.PRODUCTION_DEPLOY_PATH || '/opt/iot-portal' }}
+      PRODUCTION_SSH_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+      PRODUCTION_SSH_PORT: ${{ vars.PRODUCTION_SSH_PORT || '22' }}
+      PRODUCTION_SSH_USER: ${{ vars.PRODUCTION_SSH_USER }}
+
+    steps:
+      - name: Configure SSH
+        env:
+          PRODUCTION_SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PRODUCTION_SSH_HOST"
+          test -n "$PRODUCTION_SSH_USER"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$PRODUCTION_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "$PRODUCTION_SSH_PORT" -H "$PRODUCTION_SSH_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload production environment
+        env:
+          PRODUCTION_ENV_FILE_CONTENTS: ${{ secrets.PRODUCTION_ENV_FILE }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$PRODUCTION_ENV_FILE_CONTENTS" > .env.production
+          scp -P "$PRODUCTION_SSH_PORT" .env.production "$PRODUCTION_SSH_USER@$PRODUCTION_SSH_HOST:$PRODUCTION_DEPLOY_PATH/.env.production"
+
+      - name: Deploy image on VPS
+        run: |
+          set -euo pipefail
+          ssh -p "$PRODUCTION_SSH_PORT" "$PRODUCTION_SSH_USER@$PRODUCTION_SSH_HOST" \
+            "cd '$PRODUCTION_DEPLOY_PATH' && git fetch --prune && git checkout main && git pull --ff-only && APP_IMAGE='$IMAGE_REF' ./scripts/deploy-production.sh"

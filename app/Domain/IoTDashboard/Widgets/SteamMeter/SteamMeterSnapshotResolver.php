@@ -9,11 +9,16 @@ use App\Domain\IoTDashboard\Contracts\WidgetConfig;
 use App\Domain\IoTDashboard\Contracts\WidgetSnapshotResolver;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
+use App\Domain\Telemetry\Services\TelemetryQueryService;
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
 class SteamMeterSnapshotResolver implements WidgetSnapshotResolver
 {
+    public function __construct(
+        private readonly TelemetryQueryService $telemetryQuery,
+    ) {}
+
     /**
      * @return array<string, mixed>
      */
@@ -78,13 +83,11 @@ class SteamMeterSnapshotResolver implements WidgetSnapshotResolver
      */
     private function latestLog(array $source, int $lookbackMinutes): ?DeviceTelemetryLog
     {
-        return DeviceTelemetryLog::query()
-            ->where('device_id', $source['device_id'])
-            ->where('schema_version_topic_id', $source['schema_version_topic_id'])
-            ->where('recorded_at', '>=', CarbonImmutable::now('UTC')->subMinutes($lookbackMinutes))
-            ->orderByDesc('recorded_at')
-            ->orderByDesc('id')
-            ->first(['id', 'recorded_at', 'transformed_values']);
+        return $this->telemetryQuery->latestLog(
+            deviceId: $source['device_id'],
+            schemaVersionTopicId: $source['schema_version_topic_id'],
+            lookbackMinutes: $lookbackMinutes,
+        );
     }
 
     private function valueFromLog(?DeviceTelemetryLog $log, string $parameterKey): int|float|null
@@ -99,52 +102,13 @@ class SteamMeterSnapshotResolver implements WidgetSnapshotResolver
      */
     private function counterDelta(array $source, CarbonImmutable $startAt, CarbonImmutable $endAt): ?float
     {
-        if ($endAt->lessThanOrEqualTo($startAt)) {
-            return null;
-        }
-
-        $endLog = DeviceTelemetryLog::query()
-            ->where('device_id', $source['device_id'])
-            ->where('schema_version_topic_id', $source['schema_version_topic_id'])
-            ->where('recorded_at', '<=', $endAt)
-            ->orderByDesc('recorded_at')
-            ->orderByDesc('id')
-            ->first(['id', 'recorded_at', 'transformed_values']);
-
-        $endValue = $this->valueFromLog($endLog, $source['parameter_key']);
-
-        if ($endValue === null) {
-            return null;
-        }
-
-        $baselineLog = DeviceTelemetryLog::query()
-            ->where('device_id', $source['device_id'])
-            ->where('schema_version_topic_id', $source['schema_version_topic_id'])
-            ->where('recorded_at', '<=', $startAt)
-            ->orderByDesc('recorded_at')
-            ->orderByDesc('id')
-            ->first(['id', 'recorded_at', 'transformed_values']);
-
-        $baselineValue = $this->valueFromLog($baselineLog, $source['parameter_key']);
-
-        if ($baselineValue === null) {
-            $baselineLog = DeviceTelemetryLog::query()
-                ->where('device_id', $source['device_id'])
-                ->where('schema_version_topic_id', $source['schema_version_topic_id'])
-                ->where('recorded_at', '>=', $startAt)
-                ->where('recorded_at', '<=', $endAt)
-                ->orderBy('recorded_at')
-                ->orderBy('id')
-                ->first(['id', 'recorded_at', 'transformed_values']);
-
-            $baselineValue = $this->valueFromLog($baselineLog, $source['parameter_key']);
-        }
-
-        if ($baselineValue === null) {
-            return null;
-        }
-
-        return round(max(0, $endValue - $baselineValue), 1);
+        return $this->telemetryQuery->counterDelta(
+            deviceId: $source['device_id'],
+            schemaVersionTopicId: $source['schema_version_topic_id'],
+            parameterKey: $source['parameter_key'],
+            startAt: $startAt,
+            endAt: $endAt,
+        );
     }
 
     /**

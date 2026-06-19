@@ -55,7 +55,10 @@ return [
         'port' => (int) env('INGESTION_NATS_PORT', (int) env('IOT_NATS_PORT', 4223)),
         'timeout' => (float) env('INGESTION_NATS_TIMEOUT', (float) env('IOT_NATS_TIMEOUT', 5.0)),
         'health_check_seconds' => (int) env('INGESTION_NATS_HEALTH_CHECK_SECONDS', (int) env('IOT_NATS_HEALTH_CHECK_SECONDS', 15)),
-        'subject' => (string) env('INGESTION_NATS_SUBJECT', '>'),
+        'subject' => (string) env(
+            'INGESTION_NATS_SUBJECT',
+            'devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry',
+        ),
         'analytics_subject_prefix' => (string) env('INGESTION_NATS_ANALYTICS_PREFIX', 'iot.v1.analytics'),
         'invalid_subject_prefix' => (string) env('INGESTION_NATS_INVALID_PREFIX', 'iot.v1.invalid'),
     ],

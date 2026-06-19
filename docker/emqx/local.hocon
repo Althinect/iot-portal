@@ -1,0 +1,39 @@
+node {
+  name = "emqx@emqx.local"
+  data_dir = "/opt/emqx/data"
+}
+
+dashboard.listeners.http {
+  bind = 18083
+}
+
+authentication = [
+  {
+    enable = true
+    mechanism = password_based
+    backend = built_in_database
+    user_id_type = username
+    bootstrap_file = "/opt/emqx/etc/local-auth-built-in-db-bootstrap.csv"
+    bootstrap_type = plain
+    password_hash_algorithm {
+      name = sha256
+      salt_position = suffix
+    }
+  }
+]
+
+gateway.nats {
+  mountpoint = ""
+
+  listeners.tcp.default {
+    bind = 4222
+    acceptors = 16
+    max_connections = 102400
+    max_conn_rate = 1000
+  }
+}
+
+prometheus {
+  interval = 15s
+  job_name = "iot-portal-emqx"
+}

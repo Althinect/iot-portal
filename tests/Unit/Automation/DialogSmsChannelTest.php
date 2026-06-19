@@ -5,11 +5,12 @@ declare(strict_types=1);
 use App\Domain\Shared\Models\User;
 use App\Notifications\Automation\AutomationWorkflowAlertNotification;
 use App\Notifications\Channels\DialogSmsChannel;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
-uses(TestCase::class);
+uses(TestCase::class, RefreshDatabase::class);
 
 beforeEach(function (): void {
     config([

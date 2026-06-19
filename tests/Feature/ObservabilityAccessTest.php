@@ -3,7 +3,10 @@
 declare(strict_types=1);
 
 use App\Domain\Shared\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
+
+uses(RefreshDatabase::class);
 
 beforeEach(function (): void {
     config([

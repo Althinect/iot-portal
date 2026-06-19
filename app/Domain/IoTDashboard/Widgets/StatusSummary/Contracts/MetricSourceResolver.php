@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Domain\IoTDashboard\Widgets\StatusSummary\Contracts;
 
+use App\Domain\IoTDashboard\Application\LatestTelemetryState;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
 use App\Domain\IoTDashboard\Widgets\StatusSummary\StatusSummaryMetricSourceType;
-use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use Carbon\CarbonImmutable;
 
 interface MetricSourceResolver
@@ -20,6 +20,6 @@ interface MetricSourceResolver
     public function resolve(
         IoTDashboardWidget $widget,
         array $tile,
-        ?DeviceTelemetryLog $latestLog,
+        ?LatestTelemetryState $latestState,
     ): array;
 }

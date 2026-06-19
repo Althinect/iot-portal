@@ -37,6 +37,7 @@ return [
     'device_control' => [
         'inject_meta_command_id' => (bool) env('IOT_INJECT_META_COMMAND_ID', true),
         'command_timeout_seconds' => (int) env('IOT_COMMAND_TIMEOUT_SECONDS', 120),
+        'state_subject' => (string) env('IOT_DEVICE_STATE_NATS_SUBJECT', 'devices.*.state,devices.*.*.state,devices.*.*.*.state'),
     ],
 
     'presence' => [

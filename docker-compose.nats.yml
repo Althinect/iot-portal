@@ -8,10 +8,35 @@ services:
       # Using non-default host ports to avoid clashing with any other local NATS instance.
       - "4223:4222"   # NATS client port (optional unless you use nats CLI)
       - "8223:8222"   # Monitoring / varz
-      - "1883:1883"   # MQTT
     volumes:
       - ./docker/nats/nats.conf:/etc/nats/nats.conf:ro
       - nats-data:/data
 
+  emqx:
+    image: ${EMQX_IMAGE:-emqx/emqx-enterprise:6.2.1}
+    container_name: lmu-iot-portal-emqx
+    hostname: emqx.local
+    restart: unless-stopped
+    environment:
+      EMQX_NODE__NAME: emqx@emqx.local
+      EMQX_DASHBOARD__DEFAULT_USERNAME: ${EMQX_DASHBOARD_USER:-admin}
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:-public}
+    ports:
+      - "${EMQX_MQTT_BIND:-127.0.0.1}:${FORWARD_EMQX_MQTT_PORT:-1883}:1883"
+      - "${EMQX_DASHBOARD_BIND:-127.0.0.1}:${FORWARD_EMQX_DASHBOARD_PORT:-18083}:18083"
+    volumes:
+      - ./docker/emqx/local.hocon:/opt/emqx/etc/base.hocon:ro
+      - ./docker/emqx/local-auth-built-in-db-bootstrap.csv:/opt/emqx/etc/local-auth-built-in-db-bootstrap.csv:ro
+      - emqx-data:/opt/emqx/data
+      - emqx-log:/opt/emqx/log
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
 volumes:
   nats-data:
+  emqx-data:
+  emqx-log:

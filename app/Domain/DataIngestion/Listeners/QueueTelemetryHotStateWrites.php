@@ -52,7 +52,7 @@ class QueueTelemetryHotStateWrites implements ShouldQueue
 
         /** @var array<string, mixed> $finalValues */
         try {
-            $this->hotStateStore->store($device, $topic, $finalValues, $ingestionMessage);
+            $this->hotStateStore->store($device, $topic, $finalValues, $ingestionMessage, $telemetryLog);
         } catch (Throwable $exception) {
             if (! $this->shouldSkipTransientHotStateFailure($exception)) {
                 throw $exception;

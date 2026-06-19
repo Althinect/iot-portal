@@ -1,0 +1,27 @@
+services:
+    proxy:
+        profiles:
+            - caddy-edge
+
+    proxy-forge:
+        image: caddy:2-alpine
+        env_file:
+            - '${PRODUCTION_ENV_FILE:-.env.production}'
+        ports:
+            - '${FORGE_PROXY_BIND:-127.0.0.1}:${FORGE_PROXY_PORT:-18080}:80'
+        volumes:
+            - './docker/production/Caddyfile.forge:/etc/caddy/Caddyfile:ro'
+            - caddy-forge-data:/data
+            - caddy-forge-config:/config
+        networks:
+            - production
+        depends_on:
+            - web
+            - reverb
+        restart: unless-stopped
+
+volumes:
+    caddy-forge-data:
+        driver: local
+    caddy-forge-config:
+        driver: local

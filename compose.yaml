@@ -22,8 +22,8 @@ x-laravel-service: &laravel-service
         OCTANE_ADMIN_HOST: 127.0.0.1
         OCTANE_ADMIN_PORT: 2019
         OCTANE_MAX_REQUESTS: 500
-        OCTANE_WATCH: 'true'
-        OCTANE_POLL: 'true'
+        OCTANE_WATCH: '${OCTANE_WATCH:-false}'
+        OCTANE_POLL: '${OCTANE_POLL:-false}'
         XDG_CONFIG_HOME: /var/www/html/storage/octane/xdg/config
         XDG_DATA_HOME: /var/www/html/storage/octane/xdg/data
         DB_HOST: pgsql
@@ -32,7 +32,7 @@ x-laravel-service: &laravel-service
         REDIS_PORT: 6379
         IOT_NATS_HOST: nats
         IOT_NATS_PORT: 4222
-        IOT_MQTT_HOST: nats
+        IOT_MQTT_HOST: emqx
         IOT_MQTT_PORT: 1883
         INGESTION_NATS_HOST: nats
         INGESTION_NATS_PORT: 4222
@@ -54,6 +54,8 @@ x-laravel-service: &laravel-service
             condition: service_healthy
         nats:
             condition: service_started
+        emqx:
+            condition: service_healthy
         mailpit:
             condition: service_started
 
@@ -74,17 +76,17 @@ services:
 
     iot-listen-states:
         <<: *laravel-service
-        command: php artisan iot:listen-for-device-states --host=nats --port=4222
+        command: php artisan iot:listen-for-device-states --host=emqx --port=4222 --subject='${IOT_DEVICE_STATE_NATS_SUBJECT:-devices.*.state,devices.*.*.state,devices.*.*.*.state}'
         restart: unless-stopped
 
     iot-listen-presence:
         <<: *laravel-service
-        command: php artisan iot:listen-for-device-presence --host=nats --port=4222
+        command: php artisan iot:listen-for-device-presence --host=emqx --port=4222
         restart: unless-stopped
 
     iot-ingest-telemetry:
         <<: *laravel-service
-        command: php artisan iot:ingest-telemetry --host=nats --port=4222 --subject='>'
+        command: php artisan iot:ingest-telemetry --host=emqx --port=4222 --subject='${INGESTION_NATS_SUBJECT:-devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry}'
         restart: unless-stopped
 
     horizon:
@@ -151,19 +153,47 @@ services:
         networks:
             - sail
     nats:
-        image: 'nats:2.11-alpine'
+        image: 'nats:2.12.5-alpine'
         command:
             - '-c'
             - '/etc/nats/nats.conf'
         ports:
             - '${FORWARD_NATS_PORT:-4223}:4222'
             - '${FORWARD_NATS_MONITORING_PORT:-8223}:8222'
-            - '${FORWARD_NATS_MQTT_PORT:-1883}:1883'
         volumes:
             - './docker/nats/nats.conf:/etc/nats/nats.conf:ro'
             - 'sail-nats:/data'
         networks:
             - sail
+
+    emqx:
+        image: '${EMQX_IMAGE:-emqx/emqx-enterprise:6.2.1}'
+        hostname: emqx.local
+        environment:
+            EMQX_NODE__NAME: 'emqx@emqx.local'
+            EMQX_DASHBOARD__DEFAULT_USERNAME: '${EMQX_DASHBOARD_USER:-admin}'
+            EMQX_DASHBOARD__DEFAULT_PASSWORD: '${EMQX_DASHBOARD_PASSWORD:-public}'
+        ports:
+            - '${EMQX_MQTT_BIND:-127.0.0.1}:${FORWARD_EMQX_MQTT_PORT:-1883}:1883'
+            - '${EMQX_DASHBOARD_BIND:-127.0.0.1}:${FORWARD_EMQX_DASHBOARD_PORT:-18083}:18083'
+        volumes:
+            - './docker/emqx/local.hocon:/opt/emqx/etc/base.hocon:ro'
+            - './docker/emqx/local-auth-built-in-db-bootstrap.csv:/opt/emqx/etc/local-auth-built-in-db-bootstrap.csv:ro'
+            - 'sail-emqx-data:/opt/emqx/data'
+            - 'sail-emqx-log:/opt/emqx/log'
+        networks:
+            - sail
+        healthcheck:
+            test:
+                - CMD
+                - /opt/emqx/bin/emqx
+                - ctl
+                - status
+            interval: 10s
+            timeout: 10s
+            retries: 12
+            start_period: 30s
+        restart: unless-stopped
 
     node-red:
         image: 'nodered/node-red:4.1.1'
@@ -171,15 +201,17 @@ services:
             - '${FORWARD_NODE_RED_PORT:-1880}:1880'
         environment:
             TZ: '${APP_TIMEZONE:-UTC}'
-            MQTT_BROKER_HOST: '${NODE_RED_MQTT_BROKER_HOST:-nats}'
+            MQTT_BROKER_HOST: '${NODE_RED_MQTT_BROKER_HOST:-emqx}'
             MQTT_BROKER_PORT: '${NODE_RED_MQTT_BROKER_PORT:-1883}'
+            MQTT_BROKER_USERNAME: '${NODE_RED_MQTT_USERNAME:-}'
+            MQTT_BROKER_PASSWORD: '${NODE_RED_MQTT_PASSWORD:-}'
         volumes:
             - './docker/node-red/data:/data'
         networks:
             - sail
         depends_on:
-            nats:
-                condition: service_started
+            emqx:
+                condition: service_healthy
         restart: unless-stopped
 
     cloudflared:
@@ -201,4 +233,8 @@ volumes:
     sail-redis:
         driver: local
     sail-nats:
+        driver: local
+    sail-emqx-data:
+        driver: local
+    sail-emqx-log:
         driver: local

@@ -1,0 +1,387 @@
+x-app-environment: &app-environment
+    APP_ENV: production
+    APP_DEBUG: 'false'
+    APP_URL: '${APP_URL:?Set APP_URL in .env.production}'
+    TRUSTED_PROXIES: '${TRUSTED_PROXIES:-*}'
+    TRUSTED_HOSTS: '${TRUSTED_HOSTS:-}'
+    OCTANE_SERVER: frankenphp
+    OCTANE_HOST: 0.0.0.0
+    OCTANE_PORT: 8000
+    OCTANE_ADMIN_HOST: 127.0.0.1
+    OCTANE_ADMIN_PORT: 2019
+    OCTANE_MAX_REQUESTS: '${OCTANE_MAX_REQUESTS:-500}'
+    OCTANE_HTTPS: '${OCTANE_HTTPS:-true}'
+    DB_CONNECTION: pgsql
+    DB_HOST: pgsql
+    DB_PORT: 5432
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+    NIGHTWATCH_INGEST_URI: '${NIGHTWATCH_INGEST_URI:-nightwatch:2407}'
+    PULSE_INGEST_DRIVER: '${PULSE_INGEST_DRIVER:-redis}'
+    PULSE_REDIS_CONNECTION: '${PULSE_REDIS_CONNECTION:-default}'
+    PULSE_SERVER_NAME: '${PULSE_SERVER_NAME:-iot-portal-production}'
+    IOT_NATS_HOST: nats
+    IOT_NATS_PORT: 4222
+    IOT_MQTT_HOST: emqx
+    IOT_MQTT_PORT: 1883
+    INGESTION_NATS_HOST: nats
+    INGESTION_NATS_PORT: 4222
+    REVERB_BROADCAST_HOST: reverb
+    REVERB_BROADCAST_PORT: 8090
+    REVERB_BROADCAST_SCHEME: http
+    REVERB_BROADCAST_VERIFY_SSL: 'false'
+    REVERB_SERVER_HOST: 0.0.0.0
+    REVERB_SERVER_PORT: 8090
+    XDG_CONFIG_HOME: /app/storage/octane/xdg/config
+    XDG_DATA_HOME: /app/storage/octane/xdg/data
+
+x-app-service: &app-service
+    image: '${APP_IMAGE:?Set APP_IMAGE in .env.production}'
+    env_file:
+        - '${PRODUCTION_ENV_FILE:-.env.production}'
+    environment:
+        <<: *app-environment
+    restart: unless-stopped
+    networks:
+        - production
+    volumes:
+        - app-storage:/app/storage
+        - app-bootstrap-cache:/app/bootstrap/cache
+    depends_on:
+        pgsql:
+            condition: service_healthy
+        redis:
+            condition: service_healthy
+        nats:
+            condition: service_healthy
+        emqx:
+            condition: service_healthy
+
+x-app-command-service: &app-command-service
+    <<: *app-service
+    healthcheck:
+        disable: true
+
+services:
+    proxy:
+        image: caddy:2-alpine
+        env_file:
+            - '${PRODUCTION_ENV_FILE:-.env.production}'
+        ports:
+            - '${HTTP_PORT:-80}:80'
+            - '${HTTPS_PORT:-443}:443'
+            - '${HTTPS_PORT:-443}:443/udp'
+        volumes:
+            - './docker/production/Caddyfile:/etc/caddy/Caddyfile:ro'
+            - caddy-data:/data
+            - caddy-config:/config
+        networks:
+            - production
+        depends_on:
+            - web
+            - reverb
+        restart: unless-stopped
+
+    web:
+        <<: *app-service
+        command: ./scripts/start-production-octane.sh
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - php artisan about --only=environment >/dev/null 2>&1
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+
+    reverb:
+        <<: *app-command-service
+        command: php artisan reverb:start --host=0.0.0.0 --port=8090
+        stop_grace_period: 30s
+
+    iot-listen-states:
+        <<: *app-command-service
+        command:
+            - php
+            - artisan
+            - iot:listen-for-device-states
+            - --host=emqx
+            - --port=4222
+            - '--subject=${IOT_DEVICE_STATE_NATS_SUBJECT:-devices.*.state,devices.*.*.state,devices.*.*.*.state}'
+
+    iot-listen-presence:
+        <<: *app-command-service
+        command: php artisan iot:listen-for-device-presence --host=emqx --port=4222
+
+    iot-ingest-telemetry:
+        <<: *app-command-service
+        command:
+            - php
+            - artisan
+            - iot:ingest-telemetry
+            - --host=emqx
+            - --port=4222
+            - '--subject=${INGESTION_NATS_SUBJECT:-devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry}'
+
+    horizon:
+        <<: *app-command-service
+        command: php artisan horizon
+        stop_grace_period: 1h
+
+    scheduler:
+        <<: *app-command-service
+        command: php artisan schedule:work
+
+    nightwatch:
+        <<: *app-command-service
+        command: sh -lc 'if [ "$${NIGHTWATCH_ENABLED:-false}" = "true" ] && [ -n "$${NIGHTWATCH_TOKEN:-}" ]; then exec php artisan nightwatch:agent --listen-on=0.0.0.0:2407; fi; echo "Nightwatch disabled; set NIGHTWATCH_ENABLED=true and NIGHTWATCH_TOKEN to start the agent."; exec tail -f /dev/null'
+        stop_grace_period: 30s
+
+    pulse-check:
+        <<: *app-command-service
+        command: php artisan pulse:check
+        stop_grace_period: 30s
+
+    pulse-worker:
+        <<: *app-command-service
+        command: php artisan pulse:work
+        stop_grace_period: 30s
+
+    pgsql:
+        image: timescale/timescaledb:2.18.2-pg16
+        env_file:
+            - '${PRODUCTION_ENV_FILE:-.env.production}'
+        environment:
+            PGPASSWORD: '${DB_PASSWORD:?Set DB_PASSWORD in .env.production}'
+            POSTGRES_DB: '${DB_DATABASE:?Set DB_DATABASE in .env.production}'
+            POSTGRES_USER: '${DB_USERNAME:?Set DB_USERNAME in .env.production}'
+            POSTGRES_PASSWORD: '${DB_PASSWORD:?Set DB_PASSWORD in .env.production}'
+        volumes:
+            - pgsql-data:/var/lib/postgresql/data
+        networks:
+            - production
+        healthcheck:
+            test:
+                - CMD
+                - pg_isready
+                - '-q'
+                - '-d'
+                - '${DB_DATABASE:?Set DB_DATABASE in .env.production}'
+                - '-U'
+                - '${DB_USERNAME:?Set DB_USERNAME in .env.production}'
+            interval: 10s
+            timeout: 5s
+            retries: 5
+        restart: unless-stopped
+
+    redis:
+        image: redis:7-alpine
+        command:
+            - redis-server
+            - '--appendonly'
+            - 'yes'
+            - '--save'
+            - '60'
+            - '1'
+        volumes:
+            - redis-data:/data
+        networks:
+            - production
+        healthcheck:
+            test:
+                - CMD
+                - redis-cli
+                - ping
+            interval: 10s
+            timeout: 5s
+            retries: 5
+        restart: unless-stopped
+
+    nats:
+        image: nats:2.12.5-alpine
+        command:
+            - '-c'
+            - '/etc/nats/nats.conf'
+        ports:
+            - '${NATS_CLIENT_BIND:-127.0.0.1}:${FORWARD_NATS_PORT:-4222}:4222'
+            - '${NATS_MONITORING_BIND:-127.0.0.1}:${FORWARD_NATS_MONITORING_PORT:-8222}:8222'
+        volumes:
+            - './docker/nats/nats.conf:/etc/nats/nats.conf:ro'
+            - nats-data:/data
+        networks:
+            - production
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - wget -qO- http://127.0.0.1:8222/healthz >/dev/null
+            interval: 10s
+            timeout: 5s
+            retries: 5
+        restart: unless-stopped
+
+    emqx:
+        image: '${EMQX_IMAGE:-emqx/emqx-enterprise:6.2.1}'
+        hostname: emqx.local
+        env_file:
+            - '${PRODUCTION_ENV_FILE:-.env.production}'
+        environment:
+            EMQX_NODE__NAME: 'emqx@emqx.local'
+            EMQX_DASHBOARD__DEFAULT_USERNAME: '${EMQX_DASHBOARD_USER:-admin}'
+            EMQX_DASHBOARD__DEFAULT_PASSWORD: '${EMQX_DASHBOARD_PASSWORD:?Set EMQX_DASHBOARD_PASSWORD in .env.production}'
+        ports:
+            - '${EMQX_MQTT_BIND:-127.0.0.1}:${FORWARD_EMQX_MQTT_PORT:-1883}:1883'
+            - '${EMQX_DASHBOARD_BIND:-127.0.0.1}:${FORWARD_EMQX_DASHBOARD_PORT:-18083}:18083'
+        volumes:
+            - './docker/emqx/base.hocon:/opt/emqx/etc/base.hocon:ro'
+            - emqx-data:/opt/emqx/data
+            - emqx-log:/opt/emqx/log
+        networks:
+            - production
+        healthcheck:
+            test:
+                - CMD
+                - /opt/emqx/bin/emqx
+                - ctl
+                - status
+            interval: 10s
+            timeout: 10s
+            retries: 12
+            start_period: 30s
+        restart: unless-stopped
+
+    node-red:
+        image: nodered/node-red:4.1.1
+        env_file:
+            - '${PRODUCTION_ENV_FILE:-.env.production}'
+        environment:
+            TZ: '${APP_TIMEZONE:-UTC}'
+            MQTT_BROKER_HOST: '${NODE_RED_MQTT_BROKER_HOST:-emqx}'
+            MQTT_BROKER_PORT: '${NODE_RED_MQTT_BROKER_PORT:-1883}'
+            MQTT_BROKER_USERNAME: '${NODE_RED_MQTT_USERNAME:-}'
+            MQTT_BROKER_PASSWORD: '${NODE_RED_MQTT_PASSWORD:?Set NODE_RED_MQTT_PASSWORD in .env.production}'
+        ports:
+            - '${NODE_RED_BIND:-127.0.0.1}:${FORWARD_NODE_RED_PORT:-1880}:1880'
+        volumes:
+            - node-red-data:/data
+        networks:
+            - production
+        depends_on:
+            emqx:
+                condition: service_healthy
+        restart: unless-stopped
+
+    grafana:
+        image: '${GRAFANA_IMAGE:-grafana/grafana-oss:13.0.2}'
+        env_file:
+            - '${PRODUCTION_ENV_FILE:-.env.production}'
+        environment:
+            GF_SECURITY_ADMIN_USER: '${GRAFANA_ADMIN_USER:-admin}'
+            GF_SECURITY_ADMIN_PASSWORD: '${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env.production}'
+            GF_SERVER_ROOT_URL: '${GRAFANA_ROOT_URL:-http://localhost:3000}'
+            GF_USERS_ALLOW_SIGN_UP: 'false'
+        ports:
+            - '${GRAFANA_BIND:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000'
+        volumes:
+            - grafana-data:/var/lib/grafana
+            - './docker/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro'
+        networks:
+            - production
+        depends_on:
+            - loki
+            - prometheus
+        restart: unless-stopped
+
+    loki:
+        image: '${LOKI_IMAGE:-grafana/loki:3.7.2}'
+        command:
+            - '-config.file=/etc/loki/config.yaml'
+        volumes:
+            - './docker/monitoring/loki/config.yaml:/etc/loki/config.yaml:ro'
+            - loki-data:/loki
+        networks:
+            - production
+        restart: unless-stopped
+
+    prometheus:
+        image: '${PROMETHEUS_IMAGE:-prom/prometheus:v3.5.4}'
+        command:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}'
+            - '--web.enable-lifecycle'
+        volumes:
+            - './docker/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro'
+            - prometheus-data:/prometheus
+        networks:
+            - production
+        restart: unless-stopped
+
+    alloy:
+        image: '${ALLOY_IMAGE:-grafana/alloy:v1.17.0}'
+        command:
+            - run
+            - '--server.http.listen-addr=0.0.0.0:12345'
+            - /etc/alloy/config.alloy
+        volumes:
+            - './docker/monitoring/alloy/config.alloy:/etc/alloy/config.alloy:ro'
+            - '/var/run/docker.sock:/var/run/docker.sock:ro'
+        networks:
+            - production
+        depends_on:
+            - loki
+        restart: unless-stopped
+
+    node-exporter:
+        image: '${NODE_EXPORTER_IMAGE:-prom/node-exporter:v1.11.1}'
+        command:
+            - '--path.rootfs=/host'
+        pid: host
+        volumes:
+            - '/:/host:ro,rslave'
+        networks:
+            - production
+        restart: unless-stopped
+
+    cadvisor:
+        image: '${CADVISOR_IMAGE:-gcr.io/cadvisor/cadvisor:v0.55.1}'
+        volumes:
+            - '/:/rootfs:ro'
+            - '/var/run:/var/run:ro'
+            - '/sys:/sys:ro'
+            - '/var/lib/docker/:/var/lib/docker:ro'
+            - '/dev/disk/:/dev/disk:ro'
+        networks:
+            - production
+        restart: unless-stopped
+
+networks:
+    production:
+        driver: bridge
+
+volumes:
+    app-storage:
+        driver: local
+    app-bootstrap-cache:
+        driver: local
+    caddy-data:
+        driver: local
+    caddy-config:
+        driver: local
+    pgsql-data:
+        driver: local
+    redis-data:
+        driver: local
+    nats-data:
+        driver: local
+    emqx-data:
+        driver: local
+    emqx-log:
+        driver: local
+    node-red-data:
+        driver: local
+    grafana-data:
+        driver: local
+    loki-data:
+        driver: local
+    prometheus-data:
+        driver: local

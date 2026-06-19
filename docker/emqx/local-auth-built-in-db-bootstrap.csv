@@ -1,0 +1,3 @@
+user_id,password,is_superuser
+node-red-migration,node-red-migration-local,false
+device-client,device-client-local,false
