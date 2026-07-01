@@ -68,6 +68,7 @@ COPY . .
 RUN composer dump-autoload --optimize --no-dev --no-scripts \
     && php artisan package:discover --ansi \
     && php artisan filament:assets \
+    && php artisan filament:clear-cached-components \
     && mkdir -p \
         bootstrap/cache \
         public \
