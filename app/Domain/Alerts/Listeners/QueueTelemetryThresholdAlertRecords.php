@@ -27,7 +27,12 @@ class QueueTelemetryThresholdAlertRecords implements ShouldQueue
 
     public function handle(TelemetryReceived $event): void
     {
-        $telemetryLog = $event->telemetryLog;
+        $telemetryLog = $event->telemetryLog(['device:id,organization_id']);
+
+        if ($telemetryLog === null) {
+            return;
+        }
+
         $payload = $this->normalizePayload($telemetryLog->getAttribute('transformed_values'));
 
         if ($payload === null) {
@@ -63,7 +68,12 @@ class QueueTelemetryThresholdAlertRecords implements ShouldQueue
      */
     private function candidatePolicies(TelemetryReceived $event): Collection
     {
-        $telemetryLog = $event->telemetryLog;
+        $telemetryLog = $event->telemetryLog(['device:id,organization_id']);
+
+        if ($telemetryLog === null) {
+            return collect();
+        }
+
         $device = $telemetryLog->device;
 
         if (! $device instanceof Device) {

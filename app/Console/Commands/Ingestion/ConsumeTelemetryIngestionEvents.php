@@ -97,10 +97,7 @@ class ConsumeTelemetryIngestionEvents extends Command
             return;
         }
 
-        $telemetryLog = DeviceTelemetryLog::query()
-            ->with(['device', 'channel', 'ingestionMessage'])
-            ->whereKey($telemetryLogId)
-            ->first();
+        $telemetryLog = DeviceTelemetryLog::query()->whereKey($telemetryLogId)->first();
 
         if (! $telemetryLog instanceof DeviceTelemetryLog) {
             $this->warn("Telemetry log [{$telemetryLogId}] not found for Go ingestion side effects.");
@@ -108,7 +105,7 @@ class ConsumeTelemetryIngestionEvents extends Command
             return;
         }
 
-        event(new TelemetryReceived($telemetryLog));
+        event(new TelemetryReceived((string) $telemetryLog->getKey()));
     }
 
     /**

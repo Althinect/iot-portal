@@ -58,6 +58,16 @@ class RuntimeSettingRegistry
                 'config_key' => 'ingestion.broadcast_realtime',
                 'supports_organization_overrides' => true,
             ],
+            'ingestion.pipeline.broadcast_throttle_seconds' => [
+                'key' => 'ingestion.pipeline.broadcast_throttle_seconds',
+                'label' => 'Dashboard Broadcast Throttle',
+                'description' => 'Minimum seconds between realtime telemetry broadcasts per device channel. Set to 0 to broadcast every telemetry log.',
+                'type' => 'integer',
+                'config_key' => 'ingestion.broadcast_throttle_seconds',
+                'min' => 0,
+                'max' => 300,
+                'supports_organization_overrides' => true,
+            ],
             'ingestion.pipeline.publish_analytics' => [
                 'key' => 'ingestion.pipeline.publish_analytics',
                 'label' => 'Analytics Publish Fan-Out',

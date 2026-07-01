@@ -4,80 +4,32 @@ declare(strict_types=1);
 
 namespace App\Events;
 
-use App\Domain\DataIngestion\Concerns\InteractsWithTelemetrySideEffectsQueue;
-use App\Domain\IoTDashboard\Application\RealtimeStreamChannel;
-use App\Domain\Shared\Services\RuntimeSettingManager;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
-use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Carbon;
 
-class TelemetryReceived implements ShouldBroadcast
+class TelemetryReceived
 {
-    use InteractsWithSockets;
-    use InteractsWithTelemetrySideEffectsQueue;
-    use SerializesModels;
+    public string $telemetryLogId;
 
-    public string $connection;
+    public function __construct(DeviceTelemetryLog|string $telemetryLog)
+    {
+        $this->telemetryLogId = $telemetryLog instanceof DeviceTelemetryLog
+            ? (string) $telemetryLog->getKey()
+            : $telemetryLog;
 
-    public string $queue;
-
-    public function __construct(
-        public DeviceTelemetryLog $telemetryLog,
-    ) {
-        $this->connection = $this->resolveTelemetrySideEffectsConnection();
-        $this->queue = $this->resolveTelemetrySideEffectsQueue();
     }
 
     /**
-     * @return array<int, PrivateChannel>
+     * @param  array<int, string>  $with
      */
-    public function broadcastOn(): array
+    public function telemetryLog(array $with = []): ?DeviceTelemetryLog
     {
-        if (! app(RuntimeSettingManager::class)->booleanValue('ingestion.pipeline.broadcast_realtime', $this->telemetryLog->device?->organization_id)) {
-            return [];
+        if (trim($this->telemetryLogId) === '') {
+            return null;
         }
 
-        $channelName = RealtimeStreamChannel::forTelemetryLog($this->telemetryLog);
-
-        if (! is_string($channelName)) {
-            return [];
-        }
-
-        return [
-            new PrivateChannel($channelName),
-        ];
-    }
-
-    public function broadcastAs(): string
-    {
-        return 'telemetry.received';
-    }
-
-    public function broadcastQueue(): string
-    {
-        return $this->queue;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function broadcastWith(): array
-    {
-        $device = $this->telemetryLog->device;
-        $recordedAt = $this->telemetryLog->getAttribute('recorded_at');
-        $recordedAtValue = $recordedAt instanceof Carbon ? $recordedAt->toIso8601String() : null;
-
-        return [
-            'id' => $this->telemetryLog->id,
-            'organization_id' => is_numeric($device?->organization_id) ? (int) $device->organization_id : null,
-            'device_uuid' => $device?->uuid,
-            'device_channel_id' => $this->telemetryLog->device_channel_id,
-            'channel_key' => $this->telemetryLog->channel?->key,
-            'transformed_values' => $this->telemetryLog->transformed_values,
-            'recorded_at' => $recordedAtValue,
-        ];
+        return DeviceTelemetryLog::query()
+            ->with($with)
+            ->whereKey($this->telemetryLogId)
+            ->first();
     }
 }

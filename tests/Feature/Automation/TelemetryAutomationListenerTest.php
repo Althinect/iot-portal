@@ -7,6 +7,7 @@ use App\Domain\Automation\Jobs\StartAutomationRunFromTelemetry;
 use App\Domain\Automation\Listeners\QueueTelemetryAutomationRuns;
 use App\Domain\Shared\Services\RuntimeSettingManager;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
+use App\Events\TelemetryRealtimeUpdated;
 use App\Events\TelemetryReceived;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -152,7 +153,7 @@ it('still broadcasts dashboard realtime channels when telemetry automation fan-o
 
     $telemetryLog = DeviceTelemetryLog::factory()->create();
 
-    $event = new TelemetryReceived($telemetryLog->fresh(['device']));
+    $event = new TelemetryRealtimeUpdated($telemetryLog->id);
 
     expect($event->broadcastOn())->not->toBe([]);
 });

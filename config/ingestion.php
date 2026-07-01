@@ -9,6 +9,8 @@ return [
 
     'broadcast_realtime' => (bool) env('INGESTION_PIPELINE_BROADCAST_REALTIME', true),
 
+    'broadcast_throttle_seconds' => (int) env('INGESTION_PIPELINE_BROADCAST_THROTTLE_SECONDS', 5),
+
     'publish_analytics' => (bool) env('INGESTION_PIPELINE_PUBLISH_ANALYTICS', true),
 
     'publish_invalid_events' => (bool) env('INGESTION_PIPELINE_PUBLISH_INVALID', true),

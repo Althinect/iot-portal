@@ -12,6 +12,7 @@ use App\Domain\Automation\Models\AutomationWorkflow;
 use App\Domain\Automation\Services\DatabaseTriggerMatcher;
 use App\Domain\DataIngestion\Contracts\AnalyticsPublisher;
 use App\Domain\DataIngestion\Contracts\HotStateStore;
+use App\Domain\DataIngestion\Listeners\BroadcastTelemetryRealtimeUpdate;
 use App\Domain\DataIngestion\Listeners\QueueTelemetryAnalyticsPublishes;
 use App\Domain\DataIngestion\Listeners\QueueTelemetryHotStateWrites;
 use App\Domain\DataIngestion\Services\NatsAnalyticsPublisher;
@@ -143,6 +144,7 @@ class AppServiceProvider extends ServiceProvider
                 ->forget(config('permission.cache.key'));
         });
 
+        Event::listen(TelemetryReceived::class, BroadcastTelemetryRealtimeUpdate::class);
         Event::listen(TelemetryReceived::class, QueueTelemetryAutomationRuns::class);
         Event::listen(TelemetryReceived::class, QueueTelemetryThresholdAlertRecords::class);
         Event::listen(TelemetryReceived::class, QueueTelemetryHotStateWrites::class);

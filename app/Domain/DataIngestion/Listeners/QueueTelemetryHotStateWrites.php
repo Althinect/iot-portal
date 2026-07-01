@@ -26,14 +26,15 @@ class QueueTelemetryHotStateWrites implements ShouldQueue
 
     public function handle(TelemetryReceived $event): void
     {
-        $telemetryLog = $event->telemetryLog->loadMissing([
+        $telemetryLog = $event->telemetryLog([
             'device:id,uuid,external_id',
             'channel:id,device_profile_version_id,key,address',
             'ingestionMessage:id,status',
         ]);
 
         if (
-            $telemetryLog->processing_state !== 'processed'
+            $telemetryLog === null
+            || $telemetryLog->processing_state !== 'processed'
             || ! $telemetryLog->device instanceof Device
             || ! $telemetryLog->channel instanceof DeviceChannel
             || ! $telemetryLog->ingestionMessage instanceof IngestionMessage

@@ -59,7 +59,7 @@ it('dispatches telemetry received events from go persisted payloads', function (
     ], JSON_THROW_ON_ERROR), subject: 'iot.v1.ingestion.persisted'));
 
     Event::assertDispatched(TelemetryReceived::class, function (TelemetryReceived $event) use ($telemetryLog): bool {
-        return $event->telemetryLog->is($telemetryLog);
+        return $event->telemetryLogId === $telemetryLog->id;
     });
 });
 

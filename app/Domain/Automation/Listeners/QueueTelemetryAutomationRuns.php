@@ -29,11 +29,17 @@ class QueueTelemetryAutomationRuns implements ShouldQueue
             return false;
         }
 
-        if (! $this->runtimeSettingManager->booleanValue('automation.pipeline.telemetry_fanout', $event->telemetryLog->device?->organization_id)) {
+        $telemetryLog = $event->telemetryLog(['device:id,organization_id']);
+
+        if ($telemetryLog === null) {
             return false;
         }
 
-        return $this->triggerMatcher->hasCandidateTelemetryTriggers($event->telemetryLog);
+        if (! $this->runtimeSettingManager->booleanValue('automation.pipeline.telemetry_fanout', $telemetryLog->device?->organization_id)) {
+            return false;
+        }
+
+        return $this->triggerMatcher->hasCandidateTelemetryTriggers($telemetryLog);
     }
 
     public function handle(TelemetryReceived $event): void
@@ -43,8 +49,13 @@ class QueueTelemetryAutomationRuns implements ShouldQueue
         }
 
         $eventCorrelationId = (string) Str::uuid();
-        $telemetryLog = $event->telemetryLog;
-        $workflowVersionIds = $this->triggerMatcher->matchTelemetryTriggers($event->telemetryLog);
+        $telemetryLog = $event->telemetryLog(['device:id,organization_id']);
+
+        if ($telemetryLog === null) {
+            return;
+        }
+
+        $workflowVersionIds = $this->triggerMatcher->matchTelemetryTriggers($telemetryLog);
         $telemetryLogId = $this->resolveKeyAsString($telemetryLog->getKey());
 
         if ($telemetryLogId === null) {

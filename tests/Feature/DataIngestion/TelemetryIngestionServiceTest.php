@@ -15,6 +15,7 @@ use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\DeviceProfile\Services\ProfileChannelResolver;
 use App\Domain\Shared\Services\RuntimeSettingManager;
 use App\Domain\Telemetry\Enums\ValidationStatus;
+use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use App\Events\TelemetryReceived;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -148,6 +149,21 @@ it('processes valid telemetry without persisting successful stage logs by defaul
         ]);
 
     Event::assertDispatched(TelemetryReceived::class, 1);
+});
+
+it('serializes telemetry received events with scalar telemetry identity only', function (): void {
+    $telemetryLog = DeviceTelemetryLog::factory()
+        ->create()
+        ->load(['device', 'channel', 'ingestionMessage']);
+
+    $event = new TelemetryReceived($telemetryLog);
+    $serialized = serialize($event);
+
+    expect($event->telemetryLogId)->toBe($telemetryLog->id)
+        ->and($event->telemetryLog()?->is($telemetryLog))->toBeTrue()
+        ->and($serialized)->not->toContain(DeviceTelemetryLog::class)
+        ->and($serialized)->not->toContain('device_channel_id')
+        ->and($serialized)->not->toContain('transformed_values');
 });
 
 it('persists telemetry and still dispatches downstream side effects when analytics publishing is disabled', function (): void {

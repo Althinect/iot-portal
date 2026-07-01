@@ -24,14 +24,15 @@ class QueueTelemetryAnalyticsPublishes implements ShouldQueue
 
     public function handle(TelemetryReceived $event): void
     {
-        $telemetryLog = $event->telemetryLog->loadMissing([
+        $telemetryLog = $event->telemetryLog([
             'device:id,uuid,external_id,organization_id,is_active',
             'channel:id,device_profile_version_id,key,address',
             'ingestionMessage:id,status',
         ]);
 
         if (
-            ! in_array($telemetryLog->processing_state, ['processed', 'invalid'], true)
+            $telemetryLog === null
+            || ! in_array($telemetryLog->processing_state, ['processed', 'invalid'], true)
             || ! $telemetryLog->device instanceof Device
             || ! $telemetryLog->channel instanceof DeviceChannel
             || ! $telemetryLog->ingestionMessage instanceof IngestionMessage

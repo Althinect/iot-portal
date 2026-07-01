@@ -14,7 +14,7 @@ The Go ingester consumes inbound NATS/MQTT telemetry and performs:
 6. Persistence to ingestion audit and telemetry tables.
 7. Internal event publication for Laravel side effects.
 
-Laravel remains the control plane and side-effect layer. It owns profile/device configuration, admin UI, realtime broadcasts, hot-state writes, analytics publishing, threshold alerts, and automation fan-out.
+Laravel remains the control plane and side-effect layer. It owns profile/device configuration, admin UI, throttled realtime broadcasts, hot-state writes, analytics publishing, threshold alerts, and automation fan-out.
 
 ## Core Concepts
 
@@ -66,6 +66,14 @@ The default Docker stack runs:
 - PHP rollback pipeline: `app/Domain/DataIngestion/`
 - Config: `config/ingestion.php`
 - Tests: `tests/Feature/DataIngestion/`
+
+## Realtime Broadcast Controls
+
+Persisted telemetry still emits the internal `TelemetryReceived` event for Laravel side effects, but dashboard realtime updates are handled by `BroadcastTelemetryRealtimeUpdate`.
+
+The listener checks `ingestion.pipeline.broadcast_realtime` and then applies `ingestion.pipeline.broadcast_throttle_seconds` per device/channel before dispatching `TelemetryRealtimeUpdated`. This prevents every telemetry row from creating a broadcast job during high-volume bursts while preserving current hot-state, analytics, alerts, and automation processing.
+
+Set `INGESTION_PIPELINE_BROADCAST_THROTTLE_SECONDS=0` to broadcast every telemetry log. Production should keep a non-zero value, with `5` seconds as the default.
 
 ## Documentation Map
 

@@ -81,12 +81,13 @@ sequenceDiagram
     Go->>DB: Mark device online
     Go->>EMQX: Publish iot.v1.ingestion.persisted
 
-    EMQX-->>Bridge: Deliver persisted event
-    Bridge->>DB: Load DeviceTelemetryLog
-    Bridge->>Events: Dispatch TelemetryReceived
-    Events->>Horizon: Queue existing side-effect listeners
-    Horizon->>DB: Read telemetry context
-    Horizon-->>Events: Hot-state, analytics, alerts, automation complete
+ EMQX-->>Bridge: Deliver persisted event
+ Bridge->>DB: Verify DeviceTelemetryLog id
+ Bridge->>Events: Dispatch scalar TelemetryReceived
+ Events->>Horizon: Queue side-effect listeners
+ Horizon->>DB: Read telemetry context
+ Horizon-->>Reverb: Throttled TelemetryRealtimeUpdated broadcasts
+ Horizon-->>Events: Hot-state, analytics, alerts, automation complete
 ```
 
 ## Go Ingester Components
@@ -205,7 +206,8 @@ flowchart LR
     Bridge --> Incoming["TelemetryIncoming<br/>raw diagnostics stream"]
     Bridge --> Received["TelemetryReceived<br/>persisted telemetry event"]
 
-    Received --> Broadcast["Reverb dashboard broadcast"]
+ Received --> Broadcast["BroadcastTelemetryRealtimeUpdate<br/>runtime setting + throttle"]
+ Broadcast --> Reverb["TelemetryRealtimeUpdated<br/>Reverb dashboard broadcast"]
     Received --> HotState["QueueTelemetryHotStateWrites<br/>NATS KV latest values"]
     Received --> Analytics["QueueTelemetryAnalyticsPublishes<br/>analytics fan-out"]
     Received --> Alerts["QueueTelemetryThresholdAlertRecords"]
