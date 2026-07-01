@@ -5,13 +5,17 @@ declare(strict_types=1);
 return [
     'enabled' => (bool) env('INGESTION_PIPELINE_ENABLED', true),
 
-    'driver' => (string) env('INGESTION_PIPELINE_DRIVER', 'laravel'),
+    'driver' => (string) env('INGESTION_PIPELINE_DRIVER', 'go'),
 
     'broadcast_realtime' => (bool) env('INGESTION_PIPELINE_BROADCAST_REALTIME', true),
 
     'publish_analytics' => (bool) env('INGESTION_PIPELINE_PUBLISH_ANALYTICS', true),
 
     'publish_invalid_events' => (bool) env('INGESTION_PIPELINE_PUBLISH_INVALID', true),
+    'go_events' => [
+        'incoming_subject' => (string) env('INGESTION_GO_INCOMING_SUBJECT', 'iot.v1.ingestion.incoming'),
+        'persisted_subject' => (string) env('INGESTION_GO_PERSISTED_SUBJECT', 'iot.v1.ingestion.persisted'),
+    ],
 
     'queue_connection' => (string) env('INGESTION_PIPELINE_QUEUE_CONNECTION', 'redis'),
 

@@ -19,6 +19,7 @@ Starts the full Docker platform stack defined in compose.yaml:
 - iot-listen-states
 - iot-listen-presence
 - iot-ingest-telemetry
+- ingestion-go-events
 - horizon
 - scheduler
 

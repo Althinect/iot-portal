@@ -114,14 +114,30 @@ services:
         command: php artisan iot:listen-for-device-presence --host=emqx --port=4222
 
     iot-ingest-telemetry:
+        image: '${TELEMETRY_INGESTER_IMAGE:?Set TELEMETRY_INGESTER_IMAGE in .env.production}'
+        env_file:
+            - '${PRODUCTION_ENV_FILE:-.env.production}'
+        environment:
+            APP_ENV: production
+            DB_CONNECTION: pgsql
+            DB_HOST: pgsql
+            DB_PORT: 5432
+            INGESTION_NATS_HOST: emqx
+            INGESTION_NATS_PORT: 4222
+            INGESTION_PIPELINE_DRIVER: go
+            INGESTION_NATS_SUBJECT: '${INGESTION_NATS_SUBJECT:-devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry}'
+        restart: unless-stopped
+        networks:
+            - production
+        depends_on:
+            pgsql:
+                condition: service_healthy
+            emqx:
+                condition: service_healthy
+
+    ingestion-go-events:
         <<: *app-command-service
-        command:
-            - php
-            - artisan
-            - iot:ingest-telemetry
-            - --host=emqx
-            - --port=4222
-            - '--subject=${INGESTION_NATS_SUBJECT:-devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry}'
+        command: php artisan ingestion:consume-go-events --host=emqx --port=4222
 
     horizon:
         <<: *app-command-service

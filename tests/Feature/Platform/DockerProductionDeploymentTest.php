@@ -15,6 +15,7 @@ it('defines a production docker compose stack beside the local sail stack', func
         'iot-listen-states',
         'iot-listen-presence',
         'iot-ingest-telemetry',
+        'ingestion-go-events',
         'horizon',
         'scheduler',
         'nightwatch',
@@ -44,9 +45,11 @@ it('defines a production docker compose stack beside the local sail stack', func
         ->and($services['iot-listen-states']['healthcheck']['disable'])->toBeTrue()
         ->and($services['iot-listen-presence']['command'])->toContain('--host=emqx')
         ->and($services['iot-listen-presence']['healthcheck']['disable'])->toBeTrue()
-        ->and($services['iot-ingest-telemetry']['command'])->toContain('--host=emqx')
-        ->and($services['iot-ingest-telemetry']['command'])->toContain('--subject=${INGESTION_NATS_SUBJECT:-devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry}')
-        ->and($services['iot-ingest-telemetry']['healthcheck']['disable'])->toBeTrue()
+        ->and($services['iot-ingest-telemetry']['image'])->toBe('${TELEMETRY_INGESTER_IMAGE:?Set TELEMETRY_INGESTER_IMAGE in .env.production}')
+        ->and($services['iot-ingest-telemetry']['environment']['INGESTION_PIPELINE_DRIVER'])->toBe('go')
+        ->and($services['iot-ingest-telemetry']['environment']['INGESTION_NATS_SUBJECT'])->toBe('${INGESTION_NATS_SUBJECT:-devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry}')
+        ->and($services['ingestion-go-events']['command'])->toBe('php artisan ingestion:consume-go-events --host=emqx --port=4222')
+        ->and($services['ingestion-go-events']['healthcheck']['disable'])->toBeTrue()
         ->and($services['horizon']['command'])->toBe('php artisan horizon')
         ->and($services['horizon']['healthcheck']['disable'])->toBeTrue()
         ->and($services['horizon']['stop_grace_period'])->toBe('1h')
@@ -80,7 +83,9 @@ it('defines local EMQX MQTT services for sail development', function (): void {
         ->and($services['laravel.test']['environment']['IOT_MQTT_HOST'])->toBe('emqx')
         ->and($services['iot-listen-states']['command'])->toContain('--host=emqx')
         ->and($services['iot-listen-presence']['command'])->toContain('--host=emqx')
-        ->and($services['iot-ingest-telemetry']['command'])->toContain('--host=emqx')
+        ->and($services['iot-ingest-telemetry']['build']['context'])->toBe('./services/telemetry-ingester')
+        ->and($services['iot-ingest-telemetry']['environment']['INGESTION_PIPELINE_DRIVER'])->toBe('go')
+        ->and($services['ingestion-go-events']['command'])->toBe('php artisan ingestion:consume-go-events --host=emqx --port=4222')
         ->and($services['nats']['ports'])->not->toContain('${FORWARD_NATS_MQTT_PORT:-1883}:1883')
         ->and($services['emqx']['ports'])->toContain('${EMQX_MQTT_BIND:-127.0.0.1}:${FORWARD_EMQX_MQTT_PORT:-1883}:1883')
         ->and($services['emqx']['ports'])->toContain('${EMQX_DASHBOARD_BIND:-127.0.0.1}:${FORWARD_EMQX_DASHBOARD_PORT:-18083}:18083')

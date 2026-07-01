@@ -2,72 +2,70 @@
 
 ## What This Module Does
 
-The Data Ingestion module is the staged telemetry processing pipeline.
+Telemetry ingestion is split between a Go hot path and Laravel application side effects.
 
-It consumes inbound telemetry and performs:
+The Go ingester consumes inbound NATS/MQTT telemetry and performs:
 
 1. Deduplication.
-2. Topic/device resolution.
-3. Validation against schema parameters.
-4. Mutation and derivation.
-5. Persistence to telemetry logs.
-6. Hot-state and analytics publishing.
+2. Binding-topic expansion.
+3. Profile channel resolution.
+4. Payload validation.
+5. Mutation and derived-value calculation.
+6. Persistence to ingestion audit and telemetry tables.
+7. Internal event publication for Laravel side effects.
 
-The pipeline is queue-driven and records stage-by-stage diagnostics.
+Laravel remains the control plane and side-effect layer. It owns profile/device configuration, admin UI, realtime broadcasts, hot-state writes, analytics publishing, threshold alerts, and automation fan-out.
 
 ## Core Concepts
 
 | Concept | Description |
-|--------|-------------|
-| Ingestion Envelope | `IncomingTelemetryEnvelope` transport DTO |
-| Ingestion Message | Durable pipeline record (`ingestion_messages`) |
-| Stage Log | Per-stage diagnostics (`ingestion_stage_logs`) |
-| Status | Pipeline terminal/intermediate status (`IngestionStatus`) |
-| Stage | Pipeline phase (`Ingress`, `Validate`, `Mutate`, `Derive`, `Persist`, `Publish`) |
-| Topic Resolver | Maps MQTT topic to concrete device + publish topic contract |
+| --- | --- |
+| Go Ingester | `services/telemetry-ingester`, the NATS subscriber and persistence pipeline |
+| Ingestion Message | Durable audit record in `ingestion_messages` |
+| Stage Log | Per-stage diagnostics in `ingestion_stage_logs` |
+| Telemetry Log | Final telemetry record in `device_telemetry_logs` |
+| Binding Resolver | Go port of `DeviceSignalBindingResolver` behavior for migration/source topics |
+| Profile Channel Resolver | Go port of the active MQTT publish-channel registry |
+| Laravel Bridge | `ingestion:consume-go-events`, consumes internal Go events and dispatches Laravel events |
 
 ## End-to-End Pipeline
 
 ```mermaid
 sequenceDiagram
-    participant Listener as iot:ingest-telemetry
-    participant Queue as ProcessInboundTelemetryJob
-    participant Pipeline as TelemetryIngestionService
-    participant DB as Ingestion + Telemetry Tables
-    participant NatsKV as Hot State Store
-    participant Analytics as Analytics Publisher
+    participant NATS as NATS / EMQX bridge
+    participant Go as telemetry-ingester
+    participant DB as Postgres / Timescale
+    participant Bridge as Laravel ingestion:consume-go-events
+    participant Events as Laravel Events
+    participant SideFx as Hot State / Analytics / Alerts / Automation
 
-    Listener->>Queue: dispatch envelope
-    Queue->>Pipeline: ingest(envelope)
-    Pipeline->>DB: create ingestion_message
-    Pipeline->>Pipeline: resolve topic + validate + mutate + derive
-    Pipeline->>DB: persist telemetry log
-    Pipeline->>NatsKV: write latest values
-    Pipeline->>Analytics: publish telemetry event
-    Pipeline->>DB: update final ingestion status
+    NATS->>Go: telemetry subject payload
+    Go->>DB: ingestion_messages + stage logs
+    Go->>Go: resolve topic, validate, mutate, derive
+    Go->>DB: device_telemetry_logs
+    Go->>NATS: iot.v1.ingestion.incoming / persisted
+    NATS->>Bridge: internal ingestion events
+    Bridge->>Events: TelemetryIncoming / TelemetryReceived
+    Events->>SideFx: existing Laravel queued listeners
 ```
 
-## Feature-Gated Runtime
+## Runtime Driver
 
-Pipeline execution depends on Pennant features defined in `FeatureServiceProvider`:
+`INGESTION_PIPELINE_DRIVER=go` is the default. The PHP pipeline is still present as a rollback path with `INGESTION_PIPELINE_DRIVER=laravel` and the legacy `iot:ingest-telemetry` command.
 
-- `ingestion.pipeline.enabled`
-- `ingestion.pipeline.driver`
-- `ingestion.pipeline.publish_analytics`
+The default Docker stack runs:
 
-If disabled or non-`laravel` driver is selected, ingestion short-circuits.
+- `iot-ingest-telemetry`: Go telemetry ingester.
+- `ingestion-go-events`: Laravel bridge for side effects.
+- `horizon`: Laravel queue workers for downstream side effects.
 
 ## Key Source Areas
 
-- Domain:
-  - `app/Domain/DataIngestion/DTO/`
-  - `app/Domain/DataIngestion/Enums/`
-  - `app/Domain/DataIngestion/Models/`
-  - `app/Domain/DataIngestion/Services/`
-  - `app/Domain/DataIngestion/Jobs/`
-- Listener command: `app/Console/Commands/IoT/IngestTelemetryCommand.php`
-- Feature definitions: `app/Providers/FeatureServiceProvider.php`
+- Go ingester: `services/telemetry-ingester/`
+- Laravel bridge: `app/Console/Commands/Ingestion/ConsumeTelemetryIngestionEvents.php`
+- PHP rollback pipeline: `app/Domain/DataIngestion/`
 - Config: `config/ingestion.php`
+- Tests: `tests/Feature/DataIngestion/`
 
 ## Documentation Map
 

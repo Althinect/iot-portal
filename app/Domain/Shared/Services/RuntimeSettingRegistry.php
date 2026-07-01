@@ -46,6 +46,7 @@ class RuntimeSettingRegistry
                 'config_key' => 'ingestion.driver',
                 'options' => [
                     'laravel' => 'Laravel Queue',
+                    'go' => 'Go Ingestor',
                 ],
                 'supports_organization_overrides' => true,
             ],

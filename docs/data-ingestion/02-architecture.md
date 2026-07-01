@@ -1,289 +1,262 @@
 # Data Ingestion Module - Architecture
 
-## Architectural Model
+## Runtime Model
 
-The ingestion pipeline is a staged orchestrator with explicit stage logging.
+The telemetry hot path now runs in Go. Laravel remains the control plane and side-effect layer.
 
 ```mermaid
-flowchart TD
-  A[Inbound telemetry envelope<br/>IncomingTelemetryEnvelope] --> B[Queue entry<br/>ProcessInboundTelemetryJob]
-  B --> C[Pipeline orchestration<br/>TelemetryIngestionService]
-  C --> D[Deduplicate message<br/>IngestionMessage]
-  D --> E[Resolve device + publish topic<br/>DeviceTelemetryTopicResolver]
-  E --> F[Validate payload<br/>TelemetryValidationService]
-  F -->|invalid| G[Persist invalid telemetry<br/>TelemetryPersistenceService → DeviceTelemetryLog]
-  F -->|valid + inactive device| H[Persist inactive_skipped telemetry<br/>TelemetryPersistenceService → DeviceTelemetryLog]
-  F -->|valid + active device| I[Mutate values<br/>TelemetryMutationService]
-  I --> J[Derive computed values<br/>TelemetryDerivationService]
-  J --> K[Persist processed telemetry<br/>TelemetryPersistenceService → DeviceTelemetryLog]
-  G --> L[Emit downstream side effects<br/>TelemetryReceived event]
-  H --> L
-  K --> L
-  L --> M[Hot-state write<br/>QueueTelemetryHotStateWrites → NatsKvHotStateStore]
-  L --> N[Analytics publish<br/>QueueTelemetryAnalyticsPublishes → TelemetryAnalyticsPublishService]
-  L --> O[Threshold evaluation<br/>QueueTelemetryThresholdAlertRecords]
-  L --> P[Automation fan-out<br/>QueueTelemetryAutomationRuns]
-  M --> Q[Completed or failed_terminal]
-  N --> Q
-  O --> Q
-  P --> Q
+flowchart TB
+    subgraph External["External / Production Traffic"]
+        Prod["Production telemetry forwarder"]
+        Tunnel["Cloudflare tunnel<br/>/migration/legacy-ingest"]
+    end
 
-  classDef transport fill:#E3F2FD,stroke:#1E88E5,color:#0D47A1,stroke-width:2px;
-  classDef orchestration fill:#E8F5E9,stroke:#43A047,color:#1B5E20,stroke-width:2px;
-  classDef validation fill:#FFF8E1,stroke:#F9A825,color:#7F6000,stroke-width:2px;
-  classDef persistence fill:#F3E5F5,stroke:#8E24AA,color:#4A148C,stroke-width:2px;
-  classDef eventing fill:#FCE4EC,stroke:#D81B60,color:#880E4F,stroke-width:2px;
-  classDef outcome fill:#ECEFF1,stroke:#546E7A,color:#263238,stroke-width:2px;
+    subgraph Local["Local Docker Stack"]
+        NodeRED["Node-RED migration adapters<br/>HTTP -> MQTT normalization"]
+        EMQX["EMQX<br/>MQTT + NATS bridge<br/>:1883 / :4222"]
+        Go["Go telemetry-ingester<br/>services/telemetry-ingester"]
+        Bridge["Laravel bridge<br/>php artisan ingestion:consume-go-events"]
+        Laravel["Laravel admin app<br/>Filament + domain services"]
+        Horizon["Horizon workers<br/>side-effect queues"]
+        Reverb["Reverb<br/>realtime dashboard events"]
+    end
 
-  class A,B transport;
-  class C,D,E orchestration;
-  class F,I,J validation;
-  class G,H,K persistence;
-  class L,M,N,O,P eventing;
-  class Q outcome;
+    subgraph Data["Data Stores"]
+        Postgres[("Postgres / TimescaleDB<br/>profiles, devices, telemetry")]
+        Redis[("Redis<br/>queues, cache, Horizon")]
+        NatsKV[("NATS JetStream / KV<br/>hot device state")]
+    end
+
+    Prod -->|HTTPS POST| Tunnel
+    Tunnel -->|forwards| NodeRED
+    NodeRED -->|MQTT publish| EMQX
+    EMQX -->|NATS subscribe<br/>telemetry subjects| Go
+    Go -->|read profile/device registry<br/>write ingestion + telemetry rows| Postgres
+    Go -->|publish internal events| EMQX
+    EMQX -->|iot.v1.ingestion.*| Bridge
+    Bridge -->|TelemetryIncoming<br/>TelemetryReceived| Laravel
+    Laravel -->|queue jobs| Redis
+    Redis --> Horizon
+    Horizon -->|hot-state writes| NatsKV
+    Horizon -->|analytics / alerts / automation| Laravel
+    Laravel -->|broadcast| Reverb
+
+    classDef external fill:#FFE66D,stroke:#F08C00,color:#000
+    classDef runtime fill:#4ECDC4,stroke:#0B7285,color:#fff
+    classDef data fill:#A8DADC,stroke:#1864AB,color:#000
+    classDef queue fill:#95E1D3,stroke:#087F5B,color:#000
+
+    class Prod,Tunnel external
+    class NodeRED,EMQX,Go,Bridge,Laravel,Horizon,Reverb runtime
+    class Postgres,NatsKV data
+    class Redis queue
 ```
 
-## Runtime Collaboration View
+## Runtime Sequence
 
-This view is useful during a walkthrough because it shows the exact handoff between command, job, orchestrator, storage, and downstream listeners.
+This is the normal successful path for production-forwarded telemetry.
 
 ```mermaid
 sequenceDiagram
-  participant Cmd as IngestTelemetryCommand
-  participant Job as ProcessInboundTelemetryJob
-  participant Pipe as TelemetryIngestionService
-  participant Msg as IngestionMessage
-  participant Topic as DeviceTelemetryTopicResolver
-  participant Validate as TelemetryValidationService
-  participant Persist as TelemetryPersistenceService
-  participant Log as DeviceTelemetryLog
-  participant Event as TelemetryReceived
-  participant SideFx as Alert / Automation / Analytics listeners
+    participant Prod as Production forwarder
+    participant NodeRED as Node-RED adapter
+    participant EMQX as EMQX NATS bridge
+    participant Go as Go telemetry-ingester
+    participant DB as Postgres / TimescaleDB
+    participant Bridge as Laravel Go-event bridge
+    participant Events as Laravel events
+    participant Horizon as Horizon workers
 
-  Cmd->>Job: dispatch envelope DTO
-  Job->>Pipe: ingest(envelope)
-  Pipe->>Msg: create or mark duplicate
-  Pipe->>Topic: resolve mqtt topic to device + topic
-  Pipe->>Validate: validate extracted values
-  alt valid active telemetry
-    Pipe->>Persist: persist processed telemetry
-    Persist->>Log: insert transformed telemetry row
-    Pipe->>Event: dispatch TelemetryReceived
-    Event->>SideFx: queue fan-out listeners
-  else invalid or inactive telemetry
-    Pipe->>Persist: persist invalid/inactive telemetry
-    Persist->>Log: insert telemetry row with processing_state
-    Pipe->>Event: dispatch TelemetryReceived
-    Event->>SideFx: queue fan-out listeners
-  end
+    Prod->>NodeRED: POST /migration/legacy-ingest
+    NodeRED->>NodeRED: Decode and normalize vendor payload
+    NodeRED->>EMQX: Publish migration.source.* telemetry topic
+    EMQX-->>Go: Deliver subscribed NATS subject
+
+    Go->>DB: Refresh registry when TTL expires
+    Go->>Go: Expand device_signal_bindings
+    Go->>Go: Resolve profile channel
+    Go->>DB: Insert ingestion_messages row
+    Go->>Go: Validate, mutate, derive values
+    Go->>DB: Insert device_telemetry_logs row
+    Go->>DB: Mark device online
+    Go->>EMQX: Publish iot.v1.ingestion.persisted
+
+    EMQX-->>Bridge: Deliver persisted event
+    Bridge->>DB: Load DeviceTelemetryLog
+    Bridge->>Events: Dispatch TelemetryReceived
+    Events->>Horizon: Queue existing side-effect listeners
+    Horizon->>DB: Read telemetry context
+    Horizon-->>Events: Hot-state, analytics, alerts, automation complete
 ```
 
-## Component Responsibilities
+## Go Ingester Components
 
-| Component                          | Responsibility                                                                |
-| ---------------------------------- | ----------------------------------------------------------------------------- |
-| `IngestTelemetryCommand`           | NATS subscriber; filters subjects; dispatches queue job                       |
-| `ProcessInboundTelemetryJob`       | Queue entry point that reconstructs envelope DTO                              |
-| `TelemetryIngestionService`        | Full orchestration and stage transitions                                      |
-| `DeviceTelemetryTopicResolver`     | Topic registry with TTL refresh                                               |
-| `TelemetryValidationService`       | Parameter extraction + validation error classification                        |
-| `TelemetryMutationService`         | Field mutation pass                                                           |
-| `TelemetryDerivationService`       | Derived metric evaluation with dependency order                               |
-| `TelemetryPersistenceService`      | Writes `DeviceTelemetryLog`, marks presence online, emits `TelemetryReceived` |
-| `NatsKvHotStateStore`              | Writes processed values into NATS KV hot-state bucket                         |
-| `TelemetryAnalyticsPublishService` | Conditional analytics publish based on feature/config                         |
-
-## Database Structure and Models
-
-The ingestion module centers around one durable pipeline record and one final telemetry record:
-
-- `App\Domain\DataIngestion\Models\IngestionMessage` → `ingestion_messages`
-- `App\Domain\DataIngestion\Models\IngestionStageLog` → `ingestion_stage_logs`
-- `App\Domain\Telemetry\Models\DeviceTelemetryLog` → `device_telemetry_logs`
-
-Supporting lookups come from:
-
-- `App\Domain\DeviceManagement\Models\Device`
-- `App\Domain\DeviceSchema\Models\SchemaVersionTopic`
-- `App\Domain\DeviceSchema\Models\ParameterDefinition`
-- `App\Domain\DeviceSchema\Models\DerivedParameterDefinition`
+The Go service owns only the ingestion hot path. It does not own admin UI, automation rules, alert rules, or dashboard rendering.
 
 ```mermaid
-flowchart LR
-  subgraph Models[Eloquent models]
-    IM[IngestionMessage]
-    ISL[IngestionStageLog]
-    DTL[DeviceTelemetryLog]
-    DEV[Device]
-    SVT[SchemaVersionTopic]
-    PD[ParameterDefinition]
-    DPD[DerivedParameterDefinition]
-  end
+flowchart TB
+    subgraph Go["Go telemetry-ingester"]
+        Subscriber["NATS subscriber<br/>subject filtering"]
+        Envelope["Envelope builder<br/>source subject, MQTT topic, payload"]
+        Registry["Registry cache<br/>profiles, devices, bindings"]
+        Binding["Binding expander<br/>source topic -> concrete device/channel payloads"]
+        Resolver["Profile channel resolver<br/>MQTT topic -> device + channel"]
+        Dedupe["Deduper<br/>source message id or payload hash"]
+        Validator["Validator<br/>required, type, min/max, regex, enum"]
+        Mutator["Mutator<br/>JSON-logic expressions"]
+        Deriver["Deriver<br/>computed profile parameters"]
+        Persistence["Persistence adapter<br/>Postgres writes"]
+        Publisher["Internal event publisher<br/>iot.v1.ingestion.*"]
+    end
 
-  subgraph Tables[Database tables]
-    T1[(ingestion_messages)]
-    T2[(ingestion_stage_logs)]
-    T3[(device_telemetry_logs)]
-    T4[(devices)]
-    T5[(schema_version_topics)]
-    T6[(parameter_definitions)]
-    T7[(derived_parameter_definitions)]
-  end
+    EMQX["EMQX :4222"] --> Subscriber
+    Subscriber --> Envelope
+    Envelope --> Binding
+    Binding --> Resolver
+    Resolver --> Dedupe
+    Dedupe --> Validator
+    Validator --> Mutator
+    Mutator --> Deriver
+    Deriver --> Persistence
+    Registry --> Binding
+    Registry --> Resolver
+    Persistence --> Publisher
+    Publisher --> EMQX
 
-  IM --> T1
-  ISL --> T2
-  DTL --> T3
-  DEV --> T4
-  SVT --> T5
-  PD --> T6
-  DPD --> T7
+    Postgres[("Postgres / TimescaleDB")] <--> Registry
+    Persistence --> Postgres
 
-  T1 -->|has many| T2
-  T1 -->|produces one telemetry log| T3
-  T4 -->|source device| T1
-  T5 -->|resolved topic| T1
-  T5 -->|owns parameter contract| T6
-  DTL -->|stores transformed values for| T4
-  DTL -->|stores topic readings for| T5
+    classDef component fill:#4ECDC4,stroke:#0B7285,color:#fff
+    classDef broker fill:#FFE66D,stroke:#F08C00,color:#000
+    classDef database fill:#A8DADC,stroke:#1864AB,color:#000
 
-  classDef model fill:#E8F5E9,stroke:#2E7D32,color:#1B5E20,stroke-width:2px;
-  classDef table fill:#E3F2FD,stroke:#1565C0,color:#0D47A1,stroke-width:2px;
-
-  class IM,ISL,DTL,DEV,SVT,PD,DPD model;
-  class T1,T2,T3,T4,T5,T6,T7 table;
+    class Subscriber,Envelope,Registry,Binding,Resolver,Dedupe,Validator,Mutator,Deriver,Persistence,Publisher component
+    class EMQX broker
+    class Postgres database
 ```
 
-### Key persisted structures
+## Database Contract
 
-| Model / Table                                  | Why it matters in the walkthrough                                   | Key fields to mention                                                                                                       |
-| ---------------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `IngestionMessage` / `ingestion_messages`      | Durable audit record for each inbound payload                       | `source_subject`, `source_message_id`, `source_deduplication_key`, `status`, `error_summary`, `received_at`, `processed_at` |
-| `IngestionStageLog` / `ingestion_stage_logs`   | Per-stage diagnostics for replay and troubleshooting                | `stage`, `status`, `duration_ms`, `input_snapshot`, `output_snapshot`, `change_set`, `errors`                               |
-| `DeviceTelemetryLog` / `device_telemetry_logs` | Final time-series record used by dashboards and downstream features | `raw_payload`, `transformed_values`, `validation_errors`, `processing_state`, `recorded_at`                                 |
-| `SchemaVersionTopic`                           | Defines the publish topic contract resolved from MQTT subject       | `device_schema_version_id`, `suffix`, `direction`                                                                           |
-| `ParameterDefinition`                          | Defines extraction and validation rules for a topic payload         | `json_path`, `type`, `required`, `is_critical`, `mutation_expression`                                                       |
-| `DerivedParameterDefinition`                   | Defines calculated metrics derived from validated values            | `key`, `expression`, `dependencies`                                                                                         |
-
-## Domain and Service Boundaries
-
-| Layer             | Main classes                                                                                                                                                   | Responsibility                                                         |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Transport / entry | `IncomingTelemetryEnvelope`, `IngestTelemetryCommand`, `ProcessInboundTelemetryJob`                                                                            | Receives NATS/MQTT traffic and turns it into a typed ingestion request |
-| Orchestration     | `TelemetryIngestionService`                                                                                                                                    | Owns the pipeline order, status transitions, and stage logging         |
-| Schema resolution | `DeviceTelemetryTopicResolver`, `TelemetrySchemaMetadataCache`                                                                                                 | Resolves which device/topic/schema contract applies to a payload       |
-| Value processing  | `TelemetryValidationService`, `TelemetryMutationService`, `TelemetryDerivationService`                                                                         | Extracts, validates, transforms, and derives telemetry fields          |
-| Persistence       | `TelemetryPersistenceService`, `IngestionMessage`, `IngestionStageLog`, `DeviceTelemetryLog`                                                                   | Writes pipeline and telemetry records to the database                  |
-| Side effects      | `TelemetryReceived`, `QueueTelemetryHotStateWrites`, `QueueTelemetryAnalyticsPublishes`, `QueueTelemetryThresholdAlertRecords`, `QueueTelemetryAutomationRuns` | Fans telemetry out to realtime, analytics, alerts, and automation      |
-
-## Stage-to-Class Map
-
-| Pipeline stage   | Main classes to point at                                                               |
-| ---------------- | -------------------------------------------------------------------------------------- |
-| Ingress          | `IncomingTelemetryEnvelope`, `ProcessInboundTelemetryJob`, `TelemetryIngestionService` |
-| Deduplication    | `TelemetryIngestionService`, `IngestionMessage`                                        |
-| Topic resolution | `DeviceTelemetryTopicResolver`, `SchemaVersionTopic`, `Device`                         |
-| Validation       | `TelemetryValidationService`, `ParameterDefinition`                                    |
-| Mutation         | `TelemetryMutationService`, `ParameterDefinition`                                      |
-| Derivation       | `TelemetryDerivationService`, `DerivedParameterDefinition`                             |
-| Persistence      | `TelemetryPersistenceService`, `DeviceTelemetryLog`, `IngestionStageLog`               |
-| Fan-out          | `TelemetryReceived`, alert/automation/analytics listeners                              |
-
-## Data Model Notes
+Go writes the same ingestion and telemetry tables the Laravel pipeline wrote. Laravel still reads these tables for admin screens, dashboards, reports, alerts, and automation.
 
 ```mermaid
 erDiagram
-    INGESTION_MESSAGES ||--o{ INGESTION_STAGE_LOGS : has
-    INGESTION_MESSAGES ||--o| DEVICE_TELEMETRY_LOGS : produces
-    ORGANIZATIONS ||--o{ INGESTION_MESSAGES : owns
-    DEVICES ||--o{ INGESTION_MESSAGES : source
-    SCHEMA_VERSION_TOPICS ||--o{ INGESTION_MESSAGES : topic
+    DEVICES ||--o{ INGESTION_MESSAGES : "source device"
+    DEVICES ||--o{ DEVICE_TELEMETRY_LOGS : "emits"
+    DEVICE_PROFILE_VERSIONS ||--o{ DEVICES : "assigned to"
+    DEVICE_PROFILE_VERSIONS ||--o{ DEVICE_CHANNELS : "defines"
+    DEVICE_PROFILE_VERSIONS ||--o{ PROFILE_DERIVED_PARAMETER_DEFINITIONS : "derives"
+    DEVICE_CHANNELS ||--o{ PROFILE_PARAMETER_DEFINITIONS : "validates"
+    DEVICE_CHANNELS ||--o{ DEVICE_SIGNAL_BINDINGS : "target channel"
+    DEVICES ||--o{ DEVICE_SIGNAL_BINDINGS : "binding source device"
+    INGESTION_MESSAGES ||--o{ INGESTION_STAGE_LOGS : "diagnostics"
+    INGESTION_MESSAGES ||--o| DEVICE_TELEMETRY_LOGS : "produces"
+
+    DEVICES {
+        bigint id
+        uuid uuid
+        string external_id
+        string connection_state
+        timestamp last_seen_at
+        bigint device_profile_version_id
+    }
 
     INGESTION_MESSAGES {
-      uuid id
-      string source_subject
-      string source_protocol
-      string source_message_id
-      string source_deduplication_key
-      string status
-      jsonb raw_payload
-      jsonb error_summary
-      timestamp received_at
-      timestamp processed_at
+        uuid id
+        string source_subject
+        string source_deduplication_key
+        string status
+        jsonb raw_payload
+        jsonb error_summary
+        timestamp received_at
+        timestamp processed_at
+    }
+
+    DEVICE_TELEMETRY_LOGS {
+        uuid id
+        bigint device_id
+        bigint device_channel_id
+        uuid ingestion_message_id
+        string validation_status
+        string processing_state
+        jsonb transformed_values
+        timestamp recorded_at
     }
 
     INGESTION_STAGE_LOGS {
-      bigint id
-      uuid ingestion_message_id
-      string stage
-      string status
-      int duration_ms
-      jsonb input_snapshot
-      jsonb output_snapshot
-      jsonb change_set
-      jsonb errors
+        bigint id
+        uuid ingestion_message_id
+        string stage
+        string status
+        jsonb errors
+        timestamp created_at
     }
 ```
 
-When presenting this diagram live, it helps to summarize it as:
+## Side-Effect Boundary
 
-- `ingestion_messages` answers: “What happened to this payload?”
-- `ingestion_stage_logs` answers: “Where in the pipeline did it fail or slow down?”
-- `device_telemetry_logs` answers: “What telemetry did the business features finally consume?”
+The bridge keeps downstream Laravel behavior intact while removing Laravel queue work from the ingestion hot path.
 
-## Status and Stage Semantics
+```mermaid
+flowchart LR
+    Go["Go telemetry-ingester"] -->|iot.v1.ingestion.incoming| Bridge["ingestion:consume-go-events"]
+    Go -->|iot.v1.ingestion.persisted| Bridge
 
-### `IngestionStatus`
+    Bridge --> Incoming["TelemetryIncoming<br/>raw diagnostics stream"]
+    Bridge --> Received["TelemetryReceived<br/>persisted telemetry event"]
 
-- `queued`
-- `processing`
-- `completed`
-- `failed_validation`
-- `inactive_skipped`
-- `failed_terminal`
-- `duplicate`
+    Received --> Broadcast["Reverb dashboard broadcast"]
+    Received --> HotState["QueueTelemetryHotStateWrites<br/>NATS KV latest values"]
+    Received --> Analytics["QueueTelemetryAnalyticsPublishes<br/>analytics fan-out"]
+    Received --> Alerts["QueueTelemetryThresholdAlertRecords"]
+    Received --> Automation["QueueTelemetryAutomationRuns"]
 
-### `IngestionStage`
+    classDef go fill:#4ECDC4,stroke:#0B7285,color:#fff
+    classDef bridge fill:#FFE66D,stroke:#F08C00,color:#000
+    classDef event fill:#F3E5F5,stroke:#8E24AA,color:#000
+    classDef sidefx fill:#95E1D3,stroke:#087F5B,color:#000
 
-- `ingress`
-- `validate`
-- `mutate`
-- `derive`
-- `persist`
-- `publish`
+    class Go go
+    class Bridge bridge
+    class Incoming,Received event
+    class Broadcast,HotState,Analytics,Alerts,Automation sidefx
+```
 
-## Deduplication Strategy
+## Failure And Rollback Paths
 
-`IncomingTelemetryEnvelope::deduplicationKey()`:
+```mermaid
+flowchart TD
+    Payload["Inbound telemetry payload"] --> Resolve{"Can Go resolve topic<br/>or binding?"}
+    Resolve -->|"yes"| Validate{"Payload valid?"}
+    Resolve -->|"no"| FailedTerminal["ingestion_messages.status<br/>failed_terminal<br/>reason: channel_not_registered"]
 
-- prefers source message id when present,
-- otherwise hashes subject + payload + received timestamp.
+    Validate -->|"valid"| Persist["Persist processed telemetry<br/>device_telemetry_logs.processing_state=processed"]
+    Validate -->|"critical invalid"| Invalid["Persist invalid telemetry<br/>processing_state=invalid<br/>status=failed_validation"]
+    Validate -->|"warning only"| Warning["Persist processed telemetry<br/>validation_status=warning"]
 
-The dedup key is unique in `ingestion_messages`. Existing rows become `duplicate` status.
+    Persist --> Events["Publish internal event<br/>Laravel side effects"]
+    Invalid --> Events
+    Warning --> Events
 
-## Publish Stage Failure Handling
+    Events --> Rollback{"Need rollback?"}
+    Rollback -->|"no"| Done["Go path remains active"]
+    Rollback -->|"yes"| PHP["Switch compose service back to<br/>php artisan iot:ingest-telemetry<br/>and set driver=laravel"]
 
-Hot-state and analytics publish are isolated in try/catch blocks.
+    classDef decision fill:#FFE66D,stroke:#F08C00,color:#000
+    classDef success fill:#95E1D3,stroke:#087F5B,color:#000
+    classDef failure fill:#F38181,stroke:#C92A2A,color:#fff
+    classDef rollback fill:#A8DADC,stroke:#1864AB,color:#000
 
-If either fails:
-
-- telemetry log `processing_state` is set to `publish_failed`,
-- publish stage log is written with errors,
-- ingestion message becomes `failed_terminal`.
-
-This preserves persisted telemetry while exposing post-persist failure visibility.
-
-## Configuration Surface
-
-`config/ingestion.php` controls:
-
-- feature defaults (`enabled`, `driver`, `publish_analytics`),
-- queue connection and queue name,
-- resolver registry TTL,
-- stage snapshot capture,
-- NATS host/port/subject and analytics prefixes.
+    class Resolve,Validate,Rollback decision
+    class Persist,Warning,Events,Done success
+    class FailedTerminal,Invalid failure
+    class PHP rollback
+```
 
 ## Operational Notes
 
-- Listener ignores internal NATS subjects (`$JS.`, `$KV.`, `_INBOX.`, `_REQS.`) and analytics/invalid subjects to avoid loops.
-- Redis queue with `phpredis` requires extension availability; command warns when missing.
-- Stage logs are suitable for post-incident replay analysis and performance profiling.
+- Local compose builds `services/telemetry-ingester/Dockerfile`.
+- Production compose expects `TELEMETRY_INGESTER_IMAGE`.
+- The Go ingester subscribes to EMQX on port `4222`, not the standalone NATS container, because Node-RED publishes telemetry into EMQX/MQTT.
+- `failed_terminal` with `channel_not_registered` usually means the incoming source topic has no active `device_signal_bindings` row.
+- Rollback is the PHP path: set the driver to `laravel` and run the legacy `php artisan iot:ingest-telemetry` service instead of the Go container.

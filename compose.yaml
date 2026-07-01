@@ -85,8 +85,38 @@ services:
         restart: unless-stopped
 
     iot-ingest-telemetry:
+        build:
+            context: ./services/telemetry-ingester
+            dockerfile: Dockerfile
+        image: 'iot-portal/telemetry-ingester:local'
+        environment:
+            DB_HOST: pgsql
+            DB_PORT: 5432
+            DB_DATABASE: '${DB_DATABASE}'
+            DB_USERNAME: '${DB_USERNAME}'
+            DB_PASSWORD: '${DB_PASSWORD:-secret}'
+            DB_SSLMODE: disable
+            INGESTION_PIPELINE_ENABLED: '${INGESTION_PIPELINE_ENABLED:-true}'
+            INGESTION_PIPELINE_DRIVER: go
+            INGESTION_NATS_HOST: emqx
+            INGESTION_NATS_PORT: 4222
+            INGESTION_NATS_SUBJECT: '${INGESTION_NATS_SUBJECT:-devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry}'
+            INGESTION_NATS_ANALYTICS_PREFIX: '${INGESTION_NATS_ANALYTICS_PREFIX:-iot.v1.analytics}'
+            INGESTION_NATS_INVALID_PREFIX: '${INGESTION_NATS_INVALID_PREFIX:-iot.v1.invalid}'
+            INGESTION_GO_INCOMING_SUBJECT: '${INGESTION_GO_INCOMING_SUBJECT:-iot.v1.ingestion.incoming}'
+            INGESTION_GO_PERSISTED_SUBJECT: '${INGESTION_GO_PERSISTED_SUBJECT:-iot.v1.ingestion.persisted}'
+        networks:
+            - sail
+        depends_on:
+            pgsql:
+                condition: service_healthy
+            emqx:
+                condition: service_healthy
+        restart: unless-stopped
+
+    ingestion-go-events:
         <<: *laravel-service
-        command: php artisan iot:ingest-telemetry --host=emqx --port=4222 --subject='${INGESTION_NATS_SUBJECT:-devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry}'
+        command: php artisan ingestion:consume-go-events --host=emqx --port=4222
         restart: unless-stopped
 
     horizon:
