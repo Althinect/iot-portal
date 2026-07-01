@@ -139,3 +139,11 @@ it('keeps per-row hot-state writes when coalescing is disabled', function (): vo
         ->and($store->writes[0]['telemetry_log_id'])->toBe($firstTelemetryLog->id)
         ->and($store->writes[1]['telemetry_log_id'])->toBe($secondTelemetryLog->id);
 });
+
+it('does not serialize runtime settings onto queued hot-state listeners', function (): void {
+    fakeTelemetryHotStateStore();
+
+    $reflection = new ReflectionClass(app(QueueTelemetryHotStateWrites::class));
+
+    expect($reflection->hasProperty('runtimeSettings'))->toBeFalse();
+});

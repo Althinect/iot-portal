@@ -25,7 +25,6 @@ class QueueTelemetryHotStateWrites implements ShouldQueue
 
     public function __construct(
         private readonly HotStateStore $hotStateStore,
-        private readonly RuntimeSettingManager $runtimeSettings,
     ) {}
 
     public function shouldQueue(TelemetryReceived $event): bool
@@ -175,7 +174,7 @@ class QueueTelemetryHotStateWrites implements ShouldQueue
             ? (int) $telemetryLog->device->organization_id
             : null;
 
-        return $this->runtimeSettings->intValue('ingestion.pipeline.hot_state_coalesce_seconds', $organizationId);
+        return app(RuntimeSettingManager::class)->intValue('ingestion.pipeline.hot_state_coalesce_seconds', $organizationId);
     }
 
     private function coalescingCacheTtlSeconds(int $coalesceSeconds): int
