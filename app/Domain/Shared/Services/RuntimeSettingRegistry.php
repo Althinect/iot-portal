@@ -68,6 +68,16 @@ class RuntimeSettingRegistry
                 'max' => 300,
                 'supports_organization_overrides' => true,
             ],
+            'ingestion.pipeline.hot_state_coalesce_seconds' => [
+                'key' => 'ingestion.pipeline.hot_state_coalesce_seconds',
+                'label' => 'Hot State Write Coalescing',
+                'description' => 'Seconds to coalesce latest-value hot-state writes per device channel. Set 0 to write every telemetry log.',
+                'type' => 'integer',
+                'config_key' => 'ingestion.hot_state_coalesce_seconds',
+                'min' => 0,
+                'max' => 60,
+                'supports_organization_overrides' => true,
+            ],
             'ingestion.pipeline.publish_analytics' => [
                 'key' => 'ingestion.pipeline.publish_analytics',
                 'label' => 'Analytics Publish Fan-Out',

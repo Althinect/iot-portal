@@ -75,6 +75,14 @@ The listener checks `ingestion.pipeline.broadcast_realtime` and then applies `in
 
 Set `INGESTION_PIPELINE_BROADCAST_THROTTLE_SECONDS=0` to broadcast every telemetry log. Production should keep a non-zero value, with `5` seconds as the default.
 
+## Hot-State Write Controls
+
+Hot-state writes are still performed by `QueueTelemetryHotStateWrites`, but the listener now coalesces queued writes per device/channel before writing to the NATS KV latest-value store.
+
+The listener records the latest telemetry log id for the device/channel and queues one delayed write for the coalescing window. When the job runs, it writes the latest row observed in that window instead of every intermediate telemetry row. This reduces Horizon worker pressure during bursts while keeping the hot state current to the latest value.
+
+Set `INGESTION_PIPELINE_HOT_STATE_COALESCE_SECONDS=0` to restore per-row hot-state writes. The default is `1` second.
+
 ## Documentation Map
 
 - [02 - Architecture](02-architecture.md)

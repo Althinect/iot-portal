@@ -66,6 +66,8 @@ sequenceDiagram
     participant Bridge as Laravel Go-event bridge
     participant Events as Laravel events
     participant Horizon as Horizon workers
+    participant Reverb as Reverb
+    participant NATS as NATS KV hot state
 
     Prod->>NodeRED: POST /migration/legacy-ingest
     NodeRED->>NodeRED: Decode and normalize vendor payload
@@ -86,8 +88,9 @@ sequenceDiagram
  Bridge->>Events: Dispatch scalar TelemetryReceived
  Events->>Horizon: Queue side-effect listeners
  Horizon->>DB: Read telemetry context
- Horizon-->>Reverb: Throttled TelemetryRealtimeUpdated broadcasts
- Horizon-->>Events: Hot-state, analytics, alerts, automation complete
+    Horizon-->>Reverb: Throttled TelemetryRealtimeUpdated broadcasts
+    Horizon-->>NATS: Coalesced hot-state latest-value writes
+    Horizon-->>Events: Analytics, alerts, automation complete
 ```
 
 ## Go Ingester Components
@@ -208,7 +211,7 @@ flowchart LR
 
  Received --> Broadcast["BroadcastTelemetryRealtimeUpdate<br/>runtime setting + throttle"]
  Broadcast --> Reverb["TelemetryRealtimeUpdated<br/>Reverb dashboard broadcast"]
-    Received --> HotState["QueueTelemetryHotStateWrites<br/>NATS KV latest values"]
+    Received --> HotState["QueueTelemetryHotStateWrites<br/>coalesced NATS KV latest values"]
     Received --> Analytics["QueueTelemetryAnalyticsPublishes<br/>analytics fan-out"]
     Received --> Alerts["QueueTelemetryThresholdAlertRecords"]
     Received --> Automation["QueueTelemetryAutomationRuns"]

@@ -11,6 +11,8 @@ return [
 
     'broadcast_throttle_seconds' => (int) env('INGESTION_PIPELINE_BROADCAST_THROTTLE_SECONDS', 5),
 
+    'hot_state_coalesce_seconds' => (int) env('INGESTION_PIPELINE_HOT_STATE_COALESCE_SECONDS', 1),
+
     'publish_analytics' => (bool) env('INGESTION_PIPELINE_PUBLISH_ANALYTICS', true),
 
     'publish_invalid_events' => (bool) env('INGESTION_PIPELINE_PUBLISH_INVALID', true),
