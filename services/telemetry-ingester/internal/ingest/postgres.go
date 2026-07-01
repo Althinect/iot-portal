@@ -142,8 +142,8 @@ func (s *PostgresStore) PersistTelemetry(
 	receivedAt time.Time,
 ) (PersistedTelemetry, error) {
 	id := uuid.NewString()
-	raw, _ := json.Marshal(rawPayload)
-	final, _ := json.Marshal(finalValues)
+	raw := nonNullJSON(rawPayload)
+	final := nonNullJSON(finalValues)
 	mutated, _ := json.Marshal(mutatedValues)
 	errorsJSON, _ := json.Marshal(validationErrors)
 
@@ -166,6 +166,19 @@ func (s *PostgresStore) PersistTelemetry(
 		FinalValues:      finalValues,
 		ValidationErrors: validationErrors,
 	}, nil
+}
+
+func nonNullJSON(values map[string]any) []byte {
+	if values == nil {
+		return []byte("{}")
+	}
+
+	encoded, err := json.Marshal(values)
+	if err != nil || string(encoded) == "null" {
+		return []byte("{}")
+	}
+
+	return encoded
 }
 
 func (s *PostgresStore) MarkOnline(ctx context.Context, deviceID int64, seenAt time.Time) error {

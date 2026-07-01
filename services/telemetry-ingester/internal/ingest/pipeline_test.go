@@ -15,6 +15,16 @@ func TestDeduplicationKeyPrefersSourceMessageID(t *testing.T) {
 	}
 }
 
+func TestNonNullJSONDefaultsNilMapsToObject(t *testing.T) {
+	if string(nonNullJSON(nil)) != "{}" {
+		t.Fatal("expected nil maps to encode as an empty JSON object")
+	}
+
+	if string(nonNullJSON(map[string]any{"value": 10})) != `{"value":10}` {
+		t.Fatal("expected populated maps to encode normally")
+	}
+}
+
 func TestValidateMutateDerivePayload(t *testing.T) {
 	parameters := []Parameter{
 		{
