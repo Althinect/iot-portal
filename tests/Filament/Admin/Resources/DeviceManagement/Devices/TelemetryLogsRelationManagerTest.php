@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\Shared\Models\User;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use App\Filament\Admin\Resources\DeviceManagement\Devices\Pages\ViewDevice;
@@ -33,14 +33,15 @@ it('can render the telemetry logs relation manager on the view device page', fun
 });
 
 it('shows telemetry values in the modal without the device uuid column', function (): void {
-    $topic = SchemaVersionTopic::factory()->publish()->create([
-        'device_schema_version_id' => $this->device->device_schema_version_id,
+    $channel = DeviceChannel::factory()->telemetry()->create([
+        'device_profile_version_id' => $this->device->device_profile_version_id,
     ]);
 
     $telemetryLog = DeviceTelemetryLog::factory()
         ->forDevice($this->device)
-        ->forTopic($topic)
         ->create([
+            'device_profile_version_id' => $this->device->device_profile_version_id,
+            'device_channel_id' => $channel->id,
             'raw_payload' => [
                 'temperature' => 24.5,
                 'humidity' => 63,

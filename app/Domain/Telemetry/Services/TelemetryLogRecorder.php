@@ -5,11 +5,10 @@ declare(strict_types=1);
 namespace App\Domain\Telemetry\Services;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Models\DerivedParameterDefinition;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileDerivedParameterDefinition;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Telemetry\Enums\ValidationStatus;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use App\Events\TelemetryReceived;
@@ -31,27 +30,29 @@ class TelemetryLogRecorder
         ?Carbon $receivedAt = null,
         ?string $topicSuffix = null,
     ): DeviceTelemetryLog {
-        $device->loadMissing('schemaVersion');
+        $device->loadMissing('profileVersion.channels.parameters', 'profileVersion.derivedParameters');
 
-        $schemaVersion = $device->schemaVersion;
+        $profileVersion = $device->profileVersion;
 
-        if (! $schemaVersion instanceof DeviceSchemaVersion) {
-            throw new RuntimeException('Device schema version is required to record telemetry logs.');
+        if (! $profileVersion instanceof DeviceProfileVersion) {
+            throw new RuntimeException('Device profile version is required to record telemetry logs.');
         }
 
-        $topic = $this->resolveTopic($schemaVersion, $topicSuffix);
+        $channel = $this->resolveChannel($profileVersion, $topicSuffix);
 
-        $parameters = $topic instanceof SchemaVersionTopic
-            ? $topic->parameters()
+        $parameters = $channel instanceof DeviceChannel
+            ? $channel->parameters
                 ->where('is_active', true)
-                ->orderBy('sequence')
-                ->get()
-            : $schemaVersion->parameters()
-                ->where('parameter_definitions.is_active', true)
-                ->orderBy('parameter_definitions.sequence')
-                ->get();
+                ->sortBy('sequence')
+                ->values()
+            : $profileVersion->channels
+                ->filter(fn (DeviceChannel $candidate): bool => $candidate->isPublish())
+                ->flatMap(fn (DeviceChannel $candidate): Collection => $candidate->parameters)
+                ->where('is_active', true)
+                ->sortBy('sequence')
+                ->values();
 
-        $derivedParameters = $schemaVersion->derivedParameters()->get();
+        $derivedParameters = $profileVersion->derivedParameters;
 
         [$transformedValues, $validationStatus] = $this->evaluatePayload($payload, $parameters, $derivedParameters);
 
@@ -60,8 +61,8 @@ class TelemetryLogRecorder
 
         $log = DeviceTelemetryLog::create([
             'device_id' => $device->id,
-            'device_schema_version_id' => $schemaVersion->id,
-            'schema_version_topic_id' => $topic?->id,
+            'device_profile_version_id' => $profileVersion->id,
+            'device_channel_id' => $channel?->id,
             'raw_payload' => $payload,
             'transformed_values' => $transformedValues,
             'validation_status' => $validationStatus,
@@ -76,25 +77,21 @@ class TelemetryLogRecorder
         return $log;
     }
 
-    /**
-     * Resolve the topic for the given schema version and suffix.
-     */
-    private function resolveTopic(DeviceSchemaVersion $schemaVersion, ?string $topicSuffix): ?SchemaVersionTopic
+    private function resolveChannel(DeviceProfileVersion $profileVersion, ?string $topicSuffix): ?DeviceChannel
     {
         if ($topicSuffix === null) {
             return null;
         }
 
-        return $schemaVersion->topics()
-            ->where('suffix', $topicSuffix)
-            ->where('direction', TopicDirection::Publish)
-            ->first();
+        return $profileVersion->channels
+            ->filter(fn (DeviceChannel $channel): bool => $channel->isPublish())
+            ->first(fn (DeviceChannel $channel): bool => $channel->address === $topicSuffix || $channel->key === $topicSuffix);
     }
 
     /**
      * @param  array<string, mixed>  $payload
-     * @param  Collection<int, ParameterDefinition>  $parameters
-     * @param  Collection<int, DerivedParameterDefinition>  $derivedParameters
+     * @param  Collection<int, ProfileParameterDefinition>  $parameters
+     * @param  Collection<int, ProfileDerivedParameterDefinition>  $derivedParameters
      * @return array{0: array<string, mixed>, 1: ValidationStatus}
      */
     private function evaluatePayload(array $payload, Collection $parameters, Collection $derivedParameters): array
@@ -104,14 +101,16 @@ class TelemetryLogRecorder
         $hasCriticalInvalid = false;
 
         foreach ($parameters as $parameter) {
-            $result = $parameter->evaluatePayload($payload);
+            $rawValue = $parameter->extractValue($payload);
+            $mutatedValue = $parameter->mutateValue($rawValue);
+            $validation = $parameter->validateValue($mutatedValue);
 
-            $transformedValues[$parameter->key] = $result['mutated'];
+            $transformedValues[$parameter->key] = $mutatedValue;
 
-            if ($result['validation']['is_valid'] === false) {
+            if ($validation['is_valid'] === false) {
                 $hasInvalid = true;
 
-                if ($result['validation']['is_critical'] === true) {
+                if ($validation['is_critical'] === true) {
                     $hasCriticalInvalid = true;
                 }
             }
@@ -131,7 +130,7 @@ class TelemetryLogRecorder
     }
 
     /**
-     * @param  Collection<int, DerivedParameterDefinition>  $derivedParameters
+     * @param  Collection<int, ProfileDerivedParameterDefinition>  $derivedParameters
      * @param  array<string, mixed>  $inputs
      * @return array<string, mixed>
      */

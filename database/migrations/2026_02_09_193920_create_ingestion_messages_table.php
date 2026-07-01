@@ -17,8 +17,8 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->foreignId('organization_id')->nullable()->constrained()->nullOnDelete();
             $table->foreignId('device_id')->nullable()->constrained()->nullOnDelete();
-            $table->foreignId('device_schema_version_id')->nullable()->constrained('device_schema_versions')->nullOnDelete();
-            $table->foreignId('schema_version_topic_id')->nullable()->constrained('schema_version_topics')->nullOnDelete();
+            $table->foreignId('device_profile_version_id')->nullable()->constrained('device_profile_versions')->nullOnDelete();
+            $table->foreignId('device_channel_id')->nullable()->constrained('device_channels')->nullOnDelete();
             $table->string('source_subject', 255);
             $table->string('source_protocol', 50)->default('mqtt');
             $table->string('source_message_id', 255)->nullable();
@@ -31,6 +31,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['organization_id', 'status'], 'ingestion_messages_org_status_index');
+            $table->index(['device_id', 'device_channel_id'], 'ingestion_messages_device_channel_index');
             $table->index('received_at', 'ingestion_messages_received_at_index');
         });
     }

@@ -297,13 +297,13 @@
             </div>
         </x-slot>
 
-        <x-slot name="description">Select a command topic and control parameters. Enable advanced mode to send raw JSON.</x-slot>
+        <x-slot name="description">Select a command channel and control parameters. Enable advanced mode to send raw JSON.</x-slot>
 
-        @if(count($this->subscribeTopicOptions) > 0)
+        @if(count($this->subscribeChannelOptions) > 0)
             {{ $this->form }}
         @else
             <p style="color: rgb(107, 114, 128); font-size: 0.875rem;">
-                No subscribe topics configured for this device's schema version.
+                No command channels configured for this device profile version.
             </p>
         @endif
     </x-filament::section>
@@ -358,8 +358,8 @@
         </x-filament::section>
 
         <x-filament::section>
-            <x-slot name="heading">Device States (Per Topic)</x-slot>
-            <x-slot name="description">Last known state payloads keyed by publish topic.</x-slot>
+            <x-slot name="heading">Device States (Per Channel)</x-slot>
+            <x-slot name="description">Last known state payloads keyed by publish channel.</x-slot>
 
             <template x-if="Object.keys(topicStates).length === 0">
                 <div class="dc-state-empty">No state received yet.</div>

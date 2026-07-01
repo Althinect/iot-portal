@@ -36,8 +36,11 @@ class AlertInfolist
                         TextEntry::make('device.name')
                             ->label('Device')
                             ->placeholder('—'),
-                        TextEntry::make('parameterDefinition.label')
+                        TextEntry::make('parameter_key')
                             ->label('Parameter')
+                            ->placeholder('—'),
+                        TextEntry::make('deviceChannel.label')
+                            ->label('Channel')
                             ->placeholder('—'),
                         TextEntry::make('duration')
                             ->state(fn (Alert $record): string => $record->durationLabel()),

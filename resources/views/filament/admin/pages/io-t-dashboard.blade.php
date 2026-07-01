@@ -74,6 +74,8 @@
         @endif
     </div>
 
+    <x-filament-actions::modals />
+
     @push('scripts')
         <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js"></script>

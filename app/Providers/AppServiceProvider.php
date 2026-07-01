@@ -14,20 +14,21 @@ use App\Domain\DataIngestion\Contracts\AnalyticsPublisher;
 use App\Domain\DataIngestion\Contracts\HotStateStore;
 use App\Domain\DataIngestion\Listeners\QueueTelemetryAnalyticsPublishes;
 use App\Domain\DataIngestion\Listeners\QueueTelemetryHotStateWrites;
-use App\Domain\DataIngestion\Services\DeviceTelemetryTopicResolver;
 use App\Domain\DataIngestion\Services\NatsAnalyticsPublisher;
 use App\Domain\DataIngestion\Services\NatsKvHotStateStore;
-use App\Domain\DataIngestion\Services\TelemetrySchemaMetadataCache;
 use App\Domain\DeviceManagement\Publishing\Mqtt\MqttCommandPublisher;
 use App\Domain\DeviceManagement\Publishing\Mqtt\PhpMqttCommandPublisher;
 use App\Domain\DeviceManagement\Publishing\Nats\BasisNatsDeviceStateStore;
 use App\Domain\DeviceManagement\Publishing\Nats\BasisNatsPublisherFactory;
 use App\Domain\DeviceManagement\Publishing\Nats\NatsDeviceStateStore;
 use App\Domain\DeviceManagement\Publishing\Nats\NatsPublisherFactory;
-use App\Domain\DeviceSchema\Models\DerivedParameterDefinition;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceChannelLink;
+use App\Domain\DeviceProfile\Models\DeviceProfile;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileDerivedParameterDefinition;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
+use App\Domain\DeviceProfile\Services\DeviceProfileContractResolver;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
 use App\Domain\Reporting\Models\ReportRun;
@@ -37,6 +38,8 @@ use App\Domain\Shared\Services\RuntimeSettingManager;
 use App\Domain\Shared\Services\RuntimeSettingRegistry;
 use App\Events\TelemetryReceived;
 use App\Policies\AutomationWorkflowPolicy;
+use App\Policies\DeviceProfilePolicy;
+use App\Policies\DeviceProfileVersionPolicy;
 use App\Policies\IoTDashboardPolicy;
 use App\Policies\IoTDashboardWidgetPolicy;
 use App\Policies\ReportRunPolicy;
@@ -76,8 +79,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(RuntimeSettingRegistry::class);
         $this->app->scoped(RuntimeSettingManager::class);
         $this->app->singleton(HorizonRuntimeConfigurator::class);
-        $this->app->singleton(DeviceTelemetryTopicResolver::class);
-        $this->app->singleton(TelemetrySchemaMetadataCache::class);
+        $this->app->singleton(DeviceProfileContractResolver::class);
 
         if ($this->app->environment('local')) {
             $this->app->register(\Laravel\Telescope\TelescopeServiceProvider::class);
@@ -128,6 +130,8 @@ class AppServiceProvider extends ServiceProvider
         });
 
         Gate::policy(AutomationWorkflow::class, AutomationWorkflowPolicy::class);
+        Gate::policy(DeviceProfile::class, DeviceProfilePolicy::class);
+        Gate::policy(DeviceProfileVersion::class, DeviceProfileVersionPolicy::class);
         Gate::policy(IoTDashboard::class, IoTDashboardPolicy::class);
         Gate::policy(IoTDashboardWidget::class, IoTDashboardWidgetPolicy::class);
         Gate::policy(ReportRun::class, ReportRunPolicy::class);
@@ -144,18 +148,22 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(TelemetryReceived::class, QueueTelemetryHotStateWrites::class);
         Event::listen(TelemetryReceived::class, QueueTelemetryAnalyticsPublishes::class);
 
-        $invalidateTelemetrySchemaMetadata = static function (): void {
-            TelemetrySchemaMetadataCache::invalidateSharedVersion();
+        $invalidateDeviceProfileContracts = static function (): void {
+            DeviceProfileContractResolver::invalidateSharedVersion();
         };
 
-        ParameterDefinition::saved($invalidateTelemetrySchemaMetadata);
-        ParameterDefinition::deleted($invalidateTelemetrySchemaMetadata);
-        DerivedParameterDefinition::saved($invalidateTelemetrySchemaMetadata);
-        DerivedParameterDefinition::deleted($invalidateTelemetrySchemaMetadata);
-        SchemaVersionTopic::saved($invalidateTelemetrySchemaMetadata);
-        SchemaVersionTopic::deleted($invalidateTelemetrySchemaMetadata);
-        DeviceSchemaVersion::saved($invalidateTelemetrySchemaMetadata);
-        DeviceSchemaVersion::deleted($invalidateTelemetrySchemaMetadata);
+        DeviceProfile::saved($invalidateDeviceProfileContracts);
+        DeviceProfile::deleted($invalidateDeviceProfileContracts);
+        DeviceProfileVersion::saved($invalidateDeviceProfileContracts);
+        DeviceProfileVersion::deleted($invalidateDeviceProfileContracts);
+        DeviceChannel::saved($invalidateDeviceProfileContracts);
+        DeviceChannel::deleted($invalidateDeviceProfileContracts);
+        DeviceChannelLink::saved($invalidateDeviceProfileContracts);
+        DeviceChannelLink::deleted($invalidateDeviceProfileContracts);
+        ProfileParameterDefinition::saved($invalidateDeviceProfileContracts);
+        ProfileParameterDefinition::deleted($invalidateDeviceProfileContracts);
+        ProfileDerivedParameterDefinition::saved($invalidateDeviceProfileContracts);
+        ProfileDerivedParameterDefinition::deleted($invalidateDeviceProfileContracts);
 
         if ($this->shouldApplyHorizonRuntimeConfiguration()) {
             $this->app->make(HorizonRuntimeConfigurator::class)->apply();

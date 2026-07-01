@@ -7,8 +7,7 @@ namespace Database\Factories\Domain\Automation\Models;
 use App\Domain\Automation\Models\AutomationTelemetryTrigger;
 use App\Domain\Automation\Models\AutomationWorkflowVersion;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\Shared\Models\Organization;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -28,8 +27,9 @@ class AutomationTelemetryTriggerFactory extends Factory
             'organization_id' => Organization::factory(),
             'workflow_version_id' => AutomationWorkflowVersion::factory(),
             'device_id' => null,
-            'device_type_id' => null,
-            'schema_version_topic_id' => null,
+            'device_channel_id' => null,
+            'channel_key' => null,
+            'parameter_key' => null,
             'filter_expression' => null,
         ];
     }
@@ -39,21 +39,21 @@ class AutomationTelemetryTriggerFactory extends Factory
         return $this->state(fn (): array => [
             'organization_id' => $device->organization_id,
             'device_id' => $device->id,
-            'device_type_id' => $device->device_type_id,
         ]);
     }
 
-    public function forDeviceType(DeviceType $deviceType): static
+    public function forChannel(DeviceChannel $channel): static
     {
         return $this->state(fn (): array => [
-            'device_type_id' => $deviceType->id,
+            'device_channel_id' => $channel->id,
+            'channel_key' => $channel->key,
         ]);
     }
 
-    public function forTopic(SchemaVersionTopic $topic): static
+    public function forParameter(string $parameterKey): static
     {
         return $this->state(fn (): array => [
-            'schema_version_topic_id' => $topic->id,
+            'parameter_key' => $parameterKey,
         ]);
     }
 }

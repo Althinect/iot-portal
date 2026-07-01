@@ -29,11 +29,11 @@ final class ViewFirmwareAction
                     // ->fontFamily('mono')
                     ->copyable()
                     ->copyMessage('Firmware copied')
-                    ->copyableState(fn (Device $record): string => $record->schemaVersion?->renderFirmwareForDevice($record)
-                        ?? '// No firmware template is configured for this device schema version.')
+                    ->copyableState(fn (Device $record): string => $record->profileVersion?->renderFirmwareForDevice($record)
+                        ?? '// No firmware template is configured for this device profile version.')
                     ->state(
-                        fn (Device $record): string => $record->schemaVersion?->renderFirmwareForDevice($record)
-                            ?? '// No firmware template is configured for this device schema version.'
+                        fn (Device $record): string => $record->profileVersion?->renderFirmwareForDevice($record)
+                            ?? '// No firmware template is configured for this device profile version.'
                     )
                     // ->extraAttributes(['class' => 'whitespace-pre-wrap'])
                     ->columnSpanFull(),

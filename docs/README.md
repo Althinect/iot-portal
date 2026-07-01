@@ -17,6 +17,7 @@
 
 - [01 - Overview](device-management/01-overview.md)
 - [02 - Architecture](device-management/02-architecture.md)
+- [03 - Device Profile Redesign Proposal](device-management/03-device-profile-redesign.md)
 
 ### Device Schema
 

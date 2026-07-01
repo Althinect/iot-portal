@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\MetricUnit;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\MetricUnit;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 
 class TeejayTemperatureSeeder extends TeejayMigrationSeederSupport
 {
@@ -49,7 +49,7 @@ class TeejayTemperatureSeeder extends TeejayMigrationSeederSupport
                         'unit' => MetricUnit::Celsius->value,
                         'required' => true,
                         'is_critical' => true,
-                        'validation_rules' => ['min' => -100, 'max' => 500, 'category' => 'static'],
+                        'validation_rules' => ['min' => -100, 'max' => 1000, 'category' => 'static'],
                         'mutation_expression' => $schemaConfig['temperature_mutation'],
                         'sequence' => 1,
                     ],
@@ -62,7 +62,7 @@ class TeejayTemperatureSeeder extends TeejayMigrationSeederSupport
             $signature = $this->schemaSignatureFor($deviceConfig);
             $schemaVersion = $schemaVersions[$signature] ?? null;
 
-            if (! $parentDevice instanceof Device || ! $schemaVersion instanceof DeviceSchemaVersion || ! is_string($deviceConfig['peripheral_type_hex'])) {
+            if (! $parentDevice instanceof Device || ! $schemaVersion instanceof DeviceProfileVersion || ! is_string($deviceConfig['peripheral_type_hex'])) {
                 continue;
             }
 
@@ -89,16 +89,16 @@ class TeejayTemperatureSeeder extends TeejayMigrationSeederSupport
                 ],
             );
 
-            $topic = $schemaVersion->topics()->where('key', 'telemetry')->first();
+            $topic = $schemaVersion->channels()->where('key', 'telemetry')->first();
 
-            if (! $topic instanceof SchemaVersionTopic) {
+            if (! $topic instanceof DeviceChannel) {
                 continue;
             }
 
-            /** @var ParameterDefinition|null $parameter */
+            /** @var ProfileParameterDefinition|null $parameter */
             $parameter = $topic->parameters()->where('key', 'temperature')->first();
 
-            if (! $parameter instanceof ParameterDefinition) {
+            if (! $parameter instanceof ProfileParameterDefinition) {
                 continue;
             }
 

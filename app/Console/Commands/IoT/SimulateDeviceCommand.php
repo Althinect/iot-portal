@@ -6,7 +6,7 @@ namespace App\Console\Commands\IoT;
 
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Publishing\DevicePublishingSimulator;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use Illuminate\Console\Command;
 
 class SimulateDeviceCommand extends Command
@@ -48,15 +48,15 @@ class SimulateDeviceCommand extends Command
             return 1;
         }
 
-        $device->loadMissing('deviceType');
+        $device->loadMissing('profileVersion.channels');
 
         $this->info("Starting simulation for: {$device->name} ({$device->uuid})");
 
-        $publishTopics = $device->schemaVersion?->topics
-            ?->filter(fn (SchemaVersionTopic $topic): bool => $topic->isPublish());
+        $publishChannels = $device->profileVersion?->channels
+            ?->filter(fn (DeviceChannel $channel): bool => $channel->isPublish());
 
-        if (! $publishTopics || $publishTopics->isEmpty()) {
-            $this->error('No publish topics found for this device schema.');
+        if (! $publishChannels || $publishChannels->isEmpty()) {
+            $this->error('No publish channels found for this device profile.');
 
             return 1;
         }
@@ -70,12 +70,12 @@ class SimulateDeviceCommand extends Command
             intervalSeconds: $interval,
             host: $host,
             port: $port,
-            onBeforePublish: function (int $iteration, string $mqttTopic, array $payload, SchemaVersionTopic $topic) use ($count): void {
+            onBeforePublish: function (int $iteration, string $mqttTopic, array $payload, DeviceChannel $channel) use ($count): void {
                 $this->comment("Generating data point {$iteration}/{$count}...");
                 $this->line("  Topic: <info>{$mqttTopic}</info>");
                 $this->line('  Payload: '.json_encode($payload, JSON_PRETTY_PRINT));
             },
-            onPublishFailed: function (int $iteration, string $mqttTopic, \Throwable $exception, SchemaVersionTopic $topic): void {
+            onPublishFailed: function (int $iteration, string $mqttTopic, \Throwable $exception, DeviceChannel $channel): void {
                 $this->error("  Failed to publish on iteration {$iteration} for {$mqttTopic}: {$exception->getMessage()}");
             },
         );

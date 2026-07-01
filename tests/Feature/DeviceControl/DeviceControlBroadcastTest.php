@@ -80,7 +80,7 @@ it('DeviceStateReceived broadcasts on device-control channel', function (): void
 
 it('CommandCompleted broadcasts completion payload', function (): void {
     $commandLog = DeviceCommandLog::factory()->completed()->create();
-    $commandLog->load('device', 'topic');
+    $commandLog->load('device', 'channel');
 
     $event = new CommandCompleted($commandLog);
 
@@ -99,7 +99,7 @@ it('CommandTimedOut broadcasts timeout payload', function (): void {
         'status' => CommandStatus::Timeout,
         'error_message' => 'Command timed out waiting for device feedback.',
     ]);
-    $commandLog->load('device', 'topic');
+    $commandLog->load('device', 'channel');
 
     $event = new CommandTimedOut($commandLog);
 

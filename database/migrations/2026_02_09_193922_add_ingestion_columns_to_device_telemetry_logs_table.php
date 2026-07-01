@@ -14,10 +14,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('device_telemetry_logs', function (Blueprint $table) {
-            $table->uuid('ingestion_message_id')->nullable()->after('schema_version_topic_id');
-            $table->jsonb('validation_errors')->nullable()->after('raw_payload');
-            $table->jsonb('mutated_values')->nullable()->after('validation_errors');
-            $table->string('processing_state', 50)->default('processed')->after('validation_status');
+            $table->uuid('ingestion_message_id')->nullable()->after('device_channel_id');
 
             $table->foreign('ingestion_message_id')
                 ->references('id')
@@ -25,7 +22,6 @@ return new class extends Migration
                 ->nullOnDelete();
 
             $table->index('ingestion_message_id');
-            $table->index('processing_state');
         });
     }
 
@@ -37,8 +33,7 @@ return new class extends Migration
         Schema::table('device_telemetry_logs', function (Blueprint $table) {
             $table->dropForeign(['ingestion_message_id']);
             $table->dropIndex(['ingestion_message_id']);
-            $table->dropIndex(['processing_state']);
-            $table->dropColumn(['ingestion_message_id', 'validation_errors', 'mutated_values', 'processing_state']);
+            $table->dropColumn(['ingestion_message_id']);
         });
     }
 };

@@ -12,9 +12,8 @@ use App\Domain\Automation\Services\WorkflowGraphValidator;
 use App\Domain\Automation\Services\WorkflowNodeConfigValidator;
 use App\Domain\Automation\Services\WorkflowTelemetryTriggerCompiler;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 use Illuminate\Database\Seeder;
 
@@ -57,55 +56,45 @@ class AutomationSeeder extends Seeder
             ->where('external_id', self::RGB_CONTROLLER_EXTERNAL_ID)
             ->first();
 
-        $sourceSchemaVersionId = $sourceDevice instanceof Device
-            ? $this->resolvePositiveInt($sourceDevice->getAttribute('device_schema_version_id'))
-            : null;
-
-        $targetSchemaVersionId = $targetDevice instanceof Device
-            ? $this->resolvePositiveInt($targetDevice->getAttribute('device_schema_version_id'))
-            : null;
-
-        if (! $sourceDevice instanceof Device || ! $targetDevice instanceof Device || $sourceSchemaVersionId === null || $targetSchemaVersionId === null) {
+        if (! $sourceDevice instanceof Device || ! $targetDevice instanceof Device) {
             $this->command?->warn('Required source/target devices were not found. Run device seeders first.');
 
             return;
         }
 
-        $sourceTopic = SchemaVersionTopic::query()
-            ->where('device_schema_version_id', $sourceSchemaVersionId)
-            ->where('direction', TopicDirection::Publish->value)
+        $sourceChannel = DeviceChannel::query()
+            ->where('device_profile_version_id', $sourceDevice->device_profile_version_id)
             ->where('key', 'telemetry')
             ->first();
 
-        $currentSourceParameter = $sourceTopic instanceof SchemaVersionTopic
-            ? ParameterDefinition::query()
-                ->where('schema_version_topic_id', $sourceTopic->id)
+        $currentSourceParameter = $sourceChannel instanceof DeviceChannel
+            ? ProfileParameterDefinition::query()
+                ->where('device_channel_id', $sourceChannel->id)
                 ->where('key', 'A1')
                 ->where('is_active', true)
                 ->first()
             : null;
 
-        $energySourceParameter = $sourceTopic instanceof SchemaVersionTopic
-            ? ParameterDefinition::query()
-                ->where('schema_version_topic_id', $sourceTopic->id)
+        $energySourceParameter = $sourceChannel instanceof DeviceChannel
+            ? ProfileParameterDefinition::query()
+                ->where('device_channel_id', $sourceChannel->id)
                 ->where('key', 'total_energy_kwh')
                 ->where('is_active', true)
                 ->first()
             : null;
 
-        $targetTopic = SchemaVersionTopic::query()
-            ->where('device_schema_version_id', $targetSchemaVersionId)
-            ->where('direction', TopicDirection::Subscribe->value)
+        $targetChannel = DeviceChannel::query()
+            ->where('device_profile_version_id', $targetDevice->device_profile_version_id)
             ->where('key', 'lighting_control')
             ->first();
 
         if (
-            ! $sourceTopic instanceof SchemaVersionTopic
-            || ! $currentSourceParameter instanceof ParameterDefinition
-            || ! $energySourceParameter instanceof ParameterDefinition
-            || ! $targetTopic instanceof SchemaVersionTopic
+            ! $sourceChannel instanceof DeviceChannel
+            || ! $currentSourceParameter instanceof ProfileParameterDefinition
+            || ! $energySourceParameter instanceof ProfileParameterDefinition
+            || ! $targetChannel instanceof DeviceChannel
         ) {
-            $this->command?->warn('Required source/target topic configuration was not found. Run schema seeders first.');
+            $this->command?->warn('Required source/target channel configuration was not found. Run device profile seeders first.');
 
             return;
         }
@@ -116,10 +105,10 @@ class AutomationSeeder extends Seeder
             name: 'Energy Meter Current A1 to RGB Color',
             graph: $this->buildCurrentColorGraph(
                 sourceDeviceId: $sourceDevice->id,
-                sourceTopicId: $sourceTopic->id,
-                sourceParameterId: $currentSourceParameter->id,
+                sourceChannelId: $sourceChannel->id,
+                sourceParameterKey: $currentSourceParameter->key,
                 targetDeviceId: $targetDevice->id,
-                targetTopicId: $targetTopic->id,
+                targetChannelId: $targetChannel->id,
             ),
         );
 
@@ -129,10 +118,10 @@ class AutomationSeeder extends Seeder
             name: 'Energy Meter 15 Minute Consumption to RGB Alert',
             graph: $this->buildConsumptionWindowQueryGraph(
                 sourceDeviceId: $sourceDevice->id,
-                sourceTopicId: $sourceTopic->id,
-                sourceParameterId: $energySourceParameter->id,
+                sourceChannelId: $sourceChannel->id,
+                sourceParameterKey: $energySourceParameter->key,
                 targetDeviceId: $targetDevice->id,
-                targetTopicId: $targetTopic->id,
+                targetChannelId: $targetChannel->id,
             ),
         );
     }
@@ -142,10 +131,10 @@ class AutomationSeeder extends Seeder
      */
     private function buildCurrentColorGraph(
         int $sourceDeviceId,
-        int $sourceTopicId,
-        int $sourceParameterId,
+        int $sourceChannelId,
+        string $sourceParameterKey,
         int $targetDeviceId,
-        int $targetTopicId,
+        int $targetChannelId,
     ): array {
         return [
             'version' => 1,
@@ -158,8 +147,8 @@ class AutomationSeeder extends Seeder
                             'mode' => 'event',
                             'source' => [
                                 'device_id' => $sourceDeviceId,
-                                'topic_id' => $sourceTopicId,
-                                'parameter_definition_id' => $sourceParameterId,
+                                'device_channel_id' => $sourceChannelId,
+                                'parameter_key' => $sourceParameterKey,
                             ],
                         ],
                     ],
@@ -236,9 +225,9 @@ class AutomationSeeder extends Seeder
                         'config' => [
                             'target' => [
                                 'device_id' => $targetDeviceId,
-                                'topic_id' => $targetTopicId,
+                                'device_channel_id' => $targetChannelId,
                             ],
-                            'payload_mode' => 'schema_form',
+                            'payload_mode' => 'profile_form',
                             'payload' => [
                                 'power' => true,
                                 'brightness' => 100,
@@ -255,9 +244,9 @@ class AutomationSeeder extends Seeder
                         'config' => [
                             'target' => [
                                 'device_id' => $targetDeviceId,
-                                'topic_id' => $targetTopicId,
+                                'device_channel_id' => $targetChannelId,
                             ],
-                            'payload_mode' => 'schema_form',
+                            'payload_mode' => 'profile_form',
                             'payload' => [
                                 'power' => true,
                                 'brightness' => 100,
@@ -274,9 +263,9 @@ class AutomationSeeder extends Seeder
                         'config' => [
                             'target' => [
                                 'device_id' => $targetDeviceId,
-                                'topic_id' => $targetTopicId,
+                                'device_channel_id' => $targetChannelId,
                             ],
-                            'payload_mode' => 'schema_form',
+                            'payload_mode' => 'profile_form',
                             'payload' => [
                                 'power' => true,
                                 'brightness' => 100,
@@ -304,10 +293,10 @@ class AutomationSeeder extends Seeder
      */
     private function buildConsumptionWindowQueryGraph(
         int $sourceDeviceId,
-        int $sourceTopicId,
-        int $sourceParameterId,
+        int $sourceChannelId,
+        string $sourceParameterKey,
         int $targetDeviceId,
-        int $targetTopicId,
+        int $targetChannelId,
     ): array {
         return [
             'version' => 1,
@@ -320,8 +309,8 @@ class AutomationSeeder extends Seeder
                             'mode' => 'event',
                             'source' => [
                                 'device_id' => $sourceDeviceId,
-                                'topic_id' => $sourceTopicId,
-                                'parameter_definition_id' => $sourceParameterId,
+                                'device_channel_id' => $sourceChannelId,
+                                'parameter_key' => $sourceParameterKey,
                             ],
                         ],
                     ],
@@ -340,8 +329,8 @@ class AutomationSeeder extends Seeder
                                 [
                                     'alias' => 'source_1',
                                     'device_id' => $sourceDeviceId,
-                                    'topic_id' => $sourceTopicId,
-                                    'parameter_definition_id' => $sourceParameterId,
+                                    'device_channel_id' => $sourceChannelId,
+                                    'parameter_key' => $sourceParameterKey,
                                 ],
                             ],
                             'sql' => 'SELECT COALESCE(MAX(source_1.value) - MIN(source_1.value), 0) AS value FROM source_1',
@@ -375,9 +364,9 @@ class AutomationSeeder extends Seeder
                         'config' => [
                             'target' => [
                                 'device_id' => $targetDeviceId,
-                                'topic_id' => $targetTopicId,
+                                'device_channel_id' => $targetChannelId,
                             ],
-                            'payload_mode' => 'schema_form',
+                            'payload_mode' => 'profile_form',
                             'payload' => [
                                 'power' => true,
                                 'brightness' => 100,

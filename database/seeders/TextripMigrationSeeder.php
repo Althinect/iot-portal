@@ -6,19 +6,19 @@ namespace Database\Seeders;
 
 use App\Domain\DataIngestion\Models\DeviceSignalBinding;
 use App\Domain\DeviceManagement\Enums\MqttSecurityMode;
-use App\Domain\DeviceManagement\Enums\ProtocolType;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceManagement\ValueObjects\Protocol\MqttProtocolConfig;
-use App\Domain\DeviceSchema\Enums\MetricUnit;
-use App\Domain\DeviceSchema\Enums\ParameterCategory;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Enums\TopicPurpose;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ChannelDirection;
+use App\Domain\DeviceProfile\Enums\ChannelPurpose;
+use App\Domain\DeviceProfile\Enums\ChannelTransport;
+use App\Domain\DeviceProfile\Enums\MetricUnit;
+use App\Domain\DeviceProfile\Enums\ParameterCategory;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Enums\Protocol;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfile;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 use Illuminate\Database\Seeder;
 
@@ -528,8 +528,7 @@ class TextripMigrationSeeder extends Seeder
                     'external_id' => $hubConfig['imei'],
                 ],
                 [
-                    'device_type_id' => $hubSchemaVersion->schema->device_type_id,
-                    'device_schema_version_id' => $hubSchemaVersion->id,
+                    'device_profile_version_id' => $this->profileVersionForSchemaVersion($hubSchemaVersion)->id,
                     'parent_device_id' => null,
                     'name' => $hubConfig['name'],
                     'metadata' => [
@@ -549,7 +548,7 @@ class TextripMigrationSeeder extends Seeder
             $parentDevice = $hubs[$deviceConfig['hub_imei']] ?? null;
             $schemaVersion = $schemaVersions[$deviceConfig['schema_variant']] ?? null;
 
-            if (! $parentDevice instanceof Device || ! $schemaVersion instanceof DeviceSchemaVersion) {
+            if (! $parentDevice instanceof Device || ! $schemaVersion instanceof DeviceProfileVersion) {
                 continue;
             }
 
@@ -579,7 +578,7 @@ class TextripMigrationSeeder extends Seeder
             $parentDevice = $hubs[$deviceConfig['hub_imei']] ?? null;
             $schemaVersion = $schemaVersions[$deviceConfig['schema_variant']] ?? null;
 
-            if (! $parentDevice instanceof Device || ! $schemaVersion instanceof DeviceSchemaVersion) {
+            if (! $parentDevice instanceof Device || ! $schemaVersion instanceof DeviceProfileVersion) {
                 continue;
             }
 
@@ -606,7 +605,7 @@ class TextripMigrationSeeder extends Seeder
         }
     }
 
-    private function upsertHubSchemaVersion(): DeviceSchemaVersion
+    private function upsertHubSchemaVersion(): DeviceProfileVersion
     {
         return $this->upsertSchemaVersion(
             deviceTypeKey: self::HUB_DEVICE_TYPE_KEY,
@@ -634,14 +633,16 @@ class TextripMigrationSeeder extends Seeder
         $parameters = [];
 
         foreach (array_values(self::AC_PARAMETER_BINDINGS) as $index => $binding) {
+            $required = $binding['required'] ?? $binding['key'] === 'e1';
+
             $parameters[] = [
                 'key' => $binding['key'],
                 'label' => $binding['label'],
                 'json_path' => $binding['key'],
                 'type' => ParameterDataType::Decimal,
                 'unit' => $binding['unit'] ?? null,
-                'required' => $binding['required'] ?? true,
-                'is_critical' => in_array($binding['key'], ['TotalEnergy', 'TotalActivePower', 'PhaseAVoltage', 'PhaseBVoltage', 'PhaseCVoltage'], true),
+                'required' => $required,
+                'is_critical' => $required,
                 'category' => $binding['category'] ?? ParameterCategory::Measurement,
                 'validation_rules' => $binding['validation_rules'] ?? null,
                 'mutation_expression' => $includeVoltageAliasCalibration
@@ -684,36 +685,38 @@ class TextripMigrationSeeder extends Seeder
      *     metadata: array{msisdn: ?string, subNumber: ?string, accountNumber: ?string}
      * }  $deviceConfig
      */
-    private function syncAcBindings(Device $device, DeviceSchemaVersion $schemaVersion, array $deviceConfig): void
+    private function syncAcBindings(Device $device, DeviceProfileVersion $schemaVersion, array $deviceConfig): void
     {
-        $topic = $schemaVersion->topics()->where('key', 'telemetry')->first();
+        $topic = $schemaVersion->channels()->where('key', 'telemetry')->first();
 
-        if (! $topic instanceof SchemaVersionTopic) {
+        if (! $topic instanceof DeviceChannel) {
             throw new \RuntimeException('Textrip AC telemetry topic could not be resolved.');
         }
 
-        /** @var array<string, ParameterDefinition> $parametersByKey */
+        /** @var array<string, ProfileParameterDefinition> $parametersByKey */
         $parametersByKey = $topic->parameters()
             ->orderBy('sequence')
             ->get()
             ->keyBy('key')
             ->all();
 
-        $expectedParameterIds = [];
+        $expectedParameterKeys = [];
 
         foreach (self::AC_PARAMETER_BINDINGS as $binding) {
             $parameter = $parametersByKey[$binding['key']] ?? null;
 
-            if (! $parameter instanceof ParameterDefinition) {
+            if (! $parameter instanceof ProfileParameterDefinition) {
                 continue;
             }
 
-            $expectedParameterIds[] = $parameter->id;
+            $expectedParameterKeys[] = $parameter->key;
+            $channel = $this->profileChannelForParameter($device, $parameter);
 
             DeviceSignalBinding::query()->updateOrCreate(
                 [
                     'device_id' => $device->id,
-                    'parameter_definition_id' => $parameter->id,
+                    'device_channel_id' => $channel->id,
+                    'parameter_key' => $parameter->key,
                 ],
                 [
                     'source_topic' => $this->sourceTopicFor($deviceConfig['hub_imei'], $deviceConfig['peripheral_type_hex']),
@@ -733,7 +736,7 @@ class TextripMigrationSeeder extends Seeder
         DeviceSignalBinding::query()
             ->where('device_id', $device->id)
             ->where('source_adapter', 'imoni')
-            ->whereNotIn('parameter_definition_id', $expectedParameterIds)
+            ->whereNotIn('parameter_key', $expectedParameterKeys)
             ->delete();
     }
 
@@ -747,25 +750,28 @@ class TextripMigrationSeeder extends Seeder
      *     metadata: array{msisdn: ?string, subNumber: ?string, accountNumber: ?string}
      * }  $deviceConfig
      */
-    private function syncModbusBindings(Device $device, DeviceSchemaVersion $schemaVersion, array $deviceConfig): void
+    private function syncModbusBindings(Device $device, DeviceProfileVersion $schemaVersion, array $deviceConfig): void
     {
-        $topic = $schemaVersion->topics()->where('key', 'telemetry')->first();
+        $topic = $schemaVersion->channels()->where('key', 'telemetry')->first();
 
-        if (! $topic instanceof SchemaVersionTopic) {
+        if (! $topic instanceof DeviceChannel) {
             throw new \RuntimeException('Textrip Modbus telemetry topic could not be resolved.');
         }
 
-        /** @var ParameterDefinition|null $parameter */
+        /** @var ProfileParameterDefinition|null $parameter */
         $parameter = $topic->parameters()->where('key', 'ioid1')->first();
 
-        if (! $parameter instanceof ParameterDefinition) {
+        if (! $parameter instanceof ProfileParameterDefinition) {
             throw new \RuntimeException('Textrip Modbus parameter definition could not be resolved.');
         }
+
+        $channel = $this->profileChannelForParameter($device, $parameter);
 
         DeviceSignalBinding::query()->updateOrCreate(
             [
                 'device_id' => $device->id,
-                'parameter_definition_id' => $parameter->id,
+                'device_channel_id' => $channel->id,
+                'parameter_key' => $parameter->key,
             ],
             [
                 'source_topic' => $this->sourceTopicFor($deviceConfig['hub_imei'], $deviceConfig['peripheral_type_hex']),
@@ -784,7 +790,7 @@ class TextripMigrationSeeder extends Seeder
         DeviceSignalBinding::query()
             ->where('device_id', $device->id)
             ->where('source_adapter', 'imoni')
-            ->where('parameter_definition_id', '!=', $parameter->id)
+            ->where('parameter_key', '!=', $parameter->key)
             ->delete();
     }
 
@@ -800,37 +806,22 @@ class TextripMigrationSeeder extends Seeder
         int $version = 1,
         string $status = 'active',
         string $notes = 'Textrip migration onboarding schema.',
-    ): DeviceSchemaVersion {
-        $deviceType = DeviceType::query()->updateOrCreate(
+    ): DeviceProfileVersion {
+        $deviceType = DeviceProfile::query()->updateOrCreate(
             [
                 'organization_id' => null,
                 'key' => $deviceTypeKey,
             ],
             [
                 'name' => $deviceTypeName,
-                'default_protocol' => ProtocolType::Mqtt,
-                'protocol_config' => (new MqttProtocolConfig(
-                    brokerHost: 'nats',
-                    brokerPort: 1883,
-                    username: null,
-                    password: null,
-                    useTls: false,
-                    baseTopic: $baseTopic,
-                    securityMode: MqttSecurityMode::UsernamePassword,
-                ))->toArray(),
             ],
         );
 
-        $schema = DeviceSchema::query()->firstOrCreate(
-            [
-                'device_type_id' => $deviceType->id,
-                'name' => $schemaName,
-            ],
-        );
+        $schema = $deviceType;
 
-        $schemaVersion = DeviceSchemaVersion::query()->firstOrCreate(
+        $schemaVersion = DeviceProfileVersion::query()->firstOrCreate(
             [
-                'device_schema_id' => $schema->id,
+                'device_profile_id' => $schema->id,
                 'version' => $version,
             ],
             [
@@ -846,16 +837,67 @@ class TextripMigrationSeeder extends Seeder
             ]);
         }
 
-        $topic = SchemaVersionTopic::query()->updateOrCreate(
+        $topic = DeviceChannel::query()->updateOrCreate(
             [
-                'device_schema_version_id' => $schemaVersion->id,
+                'device_profile_version_id' => $schemaVersion->id,
                 'key' => 'telemetry',
             ],
             [
                 'label' => 'Telemetry',
-                'direction' => TopicDirection::Publish,
-                'purpose' => TopicPurpose::Telemetry,
-                'suffix' => 'telemetry',
+                'direction' => ChannelDirection::Publish,
+                'purpose' => ChannelPurpose::Telemetry,
+                'address' => 'telemetry',
+                'description' => 'Textrip migration onboarding topic.',
+                'qos' => 1,
+                'retain' => false,
+                'sequence' => 0,
+            ],
+        );
+
+        $profile = DeviceProfile::query()->updateOrCreate(
+            [
+                'organization_id' => null,
+                'key' => $deviceTypeKey,
+            ],
+            [
+                'name' => $deviceTypeName,
+                'tags' => null,
+            ],
+        );
+
+        $profileVersion = DeviceProfileVersion::query()->updateOrCreate(
+            [
+                'device_profile_id' => $profile->id,
+                'version' => $version,
+            ],
+            [
+                'status' => $status,
+                'protocol' => Protocol::Mqtt,
+                'protocol_config' => (new MqttProtocolConfig(
+                    brokerHost: 'nats',
+                    brokerPort: 1883,
+                    username: null,
+                    password: null,
+                    useTls: false,
+                    baseTopic: $baseTopic,
+                    securityMode: MqttSecurityMode::UsernamePassword,
+                ))->toArray(),
+                'notes' => $notes,
+            ],
+        );
+
+        $channel = DeviceChannel::query()->updateOrCreate(
+            [
+                'device_profile_version_id' => $profileVersion->id,
+                'key' => 'telemetry',
+            ],
+            [
+                'label' => 'Telemetry',
+                'direction' => ChannelDirection::Publish,
+                'purpose' => ChannelPurpose::Telemetry,
+                'transport' => ChannelTransport::Mqtt,
+                'address' => 'telemetry',
+                'http_method' => '',
                 'description' => 'Textrip migration onboarding topic.',
                 'qos' => 1,
                 'retain' => false,
@@ -864,9 +906,30 @@ class TextripMigrationSeeder extends Seeder
         );
 
         foreach ($parameters as $parameter) {
-            ParameterDefinition::query()->updateOrCreate(
+            ProfileParameterDefinition::query()->updateOrCreate(
                 [
-                    'schema_version_topic_id' => $topic->id,
+                    'device_channel_id' => $topic->id,
+                    'key' => $parameter['key'],
+                ],
+                [
+                    'label' => $parameter['label'],
+                    'json_path' => $parameter['json_path'],
+                    'type' => $parameter['type'],
+                    'unit' => $parameter['unit'] ?? null,
+                    'required' => $parameter['required'] ?? false,
+                    'is_critical' => $parameter['is_critical'] ?? false,
+                    'category' => $parameter['category'] ?? ParameterCategory::Measurement,
+                    'validation_rules' => $parameter['validation_rules'] ?? null,
+                    'control_ui' => $parameter['control_ui'] ?? null,
+                    'mutation_expression' => $parameter['mutation_expression'] ?? null,
+                    'sequence' => $parameter['sequence'] ?? 0,
+                    'is_active' => true,
+                ],
+            );
+
+            ProfileParameterDefinition::query()->updateOrCreate(
+                [
+                    'device_channel_id' => $channel->id,
                     'key' => $parameter['key'],
                 ],
                 [
@@ -891,12 +954,12 @@ class TextripMigrationSeeder extends Seeder
             $parameters,
         );
 
-        ParameterDefinition::query()
-            ->where('schema_version_topic_id', $topic->id)
+        ProfileParameterDefinition::query()
+            ->where('device_channel_id', $topic->id)
             ->whereNotIn('key', $parameterKeys)
             ->delete();
 
-        return $schemaVersion->fresh(['schema']);
+        return $schemaVersion->fresh(['profile']);
     }
 
     /**
@@ -905,7 +968,7 @@ class TextripMigrationSeeder extends Seeder
     private function upsertChildDevice(
         Organization $organization,
         Device $parentDevice,
-        DeviceSchemaVersion $schemaVersion,
+        DeviceProfileVersion $schemaVersion,
         string $externalId,
         string $name,
         array $metadata,
@@ -917,8 +980,7 @@ class TextripMigrationSeeder extends Seeder
                 'external_id' => $externalId,
             ],
             [
-                'device_type_id' => $schemaVersion->schema->device_type_id,
-                'device_schema_version_id' => $schemaVersion->id,
+                'device_profile_version_id' => $this->profileVersionForSchemaVersion($schemaVersion)->id,
                 'parent_device_id' => $parentDevice->id,
                 'name' => $name,
                 'metadata' => $metadata,
@@ -930,6 +992,45 @@ class TextripMigrationSeeder extends Seeder
         );
 
         return $device;
+    }
+
+    private function profileChannelForParameter(Device $device, ProfileParameterDefinition $parameter): DeviceChannel
+    {
+        $parameter->loadMissing('channel');
+
+        $channel = DeviceChannel::query()
+            ->where('device_profile_version_id', $device->device_profile_version_id)
+            ->where('key', $parameter->channel?->key)
+            ->first();
+
+        if (! $channel instanceof DeviceChannel) {
+            throw new \RuntimeException("Mirrored channel [{$parameter->channel?->key}] was not found for device [{$device->id}].");
+        }
+
+        return $channel;
+    }
+
+    private function profileVersionForSchemaVersion(DeviceProfileVersion $schemaVersion): DeviceProfileVersion
+    {
+        $schemaVersion->loadMissing('profile');
+        $deviceType = $schemaVersion->profile;
+
+        if (! $deviceType instanceof DeviceProfile) {
+            throw new \RuntimeException('Unable to resolve mirrored device profile.');
+        }
+
+        $profileVersion = DeviceProfileVersion::query()
+            ->where('version', (int) $schemaVersion->version)
+            ->whereHas('profile', fn ($query) => $query
+                ->whereNull('organization_id')
+                ->where('key', $deviceType->key))
+            ->first();
+
+        if (! $profileVersion instanceof DeviceProfileVersion) {
+            throw new \RuntimeException("Mirrored profile version [{$deviceType->key}:{$schemaVersion->version}] was not found.");
+        }
+
+        return $profileVersion;
     }
 
     private function sourceTopicFor(string $hubImei, string $peripheralTypeHex): string

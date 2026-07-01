@@ -149,9 +149,9 @@ trait InteractsWithVirtualDeviceLinks
             ->all();
 
         $sourceDevices = Device::query()
-            ->with('deviceType:id,key')
+            ->with('profileVersion.profile:id,key')
             ->whereIn('id', $sourceDeviceIds)
-            ->get(['id', 'organization_id', 'device_type_id', 'is_virtual'])
+            ->get(['id', 'organization_id', 'device_profile_version_id', 'is_virtual'])
             ->keyBy('id');
 
         $seenCombinations = [];
@@ -204,11 +204,11 @@ trait InteractsWithVirtualDeviceLinks
             }
 
             if ($profile !== null) {
-                $allowedDeviceTypeKeys = $registry->allowedDeviceTypeKeysForPurpose($profile, $purpose);
-                $sourceDeviceTypeKey = $sourceDevice->deviceType?->key;
+                $allowedDeviceProfileKeys = $registry->allowedDeviceProfileKeysForPurpose($profile, $purpose);
+                $sourceProfileKey = $sourceDevice->profileVersion?->profile?->key;
 
-                if ($allowedDeviceTypeKeys !== [] && (! is_string($sourceDeviceTypeKey) || ! in_array($sourceDeviceTypeKey, $allowedDeviceTypeKeys, true))) {
-                    $allowedSourceTypes = collect($allowedDeviceTypeKeys)
+                if ($allowedDeviceProfileKeys !== [] && (! is_string($sourceProfileKey) || ! in_array($sourceProfileKey, $allowedDeviceProfileKeys, true))) {
+                    $allowedSourceTypes = collect($allowedDeviceProfileKeys)
                         ->map(fn (string $key): string => Str::headline($key))
                         ->implode(', ');
 
@@ -281,13 +281,13 @@ trait InteractsWithVirtualDeviceLinks
      */
     private function resolveVirtualStandardProfile(array $data, ?Device $device = null): ?VirtualStandardProfile
     {
-        $deviceTypeId = $data['device_type_id'] ?? $device?->device_type_id;
+        $profileVersionId = $data['device_profile_version_id'] ?? $device?->device_profile_version_id;
 
-        if (! is_numeric($deviceTypeId)) {
+        if (! is_numeric($profileVersionId)) {
             return null;
         }
 
-        return app(VirtualStandardProfileRegistry::class)->forDeviceTypeId((int) $deviceTypeId);
+        return app(VirtualStandardProfileRegistry::class)->forDeviceProfileVersionId((int) $profileVersionId);
     }
 
     /**

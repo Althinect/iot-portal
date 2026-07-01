@@ -7,9 +7,9 @@ namespace App\Domain\DataIngestion\Services;
 use App\Domain\DataIngestion\DTO\IncomingTelemetryEnvelope;
 use App\Domain\DataIngestion\Models\DeviceSignalBinding;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -49,12 +49,7 @@ class DeviceSignalBindingResolver
 
         return $bindings
             ->groupBy(function (DeviceSignalBinding $binding): string {
-                $parameterDefinition = $binding->parameterDefinition;
-                $topicId = $parameterDefinition instanceof ParameterDefinition
-                    ? $parameterDefinition->schema_version_topic_id
-                    : 0;
-
-                return $binding->device_id.'::'.$topicId;
+                return $binding->device_id.'::'.$binding->device_channel_id;
             })
             ->map(function (Collection $bindingGroup) use ($envelope): ?IncomingTelemetryEnvelope {
                 /** @var DeviceSignalBinding|null $firstBinding */
@@ -65,16 +60,28 @@ class DeviceSignalBindingResolver
                 }
 
                 $device = $firstBinding->device;
-                $parameterDefinition = $firstBinding->parameterDefinition;
-                $topic = $parameterDefinition?->topic;
+                $channel = $firstBinding->deviceChannel;
 
                 if (
                     ! $device instanceof Device
-                    || ! $parameterDefinition instanceof ParameterDefinition
-                    || ! $topic instanceof SchemaVersionTopic
+                    || ! $channel instanceof DeviceChannel
                 ) {
                     return null;
                 }
+
+                $parameterKeys = $bindingGroup
+                    ->map(fn (DeviceSignalBinding $binding): string => (string) $binding->parameter_key)
+                    ->filter(static fn (string $key): bool => trim($key) !== '')
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                $parameters = ProfileParameterDefinition::query()
+                    ->where('device_channel_id', $channel->id)
+                    ->whereIn('key', $parameterKeys)
+                    ->where('is_active', true)
+                    ->get()
+                    ->keyBy('key');
 
                 $payload = [
                     '_meta' => array_filter([
@@ -94,9 +101,9 @@ class DeviceSignalBindingResolver
                         continue;
                     }
 
-                    $parameterDefinition = $binding->parameterDefinition;
+                    $parameterDefinition = $parameters->get((string) $binding->parameter_key);
 
-                    if (! $parameterDefinition instanceof ParameterDefinition) {
+                    if (! $parameterDefinition instanceof ProfileParameterDefinition) {
                         continue;
                     }
 
@@ -112,7 +119,7 @@ class DeviceSignalBindingResolver
                     return null;
                 }
 
-                $resolvedTopic = $topic->resolvedTopic($device);
+                $resolvedTopic = $this->resolvedChannelAddress($channel, $device);
 
                 return new IncomingTelemetryEnvelope(
                     sourceSubject: $envelope->sourceSubject.'#'.$resolvedTopic,
@@ -134,9 +141,8 @@ class DeviceSignalBindingResolver
 
         $bindings = DeviceSignalBinding::query()
             ->with([
-                'device.deviceType',
-                'device.schemaVersion.topics',
-                'parameterDefinition.topic',
+                'device.profileVersion',
+                'deviceChannel',
             ])
             ->where('is_active', true)
             ->orderBy('source_topic')
@@ -169,7 +175,7 @@ class DeviceSignalBindingResolver
         return $this->lastRegistryRefreshAt->diffInSeconds(now()) > $ttlSeconds;
     }
 
-    private function coerceValueForParameter(mixed $value, ParameterDefinition $parameterDefinition): mixed
+    private function coerceValueForParameter(mixed $value, ProfileParameterDefinition $parameterDefinition): mixed
     {
         return match ($parameterDefinition->type) {
             ParameterDataType::Integer => $this->coerceInteger($value),
@@ -222,5 +228,29 @@ class DeviceSignalBindingResolver
         }
 
         return $value;
+    }
+
+    private function resolvedChannelAddress(DeviceChannel $channel, Device $device): string
+    {
+        $deviceIdentifier = is_string($device->external_id) && trim($device->external_id) !== ''
+            ? trim($device->external_id)
+            : (string) $device->uuid;
+        $address = trim((string) $channel->address, '/');
+
+        if (! str_contains($address, '{') && ! str_contains($address, '/')) {
+            $baseTopic = $device->profileVersion?->protocol_config?->getBaseTopic();
+            $baseTopic = is_string($baseTopic) && trim($baseTopic) !== ''
+                ? trim($baseTopic, '/')
+                : 'device';
+
+            return "{$baseTopic}/{$deviceIdentifier}/{$address}";
+        }
+
+        return strtr($address, [
+            '{device}' => $deviceIdentifier,
+            '{device_id}' => $deviceIdentifier,
+            '{device_external_id}' => $deviceIdentifier,
+            '{device_uuid}' => (string) $device->uuid,
+        ]);
     }
 }

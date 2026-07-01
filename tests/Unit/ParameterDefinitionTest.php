@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use Tests\TestCase;
 
 uses(TestCase::class);
 
 it('extracts values from payloads using json path', function (): void {
-    $definition = new ParameterDefinition([
+    $definition = new ProfileParameterDefinition([
         'json_path' => '$.status.temp',
         'type' => ParameterDataType::Decimal,
     ]);
@@ -24,7 +24,7 @@ it('extracts values from payloads using json path', function (): void {
 });
 
 it('applies JsonLogic mutation expressions to values', function (): void {
-    $definition = new ParameterDefinition([
+    $definition = new ProfileParameterDefinition([
         'json_path' => 'temp_c',
         'type' => ParameterDataType::Decimal,
         'mutation_expression' => [
@@ -45,7 +45,7 @@ it('applies JsonLogic mutation expressions to values', function (): void {
 });
 
 it('validates required and critical flags', function (): void {
-    $definition = new ParameterDefinition([
+    $definition = new ProfileParameterDefinition([
         'required' => true,
         'is_critical' => true,
         'type' => ParameterDataType::Integer,
@@ -60,7 +60,7 @@ it('validates required and critical flags', function (): void {
 });
 
 it('returns explicit default value when set', function (): void {
-    $definition = new ParameterDefinition([
+    $definition = new ProfileParameterDefinition([
         'type' => ParameterDataType::Integer,
         'default_value' => 42,
     ]);
@@ -69,7 +69,7 @@ it('returns explicit default value when set', function (): void {
 });
 
 it('returns type-appropriate default when no explicit default is set', function (ParameterDataType $type, mixed $expected): void {
-    $definition = new ParameterDefinition([
+    $definition = new ProfileParameterDefinition([
         'type' => $type,
         'default_value' => null,
     ]);
@@ -84,7 +84,7 @@ it('returns type-appropriate default when no explicit default is set', function 
 ]);
 
 it('places a value into a flat payload using json_path', function (): void {
-    $definition = new ParameterDefinition([
+    $definition = new ProfileParameterDefinition([
         'json_path' => 'fan_speed',
         'type' => ParameterDataType::Integer,
     ]);
@@ -95,7 +95,7 @@ it('places a value into a flat payload using json_path', function (): void {
 });
 
 it('places a value into a nested payload using json_path', function (): void {
-    $definition = new ParameterDefinition([
+    $definition = new ProfileParameterDefinition([
         'json_path' => 'status.fan_speed',
         'type' => ParameterDataType::Integer,
     ]);
@@ -111,7 +111,7 @@ it('places a value into a nested payload using json_path', function (): void {
 });
 
 it('places a value into a nested payload using dollar-prefix json_path', function (): void {
-    $definition = new ParameterDefinition([
+    $definition = new ProfileParameterDefinition([
         'json_path' => '$.config.mode',
         'type' => ParameterDataType::String,
     ]);

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+
 class TeejayMigrationSeederSupport extends LegacyImoniMigrationSeederSupport
 {
     protected function organizationSlug(): string
@@ -19,6 +21,11 @@ class TeejayMigrationSeederSupport extends LegacyImoniMigrationSeederSupport
     protected function hubInventory(): array
     {
         return TeejayMigrationInventory::hubs();
+    }
+
+    protected function displayNameForProfile(string $name, DeviceProfileVersion $profileVersion): string
+    {
+        return $this->energyProfileDisplayName($name, $profileVersion);
     }
 
     /**

@@ -80,7 +80,8 @@ class StartAutomationRunFromTelemetry implements ShouldQueue
             'trigger_payload' => [
                 'telemetry_log_id' => $telemetryLog->id,
                 'device_id' => $telemetryLog->device_id,
-                'schema_version_topic_id' => $telemetryLog->schema_version_topic_id,
+                'device_channel_id' => $telemetryLog->device_channel_id,
+                'channel_key' => $telemetryLog->channel?->key,
                 'event_correlation_id' => $eventCorrelationId,
                 'run_correlation_id' => $runCorrelationId,
             ],

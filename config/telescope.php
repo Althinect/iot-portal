@@ -121,7 +121,6 @@ return [
         'iot:ingest-telemetry',
         'iot:listen-for-device-states',
         'iot:listen-for-device-presence',
-        'iot:mock-device',
     ],
 
     /*

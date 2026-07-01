@@ -8,7 +8,7 @@ use App\Domain\DataIngestion\Contracts\AnalyticsPublisher;
 use App\Domain\DataIngestion\Models\IngestionMessage;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Publishing\Nats\NatsPublisherFactory;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 
 class NatsAnalyticsPublisher implements AnalyticsPublisher
 {
@@ -19,16 +19,16 @@ class NatsAnalyticsPublisher implements AnalyticsPublisher
     /**
      * @param  array<string, mixed>  $finalValues
      */
-    public function publishTelemetry(Device $device, SchemaVersionTopic $topic, array $finalValues, IngestionMessage $ingestionMessage): void
+    public function publishTelemetry(Device $device, DeviceChannel $channel, array $finalValues, IngestionMessage $ingestionMessage): void
     {
-        $subject = $this->buildTelemetrySubject($device, $topic);
+        $subject = $this->buildTelemetrySubject($device, $channel);
         $payload = [
             'ingestion_message_id' => $ingestionMessage->id,
             'organization_id' => $device->organization_id,
             'device_uuid' => $device->uuid,
             'device_external_id' => $device->external_id,
-            'topic_key' => $topic->key,
-            'topic_suffix' => $topic->suffix,
+            'channel_key' => $channel->key,
+            'channel_address' => $channel->address,
             'recorded_at' => now()->toIso8601String(),
             'values' => $finalValues,
         ];
@@ -39,7 +39,7 @@ class NatsAnalyticsPublisher implements AnalyticsPublisher
     /**
      * @param  array<string, mixed>  $validationErrors
      */
-    public function publishInvalid(Device $device, SchemaVersionTopic $topic, array $validationErrors, IngestionMessage $ingestionMessage): void
+    public function publishInvalid(Device $device, DeviceChannel $channel, array $validationErrors, IngestionMessage $ingestionMessage): void
     {
         $reason = $this->resolveInvalidReason($validationErrors);
 
@@ -49,8 +49,8 @@ class NatsAnalyticsPublisher implements AnalyticsPublisher
             'organization_id' => $device->organization_id,
             'device_uuid' => $device->uuid,
             'device_external_id' => $device->external_id,
-            'topic_key' => $topic->key,
-            'topic_suffix' => $topic->suffix,
+            'channel_key' => $channel->key,
+            'channel_address' => $channel->address,
             'recorded_at' => now()->toIso8601String(),
             'errors' => $validationErrors,
         ];
@@ -76,7 +76,7 @@ class NatsAnalyticsPublisher implements AnalyticsPublisher
         $publisher->publish($subject, is_string($encodedPayload) ? $encodedPayload : '{}');
     }
 
-    private function buildTelemetrySubject(Device $device, SchemaVersionTopic $topic): string
+    private function buildTelemetrySubject(Device $device, DeviceChannel $channel): string
     {
         $prefixValue = config('ingestion.nats.analytics_subject_prefix', 'iot.v1.analytics');
         $environment = config('ingestion.subject.environment', app()->environment());
@@ -87,7 +87,7 @@ class NatsAnalyticsPublisher implements AnalyticsPublisher
             $this->sanitizeToken(is_scalar($environment) ? (string) $environment : app()->environment()),
             $this->sanitizeToken((string) $device->organization_id),
             $this->sanitizeToken($device->uuid),
-            $this->sanitizeToken($topic->key),
+            $this->sanitizeToken($channel->key),
         ]);
     }
 

@@ -5,12 +5,11 @@ declare(strict_types=1);
 namespace App\Filament\Admin\Resources\DeviceManagement\Devices\Schemas;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceManagement\Services\VirtualStandardProfileRegistry;
 use App\Domain\DeviceManagement\ValueObjects\VirtualStandards\VirtualStandardProfile;
 use App\Domain\DeviceManagement\ValueObjects\VirtualStandards\VirtualStandardShiftSchedule;
 use App\Domain\DeviceManagement\ValueObjects\VirtualStandards\VirtualStandardSource;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Support\DeviceSelectOptions;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\KeyValue;
@@ -58,49 +57,23 @@ class DeviceForm
                             ->required()
                             ->searchable()
                             ->preload()
-                            ->default(function (): ?int {
-                                $organizationId = request()->query('organization_id');
-
-                                if (is_numeric($organizationId)) {
-                                    return (int) $organizationId;
-                                }
-
-                                $deviceTypeId = request()->query('device_type_id');
-
-                                if (! is_numeric($deviceTypeId)) {
-                                    return null;
-                                }
-
-                                $organization = DeviceType::query()
-                                    ->whereKey((int) $deviceTypeId)
-                                    ->value('organization_id');
-
-                                return is_numeric($organization) ? (int) $organization : null;
-                            })
+                            ->default(fn (): ?int => is_numeric(request()->query('organization_id')) ? (int) request()->query('organization_id') : null)
                             ->live()
                             ->afterStateUpdated(function (Set $set): void {
-                                $set('device_type_id', null);
-                                $set('device_schema_version_id', null);
+                                $set('device_profile_version_id', null);
                                 $set('parent_device_id', null);
                                 $set('virtual_device_links', []);
                             }),
 
-                        Select::make('device_type_id')
-                            ->label('Device Type')
-                            ->options(fn (Get $get): array => self::deviceTypeOptions($get))
+                        Select::make('device_profile_version_id')
+                            ->label('Device Profile Version')
+                            ->options(fn (Get $get): array => self::profileVersionOptions($get))
                             ->required()
                             ->searchable()
-                            ->default(function (): ?int {
-                                $deviceTypeId = request()->query('device_type_id');
-
-                                return is_numeric($deviceTypeId) ? (int) $deviceTypeId : null;
-                            })
+                            ->default(fn (): ?int => self::defaultActiveProfileVersionId(request()->query('profile_id')))
                             ->live()
-                            ->helperText('Includes global catalog types plus organization-specific types for the selected organization.')
+                            ->helperText('The selected profile version is the device contract for telemetry, commands, validation, and firmware.')
                             ->afterStateUpdated(function (Set $set, Get $get): void {
-                                $defaultSchemaVersionId = self::defaultActiveSchemaVersionId($get('device_type_id'));
-                                $set('device_schema_version_id', $defaultSchemaVersionId);
-
                                 $profile = self::selectedVirtualStandardProfile($get);
 
                                 if ($profile === null) {
@@ -118,15 +91,6 @@ class DeviceForm
 
                                 $set('virtual_device_links', self::defaultVirtualDeviceLinksForProfile($profile));
                             }),
-
-                        Select::make('device_schema_version_id')
-                            ->label('Schema Version')
-                            ->options(fn (Get $get): array => self::schemaVersionOptions($get))
-                            ->required()
-                            ->searchable()
-                            ->default(fn (): ?int => self::defaultActiveSchemaVersionId(request()->query('device_type_id')))
-                            ->disabled(fn (Get $get) => ! $get('device_type_id'))
-                            ->helperText('Only active schema versions for the selected device type are shown'),
 
                         Toggle::make('is_virtual')
                             ->label('Virtual Device')
@@ -152,19 +116,13 @@ class DeviceForm
                         Placeholder::make('onboarding_hint')
                             ->label('Onboarding Hint')
                             ->content(function (Get $get): string {
-                                $deviceTypeId = $get('device_type_id');
+                                $profileVersionId = $get('device_profile_version_id');
 
-                                if (! is_numeric($deviceTypeId)) {
-                                    return 'Select an organization and device type to load active schema versions.';
+                                if (! is_numeric($profileVersionId)) {
+                                    return 'Select an organization and profile version before onboarding the device.';
                                 }
 
-                                $schemaOptions = self::schemaVersionOptions($get);
-
-                                if ($schemaOptions === []) {
-                                    return 'This device type has no active schema version yet. Create/activate a schema version before onboarding devices.';
-                                }
-
-                                return 'Schema version is preselected to the latest active version. You can still choose another active version.';
+                                return 'The selected profile version defines channels, payload parameters, commands, firmware, and ingestion behavior.';
                             })
                             ->columnSpanFull(),
                     ])
@@ -187,9 +145,9 @@ class DeviceForm
                             ->label('Expected Source Purposes')
                             ->content(fn (Get $get): string => self::selectedVirtualStandardPurposeSummary($get))
                             ->columnSpanFull(),
-                        Placeholder::make('standard_profile_source_types')
-                            ->label('Allowed Source Device Types')
-                            ->content(fn (Get $get): string => self::selectedVirtualStandardSourceTypeSummary($get))
+                        Placeholder::make('standard_profile_source_profiles')
+                            ->label('Allowed Source Device Profiles')
+                            ->content(fn (Get $get): string => self::selectedVirtualStandardSourceProfileSummary($get))
                             ->columnSpanFull(),
                     ])
                     ->columns(2),
@@ -282,82 +240,60 @@ class DeviceForm
     /**
      * @return array<int, string>
      */
-    private static function deviceTypeOptions(Get $get): array
+    private static function profileVersionOptions(Get $get): array
     {
         $organizationId = $get('organization_id');
 
-        $query = DeviceType::query()
-            ->orderBy('name');
+        $query = DeviceProfileVersion::query()
+            ->with('profile')
+            ->where('status', 'active')
+            ->orderByDesc('version');
 
         if (is_numeric($organizationId)) {
             $query->where(function ($scope) use ($organizationId): void {
-                $scope
+                $scope->whereHas('profile', fn ($profileQuery) => $profileQuery
                     ->whereNull('organization_id')
-                    ->orWhere('organization_id', (int) $organizationId);
+                    ->orWhere('organization_id', (int) $organizationId));
             });
         } else {
-            $query->whereNull('organization_id');
+            $query->whereHas('profile', fn ($profileQuery) => $profileQuery->whereNull('organization_id'));
         }
 
         return $query
-            ->get(['id', 'name', 'key', 'organization_id', 'virtual_standard_profile'])
-            ->mapWithKeys(function (DeviceType $deviceType): array {
-                $scopeSuffix = $deviceType->organization_id === null ? ' (Global)' : '';
-                $profileSuffix = $deviceType->isVirtualStandard() ? ' · Standard Profile' : '';
+            ->get(['id', 'device_profile_id', 'version', 'status', 'protocol', 'virtual_standard_profile'])
+            ->groupBy(fn (DeviceProfileVersion $version): string => $version->profile?->name ?? 'Profile')
+            ->map(function ($versions): array {
+                return $versions
+                    ->mapWithKeys(function (DeviceProfileVersion $version): array {
+                        $scopeSuffix = $version->profile?->organization_id === null ? 'Global' : 'Organization';
+                        $profileSuffix = is_array($version->virtual_standard_profile) ? ' · Standard Profile' : '';
 
-                return [
-                    (int) $deviceType->id => "{$deviceType->name}{$scopeSuffix}{$profileSuffix}",
-                ];
+                        return [
+                            (int) $version->id => "v{$version->version} · {$version->protocol->getLabel()} · {$scopeSuffix}{$profileSuffix}",
+                        ];
+                    })
+                    ->all();
             })
             ->all();
     }
 
-    /**
-     * @return array<int, string>
-     */
-    private static function schemaVersionOptions(Get $get): array
+    private static function defaultActiveProfileVersionId(mixed $profileId): ?int
     {
-        $deviceTypeId = $get('device_type_id');
-
-        if (! is_numeric($deviceTypeId)) {
-            return [];
-        }
-
-        return DeviceSchemaVersion::query()
-            ->with('schema')
-            ->whereHas('schema', fn ($query) => $query->where('device_type_id', (int) $deviceTypeId))
-            ->where('status', 'active')
-            ->orderByDesc('version')
-            ->get(['id', 'device_schema_id', 'version'])
-            ->mapWithKeys(function (DeviceSchemaVersion $schemaVersion): array {
-                $schemaName = data_get($schemaVersion, 'schema.name', 'Schema');
-                $schemaName = is_string($schemaName) && trim($schemaName) !== '' ? $schemaName : 'Schema';
-                $version = (string) $schemaVersion->version;
-
-                return [
-                    (int) $schemaVersion->id => "{$schemaName} · v{$version}",
-                ];
-            })
-            ->all();
-    }
-
-    private static function defaultActiveSchemaVersionId(mixed $deviceTypeId): ?int
-    {
-        if (! is_numeric($deviceTypeId)) {
+        if (! is_numeric($profileId)) {
             return null;
         }
 
-        $schemaVersion = DeviceSchemaVersion::query()
-            ->whereHas('schema', fn ($query) => $query->where('device_type_id', (int) $deviceTypeId))
+        $profileVersion = DeviceProfileVersion::query()
+            ->where('device_profile_id', (int) $profileId)
             ->where('status', 'active')
             ->orderByDesc('version')
             ->first(['id']);
 
-        if ($schemaVersion === null) {
+        if ($profileVersion === null) {
             return null;
         }
 
-        return (int) $schemaVersion->id;
+        return (int) $profileVersion->id;
     }
 
     /**
@@ -418,11 +354,11 @@ class DeviceForm
     }
 
     /**
-     * Resolve the selected managed virtual standard profile for the current device type state.
+     * Resolve the selected managed virtual standard profile for the current profile-version state.
      */
     private static function selectedVirtualStandardProfile(Get $get): ?VirtualStandardProfile
     {
-        return self::virtualStandardRegistry()->forDeviceTypeId($get('device_type_id'));
+        return self::virtualStandardRegistry()->forDeviceProfileVersionId($get('device_profile_version_id'));
     }
 
     /**
@@ -482,23 +418,23 @@ class DeviceForm
 
     private static function sourceDeviceHelperText(Get $get): string
     {
-        $allowedDeviceTypeKeys = self::allowedSourceDeviceTypeKeys($get);
+        $allowedDeviceProfileKeys = self::allowedSourceDeviceProfileKeys($get);
 
-        if ($allowedDeviceTypeKeys === []) {
+        if ($allowedDeviceProfileKeys === []) {
             return 'Only physical devices from the selected organization can be attached.';
         }
 
-        $allowedDeviceTypes = collect($allowedDeviceTypeKeys)
+        $allowedDeviceProfiles = collect($allowedDeviceProfileKeys)
             ->map(fn (string $key): string => Str::headline($key))
             ->implode(', ');
 
-        return "Only physical devices from the selected organization with these types can be attached: {$allowedDeviceTypes}.";
+        return "Only physical devices from the selected organization with these profiles can be attached: {$allowedDeviceProfiles}.";
     }
 
     /**
      * @return array<int, string>
      */
-    private static function allowedSourceDeviceTypeKeys(Get $get): array
+    private static function allowedSourceDeviceProfileKeys(Get $get): array
     {
         $profile = self::selectedVirtualStandardProfile($get);
         $purpose = self::resolvedPurpose($get);
@@ -507,7 +443,7 @@ class DeviceForm
             return [];
         }
 
-        return self::virtualStandardRegistry()->allowedDeviceTypeKeysForPurpose($profile, $purpose);
+        return self::virtualStandardRegistry()->allowedDeviceProfileKeysForPurpose($profile, $purpose);
     }
 
     private static function resolvedPurpose(Get $get): ?string
@@ -546,14 +482,14 @@ class DeviceForm
 
         return collect($profile->sources)
             ->map(function (VirtualStandardSource $source): string {
-                $suffix = $source->required ? 'required' : 'optional';
+                $address = $source->required ? 'required' : 'optional';
 
-                return sprintf('%s (%s)', $source->label, $suffix);
+                return sprintf('%s (%s)', $source->label, $address);
             })
             ->implode(', ');
     }
 
-    private static function selectedVirtualStandardSourceTypeSummary(Get $get): string
+    private static function selectedVirtualStandardSourceProfileSummary(Get $get): string
     {
         $profile = self::selectedVirtualStandardProfile($get);
 
@@ -563,7 +499,7 @@ class DeviceForm
 
         return collect($profile->sources)
             ->map(function (VirtualStandardSource $source): string {
-                $allowedTypes = collect($source->allowedDeviceTypeKeys)
+                $allowedTypes = collect($source->allowedDeviceProfileKeys)
                     ->map(fn (string $key): string => Str::headline($key))
                     ->implode(', ');
 

@@ -97,7 +97,7 @@ it('applies telemetry lifecycle policies and prunes expired ingestion side table
     ));
 
     expect($dimension?->time_interval)->toBe('1 day')
-        ->and($compressionSettings?->segmentby)->toBe('device_id,schema_version_topic_id')
+        ->and($compressionSettings?->segmentby)->toBe('device_id,device_channel_id')
         ->and($compressionSettings?->orderby)->toContain('recorded_at DESC')
         ->and($jobs)->toHaveCount(2)
         ->and($jobs->pluck('proc_name')->all())->toContain('policy_compression', 'policy_retention')
@@ -120,7 +120,7 @@ it('adds the composite telemetry index used by dashboard snapshot queries', func
             FROM pg_indexes
             WHERE schemaname = 'public'
               AND tablename = 'device_telemetry_logs'
-              AND indexname = 'device_telemetry_logs_device_topic_recorded_index'
+              AND indexname = 'device_telemetry_logs_device_channel_recorded_index'
             LIMIT 1"
         )
         : DB::selectOne(
@@ -128,7 +128,7 @@ it('adds the composite telemetry index used by dashboard snapshot queries', func
             FROM sqlite_master
             WHERE type = 'index'
               AND tbl_name = 'device_telemetry_logs'
-              AND name = 'device_telemetry_logs_device_topic_recorded_index'
+              AND name = 'device_telemetry_logs_device_channel_recorded_index'
             LIMIT 1"
         );
 

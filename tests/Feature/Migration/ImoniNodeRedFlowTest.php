@@ -290,6 +290,6 @@ it('uses local nats mqtt broker settings for the node-red flow', function (): vo
     );
 
     expect($mqttBrokerNode)->toBeArray()
-        ->and($mqttBrokerNode['broker'] ?? null)->toBe('nats')
-        ->and($mqttBrokerNode['port'] ?? null)->toBe('1883');
+        ->and($mqttBrokerNode['broker'] ?? null)->toBe('${MQTT_BROKER_HOST}')
+        ->and($mqttBrokerNode['port'] ?? null)->toBe('${MQTT_BROKER_PORT}');
 });

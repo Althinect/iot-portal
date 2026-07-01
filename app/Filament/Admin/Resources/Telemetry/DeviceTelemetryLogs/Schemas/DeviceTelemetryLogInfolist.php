@@ -25,8 +25,11 @@ class DeviceTelemetryLogInfolist
                         TextEntry::make('device.uuid')
                             ->label('Device UUID')
                             ->icon(Heroicon::OutlinedIdentification),
-                        TextEntry::make('schemaVersion.version')
-                            ->label('Schema Version')
+                        TextEntry::make('profileVersion.version')
+                            ->label('Profile Version')
+                            ->icon(Heroicon::OutlinedDocumentText),
+                        TextEntry::make('channel.label')
+                            ->label('Channel')
                             ->icon(Heroicon::OutlinedDocumentText),
                     ])
                     ->columns(3),

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Domain\IoTDashboard\Widgets\StatusSummary;
 
-use App\Domain\DeviceSchema\Models\DerivedParameterDefinition;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileDerivedParameterDefinition;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\IoTDashboard\Application\DashboardHistoryRange;
 use App\Domain\IoTDashboard\Application\HotStateLatestTelemetryReader;
 use App\Domain\IoTDashboard\Contracts\WidgetConfig;
@@ -119,8 +119,8 @@ class StatusSummarySnapshotResolver implements WidgetSnapshotResolver
             return null;
         }
 
-        $parameterUnit = ParameterDefinition::query()
-            ->where('schema_version_topic_id', (int) $widget->schema_version_topic_id)
+        $parameterUnit = ProfileParameterDefinition::query()
+            ->where('device_channel_id', (int) $widget->device_channel_id)
             ->where('key', $parameterKey)
             ->value('unit');
 
@@ -128,16 +128,16 @@ class StatusSummarySnapshotResolver implements WidgetSnapshotResolver
             return $this->resolveUnitSymbol(trim($parameterUnit));
         }
 
-        $topic = SchemaVersionTopic::query()
-            ->whereKey((int) $widget->schema_version_topic_id)
-            ->first(['id', 'device_schema_version_id']);
+        $topic = DeviceChannel::query()
+            ->whereKey((int) $widget->device_channel_id)
+            ->first(['id', 'device_profile_version_id']);
 
-        if (! $topic instanceof SchemaVersionTopic) {
+        if (! $topic instanceof DeviceChannel) {
             return null;
         }
 
-        $derivedUnit = DerivedParameterDefinition::query()
-            ->where('device_schema_version_id', $topic->device_schema_version_id)
+        $derivedUnit = ProfileDerivedParameterDefinition::query()
+            ->where('device_profile_version_id', $topic->device_profile_version_id)
             ->where('key', $parameterKey)
             ->value('unit');
 

@@ -6,7 +6,7 @@ namespace App\Domain\DataIngestion\Contracts;
 
 use App\Domain\DataIngestion\Models\IngestionMessage;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 
 interface HotStateStore
@@ -16,7 +16,7 @@ interface HotStateStore
      */
     public function store(
         Device $device,
-        SchemaVersionTopic $topic,
+        DeviceChannel $channel,
         array $finalValues,
         IngestionMessage $ingestionMessage,
         ?DeviceTelemetryLog $telemetryLog = null,

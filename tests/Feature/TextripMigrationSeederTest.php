@@ -8,7 +8,7 @@ use App\Domain\DataIngestion\Models\DeviceSignalBinding;
 use App\Domain\DataIngestion\Services\DeviceSignalBindingResolver;
 use App\Domain\DataIngestion\Services\TelemetryIngestionService;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 use App\Events\TelemetryReceived;
 use Database\Seeders\TextripMigrationSeeder;
@@ -42,14 +42,14 @@ it('seeds textrip hubs, vendor-native child ids, and schema variants from the re
         ->all();
 
     $childDevices = Device::query()
-        ->with(['deviceType', 'schemaVersion.schema'])
+        ->with(['profileVersion.profile'])
         ->where('organization_id', $organization?->id)
         ->whereNotNull('parent_device_id')
         ->orderBy('external_id')
         ->get();
 
-    $schemaCounts = $childDevices
-        ->groupBy(fn (Device $device): string => (string) $device->schemaVersion?->schema?->name.'@v'.(string) $device->schemaVersion?->version)
+    $profileCounts = $childDevices
+        ->groupBy(fn (Device $device): string => (string) $device->profileVersion?->profile?->name.'@v'.(string) $device->profileVersion?->version)
         ->map(static fn ($devices): int => $devices->count())
         ->all();
 
@@ -67,28 +67,28 @@ it('seeds textrip hubs, vendor-native child ids, and schema variants from the re
         '869604063872807',
         '869604063874100',
     ])->and($childDevices)->toHaveCount(18)
-        ->and($childDevices->where('deviceType.key', 'energy_meter'))->toHaveCount(11)
-        ->and($childDevices->where('deviceType.key', 'tank_level_sensor'))->toHaveCount(7)
-        ->and($schemaCounts)->toMatchArray([
-            'Energy Meter Contract@v2' => 10,
-            'Energy Meter Contract@v3' => 1,
-            'Tank Level Sensor Contract@v1' => 5,
-            'Tank Level Sensor Contract@v2' => 1,
-            'Tank Level Sensor Contract@v3' => 1,
+        ->and($childDevices->where('profileVersion.profile.key', 'energy_meter'))->toHaveCount(11)
+        ->and($childDevices->where('profileVersion.profile.key', 'tank_level_sensor'))->toHaveCount(7)
+        ->and($profileCounts)->toMatchArray([
+            'Energy Meter@v2' => 10,
+            'Energy Meter@v3' => 1,
+            'Tank Level Sensor@v1' => 5,
+            'Tank Level Sensor@v2' => 1,
+            'Tank Level Sensor@v3' => 1,
         ])
-        ->and($specialEnergyDevice?->schemaVersion?->schema?->name)->toBe('Energy Meter Contract')
-        ->and($specialEnergyDevice?->schemaVersion?->version)->toBe(3)
+        ->and($specialEnergyDevice?->profileVersion?->profile?->name)->toBe('Energy Meter')
+        ->and($specialEnergyDevice?->profileVersion?->version)->toBe(3)
         ->and($specialEnergyDevice?->metadata['schema_variant'] ?? null)->toBe('ac_voltage_alias')
-        ->and($standardModbusDevice?->schemaVersion?->schema?->name)->toBe('Tank Level Sensor Contract')
-        ->and($standardModbusDevice?->schemaVersion?->version)->toBe(1)
+        ->and($standardModbusDevice?->profileVersion?->profile?->name)->toBe('Tank Level Sensor')
+        ->and($standardModbusDevice?->profileVersion?->version)->toBe(1)
         ->and($standardModbusDevice?->metadata['schema_variant'] ?? null)->toBe('modbus_standard')
-        ->and($dieselTankDevice?->schemaVersion?->version)->toBe(2)
+        ->and($dieselTankDevice?->profileVersion?->version)->toBe(2)
         ->and($dieselTankDevice?->metadata['schema_variant'] ?? null)->toBe('modbus_diesel_3000');
 
-    /** @var ParameterDefinition|null $phaseAVoltage */
-    $phaseAVoltage = $specialEnergyDevice?->schemaVersion?->topics()->where('key', 'telemetry')->first()?->parameters()->where('key', 'PhaseAVoltage')->first();
-    /** @var ParameterDefinition|null $tankLevel */
-    $tankLevel = $dieselTankDevice?->schemaVersion?->topics()->where('key', 'telemetry')->first()?->parameters()->where('key', 'ioid1')->first();
+    /** @var ProfileParameterDefinition|null $phaseAVoltage */
+    $phaseAVoltage = $specialEnergyDevice?->profileVersion?->channels()->where('key', 'telemetry')->first()?->parameters()->where('key', 'PhaseAVoltage')->first();
+    /** @var ProfileParameterDefinition|null $tankLevel */
+    $tankLevel = $dieselTankDevice?->profileVersion?->channels()->where('key', 'telemetry')->first()?->parameters()->where('key', 'ioid1')->first();
 
     $energyBinding = DeviceSignalBinding::query()
         ->where('device_id', $specialEnergyDevice?->id)
@@ -235,6 +235,90 @@ it('ingests textrip AC telemetry with the recovered voltage-alias calibration va
             'PhaseBVoltage' => 231.1,
             'PhaseCVoltage' => 229.8,
         ]);
+
+    Event::assertDispatched(TelemetryReceived::class, 1);
+});
+
+it('ingests textrip AC telemetry when production sends shorthand values only', function (): void {
+    Event::fake([TelemetryReceived::class]);
+
+    $this->seed(TextripMigrationSeeder::class);
+
+    $device = Device::query()->where('external_id', '869244041759394-27')->firstOrFail();
+    $sourceTopic = 'migration/source/imoni/869244041759394/27/telemetry';
+
+    $job = new ProcessInboundTelemetryJob((new IncomingTelemetryEnvelope(
+        sourceSubject: str_replace('/', '.', $sourceTopic),
+        mqttTopic: $sourceTopic,
+        payload: [
+            'peripheral_name' => 'AC_energyMate7',
+            'peripheral_type_hex' => '27',
+            'io_1_value' => 2309,
+            'io_2_value' => 2309,
+            'io_3_value' => 2312,
+            'io_4_value' => 3563,
+            'io_5_value' => 3215,
+            'io_6_value' => 3563,
+            'io_7_value' => 1020569792,
+            '_meta' => [
+                'hub_imei' => '869244041759394',
+                'source_key' => '869244041759394:27',
+            ],
+        ],
+        receivedAt: now(),
+    ))->toArray());
+
+    $job->handle(app(TelemetryIngestionService::class), app(DeviceSignalBindingResolver::class));
+
+    $telemetryLog = $device->fresh()->telemetryLogs()->latest('id')->first();
+
+    expect($telemetryLog?->processing_state)->toBe('processed')
+        ->and($telemetryLog?->validation_status?->value)->toBe('valid')
+        ->and($telemetryLog?->validation_errors)->toBeNull()
+        ->and($telemetryLog?->transformed_values)->toMatchArray([
+            'v1' => 230.9,
+            'v2' => 230.9,
+            'v3' => 231.2,
+            'i1' => 35.63,
+            'i2' => 32.15,
+            'i3' => 35.63,
+            'e1' => 1020569.792,
+        ]);
+
+    Event::assertDispatched(TelemetryReceived::class, 1);
+});
+
+it('ingests textrip AC telemetry when production sends only the energy counter', function (): void {
+    Event::fake([TelemetryReceived::class]);
+
+    $this->seed(TextripMigrationSeeder::class);
+
+    $device = Device::query()->where('external_id', '869244041759394-22')->firstOrFail();
+    $sourceTopic = 'migration/source/imoni/869244041759394/22/telemetry';
+
+    $job = new ProcessInboundTelemetryJob((new IncomingTelemetryEnvelope(
+        sourceSubject: str_replace('/', '.', $sourceTopic),
+        mqttTopic: $sourceTopic,
+        payload: [
+            'peripheral_name' => 'AC_energyMate2',
+            'peripheral_type_hex' => '22',
+            'io_7_value' => 430402240,
+            '_meta' => [
+                'hub_imei' => '869244041759394',
+                'source_key' => '869244041759394:22',
+            ],
+        ],
+        receivedAt: now(),
+    ))->toArray());
+
+    $job->handle(app(TelemetryIngestionService::class), app(DeviceSignalBindingResolver::class));
+
+    $telemetryLog = $device->fresh()->telemetryLogs()->latest('id')->first();
+
+    expect($telemetryLog?->processing_state)->toBe('processed')
+        ->and($telemetryLog?->validation_status?->value)->toBe('valid')
+        ->and($telemetryLog?->validation_errors)->toBeNull()
+        ->and($telemetryLog?->transformed_values['e1'] ?? null)->toBe(430402.24);
 
     Event::assertDispatched(TelemetryReceived::class, 1);
 });

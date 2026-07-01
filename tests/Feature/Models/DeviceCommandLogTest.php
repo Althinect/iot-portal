@@ -5,7 +5,7 @@ declare(strict_types=1);
 use App\Domain\DeviceControl\Enums\CommandStatus;
 use App\Domain\DeviceControl\Models\DeviceCommandLog;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\Shared\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -28,11 +28,11 @@ test('device command log belongs to a device', function (): void {
     expect($log->device->id)->toBe($device->id);
 });
 
-test('device command log belongs to a topic', function (): void {
-    $topic = SchemaVersionTopic::factory()->subscribe()->create();
-    $log = DeviceCommandLog::factory()->create(['schema_version_topic_id' => $topic->id]);
+test('device command log belongs to a channel', function (): void {
+    $channel = DeviceChannel::factory()->command()->create();
+    $log = DeviceCommandLog::factory()->create(['device_channel_id' => $channel->id]);
 
-    expect($log->topic->id)->toBe($topic->id);
+    expect($log->channel->id)->toBe($channel->id);
 });
 
 test('device command log belongs to a user', function (): void {

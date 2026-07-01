@@ -23,13 +23,13 @@ final class DeviceSelectOptions
         bool $collapseSingleGroup = false,
     ): array {
         $groupedOptions = $query
-            ->with('deviceType:id,name')
+            ->with('profileVersion.profile:id,name')
             ->get([
                 'id',
                 'name',
                 'external_id',
                 'uuid',
-                'device_type_id',
+                'device_profile_version_id',
             ])
             ->sortBy([
                 fn (Device $device): string => Str::lower(self::groupLabel($device)),
@@ -77,9 +77,9 @@ final class DeviceSelectOptions
 
     public static function groupLabel(Device $device): string
     {
-        $deviceTypeName = trim((string) $device->deviceType?->name);
+        $profileName = trim((string) $device->profileVersion?->profile?->name);
 
-        return $deviceTypeName !== '' ? $deviceTypeName : 'Unassigned Type';
+        return $profileName !== '' ? $profileName : 'Unassigned Profile';
     }
 
     /**
@@ -100,8 +100,8 @@ final class DeviceSelectOptions
             $deviceQuery
                 ->where('name', 'like', $likeSearch)
                 ->orWhere('external_id', 'like', $likeSearch)
-                ->orWhereHas('deviceType', function (Builder $deviceTypeQuery) use ($likeSearch): void {
-                    $deviceTypeQuery->where('name', 'like', $likeSearch);
+                ->orWhereHas('profileVersion.profile', function (Builder $profileQuery) use ($likeSearch): void {
+                    $profileQuery->where('name', 'like', $likeSearch);
                 });
 
             if ($useUuidFallback) {

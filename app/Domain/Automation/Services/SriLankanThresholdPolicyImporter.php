@@ -7,7 +7,8 @@ namespace App\Domain\Automation\Services;
 use App\Domain\Automation\Models\AutomationNotificationProfile;
 use App\Domain\Automation\Models\AutomationThresholdPolicy;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 use Database\Seeders\SriLankanMigrationSeeder;
 use Illuminate\Support\Collection;
@@ -43,7 +44,7 @@ class SriLankanThresholdPolicyImporter
 
         $devices = Device::query()
             ->where('organization_id', $organization->id)
-            ->with(['schemaVersion.topics.parameters'])
+            ->with(['profileVersion.channels.parameters'])
             ->get();
 
         $deviceMappings = $this->buildLegacyRuleDeviceMap($devices);
@@ -120,7 +121,7 @@ class SriLankanThresholdPolicyImporter
      * @param  Collection<int, Device>  $devices
      * @return array<string, array{
      *     device: Device,
-     *     parameter: ParameterDefinition,
+     *     parameter: ProfileParameterDefinition,
      *     sort_order: int
      * }>
      */
@@ -143,7 +144,7 @@ class SriLankanThresholdPolicyImporter
 
             $parameter = $this->resolveTemperatureParameter($device);
 
-            if (! $parameter instanceof ParameterDefinition) {
+            if (! $parameter instanceof ProfileParameterDefinition) {
                 continue;
             }
 
@@ -163,20 +164,20 @@ class SriLankanThresholdPolicyImporter
         return $mapping;
     }
 
-    private function resolveTemperatureParameter(Device $device): ?ParameterDefinition
+    private function resolveTemperatureParameter(Device $device): ?ProfileParameterDefinition
     {
-        $device->loadMissing('schemaVersion.topics.parameters');
+        $device->loadMissing('profileVersion.channels.parameters');
 
-        return $device->schemaVersion?->topics
+        return $device->profileVersion?->channels
             ?->first(
-                fn ($topic): bool => $topic->isPublish()
-                    && $topic->parameters->contains(
-                        fn (ParameterDefinition $parameter): bool => $parameter->key === 'temperature' && $parameter->is_active
+                fn (DeviceChannel $channel): bool => $channel->isPublish()
+                    && $channel->parameters->contains(
+                        fn (ProfileParameterDefinition $parameter): bool => $parameter->key === 'temperature' && $parameter->is_active
                     )
             )
             ?->parameters
             ->first(
-                fn (ParameterDefinition $parameter): bool => $parameter->key === 'temperature' && $parameter->is_active
+                fn (ProfileParameterDefinition $parameter): bool => $parameter->key === 'temperature' && $parameter->is_active
             );
     }
 
@@ -310,7 +311,7 @@ class SriLankanThresholdPolicyImporter
     private function upsertThresholdPolicy(
         Organization $organization,
         Device $device,
-        ParameterDefinition $parameter,
+        ProfileParameterDefinition $parameter,
         stdClass $legacyRule,
         AutomationNotificationProfile $profile,
         int $sortOrder,
@@ -331,7 +332,8 @@ class SriLankanThresholdPolicyImporter
         $policy->fill([
             'organization_id' => $organization->id,
             'device_id' => $device->id,
-            'parameter_definition_id' => $parameter->id,
+            'device_channel_id' => $parameter->device_channel_id,
+            'parameter_key' => $parameter->key,
             'name' => trim((string) $legacyRule->name) !== ''
                 ? trim((string) $legacyRule->name)
                 : $device->name.' Temperature Threshold',

@@ -13,9 +13,9 @@ use App\Domain\Automation\Services\WorkflowGraphValidator;
 use App\Domain\Automation\Services\WorkflowNodeConfigValidator;
 use App\Domain\Automation\Services\WorkflowTelemetryTriggerCompiler;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ChannelDirection;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use App\Filament\Admin\Resources\Automation\AutomationWorkflows\AutomationWorkflowResource;
 use App\Filament\Admin\Resources\AutomationThresholdPolicies\AutomationThresholdPolicyResource;
@@ -115,14 +115,14 @@ class EditAutomationDag extends Page
         $organizationId = (int) $workflow->organization_id;
 
         $sourceDevice = $this->resolveOrganizationDevice($organizationId, $context['device_id'] ?? null);
-        $sourceTopic = $this->resolveDeviceTopic($sourceDevice, $context['topic_id'] ?? null, TopicDirection::Publish);
+        $sourceTopic = $this->resolveDeviceTopic($sourceDevice, $context['topic_id'] ?? null, ChannelDirection::Publish);
 
         return [
             'devices' => $this->buildOrganizationDeviceOptions($organizationId),
             'topics' => $sourceDevice instanceof Device
-                ? $this->buildDeviceTopicOptions($sourceDevice, TopicDirection::Publish)
+                ? $this->buildDeviceTopicOptions($sourceDevice, ChannelDirection::Publish)
                 : [],
-            'parameters' => $sourceTopic instanceof SchemaVersionTopic
+            'parameters' => $sourceTopic instanceof DeviceChannel
                 ? $this->buildTopicParameterOptions($sourceTopic)
                 : [],
         ];
@@ -206,14 +206,14 @@ class EditAutomationDag extends Page
         $organizationId = (int) $workflow->organization_id;
 
         $sourceDevice = $this->resolveOrganizationDevice($organizationId, $context['device_id'] ?? null);
-        $sourceTopic = $this->resolveDeviceTopic($sourceDevice, $context['topic_id'] ?? null, TopicDirection::Publish);
+        $sourceTopic = $this->resolveDeviceTopic($sourceDevice, $context['topic_id'] ?? null, ChannelDirection::Publish);
 
         return [
             'devices' => $this->buildOrganizationDeviceOptions($organizationId),
             'topics' => $sourceDevice instanceof Device
-                ? $this->buildDeviceTopicOptions($sourceDevice, TopicDirection::Publish)
+                ? $this->buildDeviceTopicOptions($sourceDevice, ChannelDirection::Publish)
                 : [],
-            'parameters' => $sourceTopic instanceof SchemaVersionTopic
+            'parameters' => $sourceTopic instanceof DeviceChannel
                 ? $this->buildTopicParameterOptions($sourceTopic)
                 : [],
         ];
@@ -280,14 +280,14 @@ class EditAutomationDag extends Page
         $organizationId = (int) $workflow->organization_id;
 
         $targetDevice = $this->resolveOrganizationDevice($organizationId, $context['device_id'] ?? null);
-        $targetTopic = $this->resolveDeviceTopic($targetDevice, $context['topic_id'] ?? null, TopicDirection::Subscribe);
+        $targetTopic = $this->resolveDeviceTopic($targetDevice, $context['topic_id'] ?? null, ChannelDirection::Subscribe);
 
         return [
             'devices' => $this->buildOrganizationDeviceOptions($organizationId),
             'topics' => $targetDevice instanceof Device
-                ? $this->buildDeviceTopicOptions($targetDevice, TopicDirection::Subscribe)
+                ? $this->buildDeviceTopicOptions($targetDevice, ChannelDirection::Subscribe)
                 : [],
-            'parameters' => $targetTopic instanceof SchemaVersionTopic
+            'parameters' => $targetTopic instanceof DeviceChannel
                 ? $this->buildTopicParameterOptions($targetTopic)
                 : [],
         ];
@@ -311,29 +311,29 @@ class EditAutomationDag extends Page
             return null;
         }
 
-        $sourceTopic = $this->resolveDeviceTopic($sourceDevice, $context['topic_id'] ?? null, TopicDirection::Publish);
-        if (! $sourceTopic instanceof SchemaVersionTopic) {
+        $sourceTopic = $this->resolveDeviceTopic($sourceDevice, $context['topic_id'] ?? null, ChannelDirection::Publish);
+        if (! $sourceTopic instanceof DeviceChannel) {
             return null;
         }
 
-        $parameterDefinitionId = $this->resolvePositiveInt($context['parameter_definition_id'] ?? null);
+        $parameterDefinitionId = $this->resolvePositiveInt($context['parameter_key'] ?? null);
         if ($parameterDefinitionId === null) {
             return null;
         }
 
-        $parameter = ParameterDefinition::query()
+        $parameter = ProfileParameterDefinition::query()
             ->whereKey($parameterDefinitionId)
-            ->where('schema_version_topic_id', $sourceTopic->id)
+            ->where('device_channel_id', $sourceTopic->id)
             ->where('is_active', true)
             ->first();
 
-        if (! $parameter instanceof ParameterDefinition) {
+        if (! $parameter instanceof ProfileParameterDefinition) {
             return null;
         }
 
         $latestTelemetry = DeviceTelemetryLog::query()
             ->where('device_id', $sourceDevice->id)
-            ->where('schema_version_topic_id', $sourceTopic->id)
+            ->where('device_channel_id', $sourceTopic->id)
             ->latest('recorded_at')
             ->first();
 
@@ -546,14 +546,14 @@ class EditAutomationDag extends Page
             ->find($resolvedDeviceId);
     }
 
-    private function resolveDeviceTopic(?Device $device, mixed $topicId, TopicDirection $direction): ?SchemaVersionTopic
+    private function resolveDeviceTopic(?Device $device, mixed $topicId, ChannelDirection $direction): ?DeviceChannel
     {
         if (! $device instanceof Device) {
             return null;
         }
 
-        $schemaVersionId = $this->resolvePositiveInt($device->getAttribute('device_schema_version_id'));
-        if ($schemaVersionId === null) {
+        $profileVersionId = $this->resolvePositiveInt($device->getAttribute('device_profile_version_id'));
+        if ($profileVersionId === null) {
             return null;
         }
 
@@ -562,9 +562,9 @@ class EditAutomationDag extends Page
             return null;
         }
 
-        return SchemaVersionTopic::query()
+        return DeviceChannel::query()
             ->whereKey($resolvedTopicId)
-            ->where('device_schema_version_id', $schemaVersionId)
+            ->where('device_profile_version_id', $profileVersionId)
             ->where('direction', $direction->value)
             ->first();
     }
@@ -594,21 +594,21 @@ class EditAutomationDag extends Page
     }
 
     /**
-     * @return array<int, array{id: int, label: string, key: string, suffix: string, purpose: string|null}>
+     * @return array<int, array{id: int, label: string, key: string, address: string, purpose: string|null}>
      */
-    private function buildDeviceTopicOptions(Device $device, TopicDirection $direction): array
+    private function buildDeviceTopicOptions(Device $device, ChannelDirection $direction): array
     {
-        $schemaVersionId = $this->resolvePositiveInt($device->getAttribute('device_schema_version_id'));
-        if ($schemaVersionId === null) {
+        $profileVersionId = $this->resolvePositiveInt($device->getAttribute('device_profile_version_id'));
+        if ($profileVersionId === null) {
             return [];
         }
 
-        return SchemaVersionTopic::query()
-            ->where('device_schema_version_id', $schemaVersionId)
+        return DeviceChannel::query()
+            ->where('device_profile_version_id', $profileVersionId)
             ->where('direction', $direction->value)
             ->orderBy('sequence')
-            ->get(['id', 'label', 'key', 'suffix', 'purpose'])
-            ->map(static function (SchemaVersionTopic $topic): array {
+            ->get(['id', 'label', 'key', 'address', 'purpose'])
+            ->map(static function (DeviceChannel $topic): array {
                 $purpose = $topic->getAttribute('purpose');
                 $purposeValue = null;
 
@@ -620,9 +620,9 @@ class EditAutomationDag extends Page
 
                 return [
                     'id' => $topic->id,
-                    'label' => "{$topic->label} ({$topic->suffix})",
+                    'label' => "{$topic->label} ({$topic->address})",
                     'key' => $topic->key,
-                    'suffix' => $topic->suffix,
+                    'address' => $topic->address,
                     'purpose' => $purposeValue,
                 ];
             })
@@ -632,14 +632,14 @@ class EditAutomationDag extends Page
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function buildTopicParameterOptions(SchemaVersionTopic $topic): array
+    private function buildTopicParameterOptions(DeviceChannel $topic): array
     {
-        return ParameterDefinition::query()
-            ->where('schema_version_topic_id', $topic->id)
+        return ProfileParameterDefinition::query()
+            ->where('device_channel_id', $topic->id)
             ->where('is_active', true)
             ->orderBy('sequence')
             ->get()
-            ->map(static function (ParameterDefinition $parameter): array {
+            ->map(static function (ProfileParameterDefinition $parameter): array {
                 $parameterType = $parameter->getAttribute('type');
                 $type = null;
 

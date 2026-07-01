@@ -57,7 +57,7 @@ class WidgetConfigFactory
             'widget_type' => $type->value,
             'title' => $widget->title,
             'device_id' => (string) $widget->device_id,
-            'schema_version_topic_id' => (string) $widget->schema_version_topic_id,
+            'device_channel_id' => (string) $widget->device_channel_id,
             'parameter_keys' => collect($config->series())->pluck('key')->values()->all(),
             'parameter_key' => collect($config->series())->pluck('key')->first(),
             'use_websocket' => $config->useWebsocket(),

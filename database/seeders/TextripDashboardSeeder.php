@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\MetricUnit;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\MetricUnit;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
@@ -82,14 +82,14 @@ class TextripDashboardSeeder extends Seeder
         $energyDevices = Device::query()
             ->where('organization_id', $organization->id)
             ->whereNotNull('parent_device_id')
-            ->whereHas('deviceType', fn ($query) => $query->where('key', 'energy_meter'))
+            ->whereHas('profileVersion.profile', fn ($query) => $query->where('key', 'energy_meter'))
             ->orderBy('external_id')
             ->get();
 
         $tankDevices = Device::query()
             ->where('organization_id', $organization->id)
             ->whereNotNull('parent_device_id')
-            ->whereHas('deviceType', fn ($query) => $query->where('key', 'tank_level_sensor'))
+            ->whereHas('profileVersion.profile', fn ($query) => $query->where('key', 'tank_level_sensor'))
             ->orderBy('external_id')
             ->get();
 
@@ -109,7 +109,7 @@ class TextripDashboardSeeder extends Seeder
         foreach (array_values($devices) as $index => $device) {
             $topic = $this->resolveTelemetryTopic($device);
 
-            if (! $topic instanceof SchemaVersionTopic) {
+            if (! $topic instanceof DeviceChannel) {
                 continue;
             }
 
@@ -123,7 +123,8 @@ class TextripDashboardSeeder extends Seeder
                 ],
                 [
                     'device_id' => $device->id,
-                    'schema_version_topic_id' => $topic->id,
+                    'device_channel_id' => $topic->id,
+                    'device_channel_id' => $topic->id,
                     'type' => WidgetType::StatusSummary->value,
                     'config' => $this->energyOverviewConfig(),
                     'layout' => $this->layoutFor($index, 8, 4, 320),
@@ -148,7 +149,7 @@ class TextripDashboardSeeder extends Seeder
         foreach (array_values($devices) as $index => $device) {
             $topic = $this->resolveTelemetryTopic($device);
 
-            if (! $topic instanceof SchemaVersionTopic) {
+            if (! $topic instanceof DeviceChannel) {
                 continue;
             }
 
@@ -162,7 +163,8 @@ class TextripDashboardSeeder extends Seeder
                 ],
                 [
                     'device_id' => $device->id,
-                    'schema_version_topic_id' => $topic->id,
+                    'device_channel_id' => $topic->id,
+                    'device_channel_id' => $topic->id,
                     'type' => WidgetType::BarChart->value,
                     'config' => [
                         'series' => [
@@ -201,7 +203,7 @@ class TextripDashboardSeeder extends Seeder
         foreach (array_values($devices) as $index => $device) {
             $topic = $this->resolveTelemetryTopic($device);
 
-            if (! $topic instanceof SchemaVersionTopic) {
+            if (! $topic instanceof DeviceChannel) {
                 continue;
             }
 
@@ -215,7 +217,8 @@ class TextripDashboardSeeder extends Seeder
                 ],
                 [
                     'device_id' => $device->id,
-                    'schema_version_topic_id' => $topic->id,
+                    'device_channel_id' => $topic->id,
+                    'device_channel_id' => $topic->id,
                     'type' => WidgetType::StatusSummary->value,
                     'config' => [
                         'rows' => [
@@ -265,7 +268,7 @@ class TextripDashboardSeeder extends Seeder
         foreach (array_values($devices) as $index => $device) {
             $topic = $this->resolveTelemetryTopic($device);
 
-            if (! $topic instanceof SchemaVersionTopic) {
+            if (! $topic instanceof DeviceChannel) {
                 continue;
             }
 
@@ -279,7 +282,8 @@ class TextripDashboardSeeder extends Seeder
                 ],
                 [
                     'device_id' => $device->id,
-                    'schema_version_topic_id' => $topic->id,
+                    'device_channel_id' => $topic->id,
+                    'device_channel_id' => $topic->id,
                     'type' => WidgetType::LineChart->value,
                     'config' => [
                         'series' => [
@@ -431,8 +435,8 @@ class TextripDashboardSeeder extends Seeder
         ];
     }
 
-    private function resolveTelemetryTopic(Device $device): ?SchemaVersionTopic
+    private function resolveTelemetryTopic(Device $device): ?DeviceChannel
     {
-        return $device->schemaVersion?->topics()->where('key', 'telemetry')->first();
+        return $device->profileVersion?->channels()->where('key', 'telemetry')->first();
     }
 }

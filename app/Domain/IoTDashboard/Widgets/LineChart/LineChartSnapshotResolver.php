@@ -6,7 +6,7 @@ namespace App\Domain\IoTDashboard\Widgets\LineChart;
 
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Models\VirtualDeviceLink;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\IoTDashboard\Application\DashboardHistoryRange;
 use App\Domain\IoTDashboard\Contracts\WidgetConfig;
 use App\Domain\IoTDashboard\Contracts\WidgetSnapshotResolver;
@@ -46,7 +46,7 @@ class LineChartSnapshotResolver implements WidgetSnapshotResolver
                 ? []
                 : $this->telemetryQuery->numericSeries(
                     deviceId: $sourceBinding['device_id'],
-                    schemaVersionTopicId: $sourceBinding['schema_version_topic_id'],
+                    deviceChannelId: $sourceBinding['device_channel_id'],
                     parameterKey: $key,
                     fromAt: $range['from_at'],
                     untilAt: $range['until_at'],
@@ -76,7 +76,7 @@ class LineChartSnapshotResolver implements WidgetSnapshotResolver
 
     /**
      * @param  array<string, mixed>|mixed  $source
-     * @return array{device_id: int, schema_version_topic_id: int}|null
+     * @return array{device_id: int, device_channel_id: int}|null
      */
     private function resolveSeriesSourceBinding(IoTDashboardWidget $widget, mixed $source): ?array
     {
@@ -95,15 +95,15 @@ class LineChartSnapshotResolver implements WidgetSnapshotResolver
         }
 
         $deviceId = (int) $widget->device_id;
-        $schemaVersionTopicId = (int) $widget->schema_version_topic_id;
+        $deviceChannelId = (int) $widget->device_channel_id;
 
-        if ($deviceId < 1 || $schemaVersionTopicId < 1) {
+        if ($deviceId < 1 || $deviceChannelId < 1) {
             return null;
         }
 
         return [
             'device_id' => $deviceId,
-            'schema_version_topic_id' => $schemaVersionTopicId,
+            'device_channel_id' => $deviceChannelId,
         ];
     }
 
@@ -116,7 +116,7 @@ class LineChartSnapshotResolver implements WidgetSnapshotResolver
         }
 
         $link = VirtualDeviceLink::query()
-            ->with('sourceDevice.schemaVersion.topics')
+            ->with('sourceDevice.profileVersion.channels')
             ->where('virtual_device_id', $virtualDeviceId)
             ->where('purpose', $purpose)
             ->orderBy('sequence')
@@ -126,28 +126,28 @@ class LineChartSnapshotResolver implements WidgetSnapshotResolver
     }
 
     /**
-     * @return array{device_id: int, schema_version_topic_id: int}|null
+     * @return array{device_id: int, device_channel_id: int}|null
      */
     private function bindingForDevice(Device $device): ?array
     {
-        $device->loadMissing('schemaVersion.topics');
+        $device->loadMissing('profileVersion.channels');
 
-        $topic = $device->schemaVersion?->topics
-            ?->first(fn (SchemaVersionTopic $topic): bool => $topic->key === 'telemetry')
-            ?? $device->schemaVersion?->topics?->first(fn (SchemaVersionTopic $topic): bool => $topic->isPublish());
+        $channel = $device->profileVersion?->channels
+            ?->first(fn (DeviceChannel $channel): bool => $channel->key === 'telemetry')
+            ?? $device->profileVersion?->channels?->first(fn (DeviceChannel $channel): bool => $channel->isPublish());
 
-        if (! $topic instanceof SchemaVersionTopic) {
+        if (! $channel instanceof DeviceChannel) {
             return null;
         }
 
         return [
             'device_id' => (int) $device->id,
-            'schema_version_topic_id' => (int) $topic->id,
+            'device_channel_id' => (int) $channel->id,
         ];
     }
 
     /**
-     * @param  array{device_id: int, schema_version_topic_id: int}|null  $sourceBinding
+     * @param  array{device_id: int, device_channel_id: int}|null  $sourceBinding
      */
     private function sourceCacheKey(?array $sourceBinding): string
     {
@@ -155,7 +155,7 @@ class LineChartSnapshotResolver implements WidgetSnapshotResolver
             return 'missing';
         }
 
-        return $sourceBinding['device_id'].':'.$sourceBinding['schema_version_topic_id'];
+        return $sourceBinding['device_id'].':'.$sourceBinding['device_channel_id'];
     }
 
     /**

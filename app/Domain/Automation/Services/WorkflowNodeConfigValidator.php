@@ -9,9 +9,8 @@ use App\Domain\Automation\Data\WorkflowGraph;
 use App\Domain\Automation\Models\AutomationWorkflow;
 use App\Domain\DeviceControl\Services\CommandPayloadResolver;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use Illuminate\Support\Arr;
 use RuntimeException;
 
@@ -86,42 +85,37 @@ class WorkflowNodeConfigValidator
         }
 
         $deviceId = $this->resolvePositiveInt($source['device_id'] ?? null);
-        $topicId = $this->resolvePositiveInt($source['topic_id'] ?? null);
-        $parameterDefinitionId = $this->resolvePositiveInt($source['parameter_definition_id'] ?? null);
+        $channelId = $this->resolvePositiveInt($source['device_channel_id'] ?? $source['channel_id'] ?? null);
+        $parameterKey = $this->resolveNonEmptyString($source['parameter_key'] ?? null);
 
-        if ($deviceId === null || $topicId === null || $parameterDefinitionId === null) {
-            throw new RuntimeException("Telemetry trigger node [{$nodeId}] is missing source device, topic, or parameter.");
+        if ($deviceId === null || $channelId === null || $parameterKey === null) {
+            throw new RuntimeException("Telemetry trigger node [{$nodeId}] is missing source device, channel, or parameter.");
         }
 
         $device = Device::query()
             ->where('organization_id', $organizationId)
             ->find($deviceId);
 
-        $sourceSchemaVersionId = $device instanceof Device
-            ? $this->resolvePositiveInt($device->getAttribute('device_schema_version_id'))
-            : null;
-
-        if (! $device instanceof Device || $sourceSchemaVersionId === null) {
+        if (! $device instanceof Device) {
             throw new RuntimeException("Telemetry trigger node [{$nodeId}] references an invalid source device.");
         }
 
-        $topic = SchemaVersionTopic::query()
-            ->whereKey($topicId)
-            ->where('device_schema_version_id', $sourceSchemaVersionId)
-            ->where('direction', TopicDirection::Publish->value)
+        $channel = DeviceChannel::query()
+            ->whereKey($channelId)
+            ->where('device_profile_version_id', $device->device_profile_version_id)
             ->first();
 
-        if (! $topic instanceof SchemaVersionTopic) {
-            throw new RuntimeException("Telemetry trigger node [{$nodeId}] references an invalid publish topic.");
+        if (! $channel instanceof DeviceChannel || ! $channel->isPublish()) {
+            throw new RuntimeException("Telemetry trigger node [{$nodeId}] references an invalid publish channel.");
         }
 
-        $parameter = ParameterDefinition::query()
-            ->whereKey($parameterDefinitionId)
-            ->where('schema_version_topic_id', $topic->id)
+        $parameter = ProfileParameterDefinition::query()
+            ->where('device_channel_id', $channel->id)
+            ->where('key', $parameterKey)
             ->where('is_active', true)
             ->first();
 
-        if (! $parameter instanceof ParameterDefinition) {
+        if (! $parameter instanceof ProfileParameterDefinition) {
             throw new RuntimeException("Telemetry trigger node [{$nodeId}] references an invalid telemetry parameter.");
         }
     }
@@ -174,8 +168,8 @@ class WorkflowNodeConfigValidator
         }
 
         $payloadMode = Arr::get($config, 'payload_mode');
-        if ($payloadMode !== 'schema_form') {
-            throw new RuntimeException("Command node [{$nodeId}] must use schema_form payload mode.");
+        if (! in_array($payloadMode, ['schema_form', 'profile_form'], true)) {
+            throw new RuntimeException("Command node [{$nodeId}] must use profile_form payload mode.");
         }
 
         $target = Arr::get($config, 'target');
@@ -184,10 +178,10 @@ class WorkflowNodeConfigValidator
         }
 
         $targetDeviceId = $this->resolvePositiveInt($target['device_id'] ?? null);
-        $targetTopicId = $this->resolvePositiveInt($target['topic_id'] ?? null);
+        $targetChannelId = $this->resolvePositiveInt($target['device_channel_id'] ?? $target['channel_id'] ?? null);
 
-        if ($targetDeviceId === null || $targetTopicId === null) {
-            throw new RuntimeException("Command node [{$nodeId}] is missing target device or topic.");
+        if ($targetDeviceId === null || $targetChannelId === null) {
+            throw new RuntimeException("Command node [{$nodeId}] is missing target device or channel.");
         }
 
         $payload = Arr::get($config, 'payload');
@@ -199,25 +193,20 @@ class WorkflowNodeConfigValidator
             ->where('organization_id', $organizationId)
             ->find($targetDeviceId);
 
-        $targetSchemaVersionId = $targetDevice instanceof Device
-            ? $this->resolvePositiveInt($targetDevice->getAttribute('device_schema_version_id'))
-            : null;
-
-        if (! $targetDevice instanceof Device || $targetSchemaVersionId === null) {
+        if (! $targetDevice instanceof Device) {
             throw new RuntimeException("Command node [{$nodeId}] references an invalid target device.");
         }
 
-        $topic = SchemaVersionTopic::query()
-            ->whereKey($targetTopicId)
-            ->where('device_schema_version_id', $targetSchemaVersionId)
-            ->where('direction', TopicDirection::Subscribe->value)
+        $channel = DeviceChannel::query()
+            ->whereKey($targetChannelId)
+            ->where('device_profile_version_id', $targetDevice->device_profile_version_id)
             ->first();
 
-        if (! $topic instanceof SchemaVersionTopic) {
-            throw new RuntimeException("Command node [{$nodeId}] references an invalid subscribe topic.");
+        if (! $channel instanceof DeviceChannel || ! $channel->isSubscribe()) {
+            throw new RuntimeException("Command node [{$nodeId}] references an invalid command channel.");
         }
 
-        $errors = $this->commandPayloadResolver->validatePayload($topic, $this->normalizeStringKeyArray($payload));
+        $errors = $this->commandPayloadResolver->validatePayload($channel, $this->normalizeStringKeyArray($payload));
         if ($errors !== []) {
             $failedKeys = implode(', ', array_keys($errors));
 
@@ -366,6 +355,17 @@ class WorkflowNodeConfigValidator
         $resolved = (int) $value;
 
         return $resolved > 0 ? $resolved : null;
+    }
+
+    private function resolveNonEmptyString(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $resolved = trim($value);
+
+        return $resolved !== '' ? $resolved : null;
     }
 
     /**

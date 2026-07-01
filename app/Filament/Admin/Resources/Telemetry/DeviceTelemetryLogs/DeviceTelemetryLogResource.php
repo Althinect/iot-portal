@@ -41,7 +41,7 @@ class DeviceTelemetryLogResource extends Resource
     public static function table(Table $table): Table
     {
         return DeviceTelemetryLogsTable::configure($table)
-            ->modifyQueryUsing(fn ($query) => $query->with(['device', 'schemaVersion']));
+            ->modifyQueryUsing(fn ($query) => $query->with(['device', 'profileVersion', 'channel']));
     }
 
     public static function getPages(): array

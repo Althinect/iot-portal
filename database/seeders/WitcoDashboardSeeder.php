@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
@@ -179,12 +179,12 @@ class WitcoDashboardSeeder extends Seeder
                 continue;
             }
 
-            $topic = SchemaVersionTopic::query()
-                ->where('device_schema_version_id', $device->device_schema_version_id)
+            $topic = DeviceChannel::query()
+                ->where('device_profile_version_id', $device->device_profile_version_id)
                 ->where('key', 'telemetry')
                 ->first();
 
-            if (! $topic instanceof SchemaVersionTopic) {
+            if (! $topic instanceof DeviceChannel) {
                 continue;
             }
 
@@ -201,7 +201,7 @@ class WitcoDashboardSeeder extends Seeder
                 ],
                 [
                     'device_id' => $device->id,
-                    'schema_version_topic_id' => $topic->id,
+                    'device_channel_id' => $topic->id,
                     'type' => $widgetType->value,
                     'config' => $widgetType === WidgetType::StateCard
                         ? [

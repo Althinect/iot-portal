@@ -12,8 +12,8 @@ return new class extends Migration
     {
         Schema::table('device_telemetry_logs', function (Blueprint $table): void {
             $table->index(
-                ['device_id', 'schema_version_topic_id', 'recorded_at'],
-                'device_telemetry_logs_device_topic_recorded_index',
+                ['device_id', 'device_channel_id', 'recorded_at'],
+                'device_telemetry_logs_device_channel_recorded_extra_index',
             );
         });
     }
@@ -21,7 +21,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('device_telemetry_logs', function (Blueprint $table): void {
-            $table->dropIndex('device_telemetry_logs_device_topic_recorded_index');
+            $table->dropIndex('device_telemetry_logs_device_channel_recorded_extra_index');
         });
     }
 };

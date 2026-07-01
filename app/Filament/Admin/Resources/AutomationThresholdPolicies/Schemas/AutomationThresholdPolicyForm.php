@@ -7,9 +7,9 @@ namespace App\Filament\Admin\Resources\AutomationThresholdPolicies\Schemas;
 use App\Domain\Automation\Models\AutomationNotificationProfile;
 use App\Domain\Automation\Services\GuidedConditionService;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ChannelDirection;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Support\DeviceSelectOptions;
 use Filament\Forms\Components\CodeEditor;
 use Filament\Forms\Components\CodeEditor\Enums\Language;
@@ -43,7 +43,7 @@ class AutomationThresholdPolicyForm
                             ->live()
                             ->afterStateUpdated(function (Set $set): void {
                                 $set('device_id', null);
-                                $set('parameter_definition_id', null);
+                                $set('parameter_key', null);
                                 $set('notification_profile_id', null);
                             }),
 
@@ -54,17 +54,17 @@ class AutomationThresholdPolicyForm
                             ->required()
                             ->live()
                             ->afterStateUpdated(function (Set $set, Get $get): void {
-                                $set('parameter_definition_id', null);
+                                $set('parameter_key', null);
 
                                 $deviceLabel = self::resolveOptionLabel(self::deviceOptions($get), $get('device_id'));
-                                $parameterLabel = self::resolveOptionLabel(self::parameterOptions($get), $get('parameter_definition_id'));
+                                $parameterLabel = self::resolveOptionLabel(self::parameterOptions($get), $get('parameter_key'));
 
                                 if (is_string($deviceLabel) && is_string($parameterLabel)) {
                                     $set('name', Str::before($deviceLabel, ' (').' · '.Str::before($parameterLabel, ' ('));
                                 }
                             }),
 
-                        Select::make('parameter_definition_id')
+                        Select::make('parameter_key')
                             ->label('Telemetry parameter')
                             ->options(fn (Get $get): array => self::parameterOptions($get))
                             ->searchable()
@@ -72,7 +72,7 @@ class AutomationThresholdPolicyForm
                             ->live()
                             ->afterStateUpdated(function (Set $set, Get $get): void {
                                 $deviceLabel = self::resolveOptionLabel(self::deviceOptions($get), $get('device_id'));
-                                $parameterLabel = self::resolveOptionLabel(self::parameterOptions($get), $get('parameter_definition_id'));
+                                $parameterLabel = self::resolveOptionLabel(self::parameterOptions($get), $get('parameter_key'));
 
                                 if (is_string($deviceLabel) && is_string($parameterLabel)) {
                                     $set('name', Str::before($deviceLabel, ' (').' · '.Str::before($parameterLabel, ' ('));
@@ -228,26 +228,26 @@ class AutomationThresholdPolicyForm
         $device = Device::query()
             ->whereKey((int) $deviceId)
             ->where('organization_id', (int) $organizationId)
-            ->first(['id', 'device_schema_version_id']);
+            ->first(['id', 'device_profile_version_id']);
 
         if (! $device instanceof Device) {
             return [];
         }
 
-        $publishTopicIds = SchemaVersionTopic::query()
-            ->where('device_schema_version_id', (int) $device->device_schema_version_id)
-            ->where('direction', TopicDirection::Publish->value)
+        $publishTopicIds = DeviceChannel::query()
+            ->where('device_profile_version_id', (int) $device->device_profile_version_id)
+            ->where('direction', ChannelDirection::Publish->value)
             ->pluck('id')
             ->all();
 
-        return ParameterDefinition::query()
-            ->whereIn('schema_version_topic_id', $publishTopicIds)
+        return ProfileParameterDefinition::query()
+            ->whereIn('device_channel_id', $publishTopicIds)
             ->where('is_active', true)
             ->orderBy('label')
-            ->get(['id', 'label', 'key', 'schema_version_topic_id'])
-            ->mapWithKeys(function (ParameterDefinition $parameter): array {
-                $topicLabel = SchemaVersionTopic::query()
-                    ->whereKey($parameter->schema_version_topic_id)
+            ->get(['id', 'label', 'key', 'device_channel_id'])
+            ->mapWithKeys(function (ProfileParameterDefinition $parameter): array {
+                $topicLabel = DeviceChannel::query()
+                    ->whereKey($parameter->device_channel_id)
                     ->value('label');
                 $prefix = is_string($topicLabel) && trim($topicLabel) !== '' ? "{$topicLabel} · " : '';
 

@@ -6,9 +6,8 @@ namespace App\Domain\Automation\Services;
 
 use App\Domain\Automation\Models\AutomationRun;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\DatabaseManager;
 use RuntimeException;
@@ -90,8 +89,8 @@ SQL;
                 return [
                     'alias' => $sourceDefinition['alias'],
                     'device_id' => $sourceDefinition['device_id'],
-                    'topic_id' => $sourceDefinition['topic_id'],
-                    'parameter_definition_id' => $sourceDefinition['parameter_definition_id'],
+                    'device_channel_id' => $sourceDefinition['device_channel_id'],
+                    'channel_key' => $sourceDefinition['channel_key'],
                     'parameter_key' => $sourceDefinition['parameter_key'],
                     'parameter_path' => $sourceDefinition['parameter_path'],
                 ];
@@ -105,12 +104,12 @@ SQL;
      * @return array{
      *     mode: string,
      *     window: array{size: int, unit: string},
-     *     sources: array<int, array{alias: string, device_id: int, topic_id: int, parameter_definition_id: int}>,
+     *     sources: array<int, array{alias: string, device_id: int, device_channel_id: int, parameter_key: string}>,
      *     source_definitions: array<int, array{
      *         alias: string,
      *         device_id: int,
-     *         topic_id: int,
-     *         parameter_definition_id: int,
+     *         device_channel_id: int,
+     *         channel_key: string,
      *         parameter_key: string,
      *         parameter_path: string
      *     }>,
@@ -214,7 +213,7 @@ SQL;
     }
 
     /**
-     * @return array<int, array{alias: string, device_id: int, topic_id: int, parameter_definition_id: int}>
+     * @return array<int, array{alias: string, device_id: int, device_channel_id: int, parameter_key: string}>
      */
     private function resolveSources(mixed $value): array
     {
@@ -232,8 +231,8 @@ SQL;
 
             $alias = $source['alias'] ?? null;
             $deviceId = $this->resolvePositiveInt($source['device_id'] ?? null);
-            $topicId = $this->resolvePositiveInt($source['topic_id'] ?? null);
-            $parameterDefinitionId = $this->resolvePositiveInt($source['parameter_definition_id'] ?? null);
+            $channelId = $this->resolvePositiveInt($source['device_channel_id'] ?? $source['channel_id'] ?? null);
+            $parameterKey = $this->resolveNonEmptyString($source['parameter_key'] ?? null);
 
             if (! is_string($alias) || ! preg_match('/^[a-z][a-z0-9_]{0,30}$/i', $alias)) {
                 throw new RuntimeException('Query node source alias is invalid.');
@@ -245,7 +244,7 @@ SQL;
                 throw new RuntimeException("Query node source alias [{$alias}] must be unique.");
             }
 
-            if ($deviceId === null || $topicId === null || $parameterDefinitionId === null) {
+            if ($deviceId === null || $channelId === null || $parameterKey === null) {
                 throw new RuntimeException("Query node source [{$alias}] is missing required ids.");
             }
 
@@ -254,8 +253,8 @@ SQL;
             $resolved[] = [
                 'alias' => $normalizedAlias,
                 'device_id' => $deviceId,
-                'topic_id' => $topicId,
-                'parameter_definition_id' => $parameterDefinitionId,
+                'device_channel_id' => $channelId,
+                'parameter_key' => $parameterKey,
             ];
         }
 
@@ -291,12 +290,12 @@ SQL;
     }
 
     /**
-     * @param  array<int, array{alias: string, device_id: int, topic_id: int, parameter_definition_id: int}>  $sources
+     * @param  array<int, array{alias: string, device_id: int, device_channel_id: int, parameter_key: string}>  $sources
      * @return array<int, array{
      *     alias: string,
      *     device_id: int,
-     *     topic_id: int,
-     *     parameter_definition_id: int,
+     *     device_channel_id: int,
+     *     channel_key: string,
      *     parameter_key: string,
      *     parameter_path: string
      * }>
@@ -304,59 +303,59 @@ SQL;
     private function resolveSourceDefinitions(int $organizationId, array $sources): array
     {
         $deviceIds = array_values(array_unique(array_map(static fn (array $source): int => $source['device_id'], $sources)));
-        $topicIds = array_values(array_unique(array_map(static fn (array $source): int => $source['topic_id'], $sources)));
-        $parameterDefinitionIds = array_values(array_unique(array_map(static fn (array $source): int => $source['parameter_definition_id'], $sources)));
+        $channelIds = array_values(array_unique(array_map(static fn (array $source): int => $source['device_channel_id'], $sources)));
+        $parameterKeys = array_values(array_unique(array_map(static fn (array $source): string => $source['parameter_key'], $sources)));
 
         $devices = Device::query()
             ->where('organization_id', $organizationId)
             ->whereIn('id', $deviceIds)
-            ->get(['id', 'device_schema_version_id'])
+            ->get(['id', 'device_profile_version_id'])
             ->keyBy('id');
 
-        $topics = SchemaVersionTopic::query()
-            ->whereIn('id', $topicIds)
-            ->where('direction', TopicDirection::Publish->value)
-            ->get(['id', 'device_schema_version_id'])
+        $channels = DeviceChannel::query()
+            ->whereIn('id', $channelIds)
+            ->get(['id', 'device_profile_version_id', 'key', 'direction'])
             ->keyBy('id');
 
-        $parameters = ParameterDefinition::query()
-            ->whereIn('id', $parameterDefinitionIds)
+        $parameters = ProfileParameterDefinition::query()
+            ->whereIn('device_channel_id', $channelIds)
+            ->whereIn('key', $parameterKeys)
             ->where('is_active', true)
-            ->get(['id', 'schema_version_topic_id', 'key', 'json_path'])
-            ->keyBy('id');
+            ->get(['id', 'device_channel_id', 'key', 'json_path'])
+            ->keyBy(static fn (ProfileParameterDefinition $parameter): string => $parameter->device_channel_id.':'.$parameter->key);
 
         $resolved = [];
 
         foreach ($sources as $source) {
             $device = $devices->get($source['device_id']);
-            $topic = $topics->get($source['topic_id']);
-            $parameter = $parameters->get($source['parameter_definition_id']);
+            $channel = $channels->get($source['device_channel_id']);
+            $parameter = $parameters->get($source['device_channel_id'].':'.$source['parameter_key']);
 
             if (! $device instanceof Device) {
                 throw new RuntimeException("Query node source [{$source['alias']}] references invalid device.");
             }
 
-            if (! $topic instanceof SchemaVersionTopic) {
-                throw new RuntimeException("Query node source [{$source['alias']}] references invalid publish topic.");
+            if (! $channel instanceof DeviceChannel || ! $channel->isPublish()) {
+                throw new RuntimeException("Query node source [{$source['alias']}] references invalid publish channel.");
             }
 
-            if (! $parameter instanceof ParameterDefinition) {
+            if (! $parameter instanceof ProfileParameterDefinition) {
                 throw new RuntimeException("Query node source [{$source['alias']}] references invalid parameter.");
             }
 
-            if ((int) $topic->device_schema_version_id !== (int) $device->device_schema_version_id) {
-                throw new RuntimeException("Query node source [{$source['alias']}] topic does not belong to selected device schema.");
+            if ((int) $channel->device_profile_version_id !== (int) $device->device_profile_version_id) {
+                throw new RuntimeException("Query node source [{$source['alias']}] channel does not belong to selected device profile.");
             }
 
-            if ((int) $parameter->schema_version_topic_id !== (int) $topic->id) {
-                throw new RuntimeException("Query node source [{$source['alias']}] parameter does not belong to selected topic.");
+            if ((int) $parameter->device_channel_id !== (int) $channel->id) {
+                throw new RuntimeException("Query node source [{$source['alias']}] parameter does not belong to selected channel.");
             }
 
             $resolved[] = [
                 'alias' => $source['alias'],
                 'device_id' => $source['device_id'],
-                'topic_id' => $source['topic_id'],
-                'parameter_definition_id' => $source['parameter_definition_id'],
+                'device_channel_id' => $source['device_channel_id'],
+                'channel_key' => $channel->key,
                 'parameter_key' => $parameter->key,
                 'parameter_path' => $parameter->json_path,
             ];
@@ -369,8 +368,8 @@ SQL;
      * @param  array<int, array{
      *     alias: string,
      *     device_id: int,
-     *     topic_id: int,
-     *     parameter_definition_id: int,
+     *     device_channel_id: int,
+     *     channel_key: string,
      *     parameter_key: string,
      *     parameter_path: string
      * }>  $sourceDefinitions
@@ -389,12 +388,12 @@ SQL;
             $rawValueExpression = "COALESCE(transformed_values ->> '{$parameterKey}', transformed_values #>> '{$pathLiteral}', raw_payload #>> '{$pathLiteral}')";
 
             $deviceKey = "device_{$alias}";
-            $topicKey = "topic_{$alias}";
+            $channelKey = "channel_{$alias}";
             $windowStartKey = "window_start_{$alias}";
             $windowEndKey = "window_end_{$alias}";
 
             $bindings[$deviceKey] = $source['device_id'];
-            $bindings[$topicKey] = $source['topic_id'];
+            $bindings[$channelKey] = $source['device_channel_id'];
             $bindings[$windowStartKey] = $windowStart->toDateTimeString();
             $bindings[$windowEndKey] = $windowEnd->toDateTimeString();
 
@@ -403,8 +402,9 @@ SQL;
     SELECT
         recorded_at,
         device_id,
-        schema_version_topic_id AS topic_id,
-        {$source['parameter_definition_id']}::bigint AS parameter_definition_id,
+        device_channel_id,
+        '{$this->resolvePostgresTextLiteral($source['channel_key'])}'::text AS channel_key,
+        '{$parameterKey}'::text AS parameter_key,
         {$rawValueExpression} AS raw_value,
         CASE
             WHEN {$rawValueExpression} ~ '^[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?$'
@@ -413,7 +413,7 @@ SQL;
         END AS value
     FROM device_telemetry_logs
     WHERE device_id = :{$deviceKey}
-        AND schema_version_topic_id = :{$topicKey}
+        AND device_channel_id = :{$channelKey}
         AND recorded_at >= :{$windowStartKey}
         AND recorded_at <= :{$windowEndKey}
 )
@@ -473,6 +473,17 @@ SQL;
         $resolved = (int) $value;
 
         return $resolved > 0 ? $resolved : null;
+    }
+
+    private function resolveNonEmptyString(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $resolved = trim($value);
+
+        return $resolved === '' ? null : $resolved;
     }
 
     private function resolveNumericValue(mixed $value): int|float

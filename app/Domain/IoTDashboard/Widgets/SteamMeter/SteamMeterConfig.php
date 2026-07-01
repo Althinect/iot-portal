@@ -10,7 +10,7 @@ use App\Domain\IoTDashboard\Enums\WidgetType;
 final class SteamMeterConfig implements WidgetConfig
 {
     /**
-     * @param  array{flow: array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null, total: array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null}  $sources
+     * @param  array{flow: array{device_id: int, device_channel_id: int, parameter_key: string}|null, total: array{device_id: int, device_channel_id: int, parameter_key: string}|null}  $sources
      * @param  array<int, array{label: string, start_time: string, end_time: string}>  $shifts
      */
     public function __construct(
@@ -70,7 +70,7 @@ final class SteamMeterConfig implements WidgetConfig
     }
 
     /**
-     * @return array{flow: array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null, total: array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null}
+     * @return array{flow: array{device_id: int, device_channel_id: int, parameter_key: string}|null, total: array{device_id: int, device_channel_id: int, parameter_key: string}|null}
      */
     public function sources(): array
     {
@@ -123,7 +123,7 @@ final class SteamMeterConfig implements WidgetConfig
     }
 
     /**
-     * @return array{flow: array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null, total: array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null}
+     * @return array{flow: array{device_id: int, device_channel_id: int, parameter_key: string}|null, total: array{device_id: int, device_channel_id: int, parameter_key: string}|null}
      */
     private static function normalizeSources(mixed $sources): array
     {
@@ -136,7 +136,7 @@ final class SteamMeterConfig implements WidgetConfig
     }
 
     /**
-     * @return array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null
+     * @return array{device_id: int, device_channel_id: int, parameter_key: string}|null
      */
     private static function normalizeSource(mixed $source, string $defaultParameterKey): ?array
     {
@@ -145,7 +145,7 @@ final class SteamMeterConfig implements WidgetConfig
         }
 
         $deviceId = self::toInt($source['device_id'] ?? null, 0);
-        $topicId = self::toInt($source['schema_version_topic_id'] ?? null, 0);
+        $topicId = self::toInt($source['device_channel_id'] ?? null, 0);
         $parameterKey = is_string($source['parameter_key'] ?? null) && trim($source['parameter_key']) !== ''
             ? trim($source['parameter_key'])
             : $defaultParameterKey;
@@ -156,7 +156,7 @@ final class SteamMeterConfig implements WidgetConfig
 
         return [
             'device_id' => $deviceId,
-            'schema_version_topic_id' => $topicId,
+            'device_channel_id' => $topicId,
             'parameter_key' => $parameterKey,
         ];
     }

@@ -8,13 +8,11 @@ use App\Domain\Automation\Models\AutomationNotificationProfile;
 use App\Domain\Automation\Models\AutomationThresholdPolicy;
 use App\Domain\Automation\Services\ThresholdPolicyWorkflowProjector;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
-use App\Domain\DeviceSchema\Enums\MetricUnit;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\MetricUnit;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Telemetry\Enums\ValidationStatus;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
@@ -80,26 +78,22 @@ it('keeps recording dashboard alerts when a managed workflow exists but is pause
  * @return array{
  *     organization: Organization,
  *     device: Device,
- *     topic: SchemaVersionTopic,
- *     parameter: ParameterDefinition,
+ *     channel: DeviceChannel,
+ *     parameter: ProfileParameterDefinition,
  *     policy: AutomationThresholdPolicy
  * }
  */
 function createRecordOnlyThresholdAlertFixture(bool $withNotificationProfile = false): array
 {
     $organization = Organization::factory()->create();
-    $deviceType = DeviceType::factory()->forOrganization($organization->id)->mqtt()->create();
-    $schema = DeviceSchema::factory()->forDeviceType($deviceType)->create();
-    $schemaVersion = DeviceSchemaVersion::factory()->active()->create([
-        'device_schema_id' => $schema->id,
-    ]);
-    $topic = SchemaVersionTopic::factory()->publish()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
+    $channel = DeviceChannel::factory()->telemetry()->create([
+        'device_profile_version_id' => $profileVersion->id,
         'key' => 'telemetry',
-        'suffix' => 'telemetry',
+        'address' => 'telemetry',
     ]);
-    $parameter = ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    $parameter = ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'temperature',
         'label' => 'Temperature',
         'json_path' => '$.temperature',
@@ -110,8 +104,7 @@ function createRecordOnlyThresholdAlertFixture(bool $withNotificationProfile = f
     ]);
     $device = Device::factory()->create([
         'organization_id' => $organization->id,
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
         'name' => 'CLD 07-02',
         'connection_state' => 'online',
         'last_seen_at' => now(),
@@ -128,7 +121,8 @@ function createRecordOnlyThresholdAlertFixture(bool $withNotificationProfile = f
         ->create([
             'organization_id' => $organization->id,
             'device_id' => $device->id,
-            'parameter_definition_id' => $parameter->id,
+            'device_channel_id' => $channel->id,
+            'parameter_key' => $parameter->key,
             'notification_profile_id' => $profile?->id,
             'name' => 'CLD 07-02 Temperature Threshold',
             'minimum_value' => 2,
@@ -139,7 +133,7 @@ function createRecordOnlyThresholdAlertFixture(bool $withNotificationProfile = f
     return [
         'organization' => $organization,
         'device' => $device,
-        'topic' => $topic,
+        'channel' => $channel,
         'parameter' => $parameter,
         'policy' => $policy,
     ];
@@ -148,14 +142,14 @@ function createRecordOnlyThresholdAlertFixture(bool $withNotificationProfile = f
 /**
  * @param  array{
  *     device: Device,
- *     topic: SchemaVersionTopic
+ *     channel: DeviceChannel
  * }  $fixture
  */
 function createRecordOnlyThresholdTelemetryLog(array $fixture, float $value, Carbon $recordedAt): DeviceTelemetryLog
 {
     return DeviceTelemetryLog::factory()
         ->forDevice($fixture['device'])
-        ->forTopic($fixture['topic'])
+        ->forChannel($fixture['channel'])
         ->create([
             'transformed_values' => [
                 'temperature' => $value,

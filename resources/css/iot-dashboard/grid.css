@@ -3,8 +3,12 @@
     padding-bottom: 1rem;
 }
 
-.grid-stack > .grid-stack-item {
-    overflow: hidden;
+.iot-dashboard-grid.grid-stack > .grid-stack-item {
+    overflow: visible !important;
+}
+
+.iot-dashboard-grid.grid-stack > .grid-stack-item > .grid-stack-item-content {
+    overflow: visible !important;
 }
 
 .grid-stack-placeholder > .placeholder-content {

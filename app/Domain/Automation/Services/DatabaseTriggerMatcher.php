@@ -8,7 +8,7 @@ use App\Domain\Automation\Contracts\TriggerMatcher;
 use App\Domain\Automation\Enums\AutomationWorkflowStatus;
 use App\Domain\Automation\Models\AutomationTelemetryTrigger;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Services\JsonLogicEvaluator;
+use App\Domain\DeviceProfile\Services\JsonLogicEvaluator;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use Illuminate\Cache\CacheManager;
 use Illuminate\Log\LogManager;
@@ -43,7 +43,7 @@ class DatabaseTriggerMatcher implements TriggerMatcher
         $baseLogContext = [
             'telemetry_log_id' => $telemetryLogId,
             'device_id' => $telemetryLog->device_id,
-            'schema_version_topic_id' => $telemetryLog->schema_version_topic_id,
+            'device_channel_id' => $telemetryLog->device_channel_id,
         ];
 
         if ($device === null) {
@@ -93,8 +93,9 @@ class DatabaseTriggerMatcher implements TriggerMatcher
      * @return Collection<int, array{
      *     workflow_version_id: int,
      *     device_id: int|null,
-     *     device_type_id: int|null,
-     *     schema_version_topic_id: int|null,
+     *     device_channel_id: int|null,
+     *     channel_key: string|null,
+     *     parameter_key: string|null,
      *     filter_expression: array<string, mixed>|null
      * }>
      */
@@ -103,14 +104,17 @@ class DatabaseTriggerMatcher implements TriggerMatcher
         return collect($this->resolveOrganizationTriggersFromCache((int) $device->organization_id))
             ->filter(function (array $triggerRow) use ($device, $telemetryLog): bool {
                 $triggerDeviceId = $this->resolveNullableInt(Arr::get($triggerRow, 'device_id'));
-                $triggerDeviceTypeId = $this->resolveNullableInt(Arr::get($triggerRow, 'device_type_id'));
-                $triggerTopicId = $this->resolveNullableInt(Arr::get($triggerRow, 'schema_version_topic_id'));
+                $triggerChannelId = $this->resolveNullableInt(Arr::get($triggerRow, 'device_channel_id'));
+                $triggerChannelKey = $this->resolveNullableString(Arr::get($triggerRow, 'channel_key'));
+                $triggerParameterKey = $this->resolveNullableString(Arr::get($triggerRow, 'parameter_key'));
+                $payload = $telemetryLog->getAttribute('transformed_values');
 
                 $deviceMatches = $triggerDeviceId === null || $triggerDeviceId === (int) $device->id;
-                $deviceTypeMatches = $triggerDeviceTypeId === null || $triggerDeviceTypeId === (int) $device->device_type_id;
-                $topicMatches = $triggerTopicId === null || $triggerTopicId === (int) $telemetryLog->schema_version_topic_id;
+                $channelMatches = $triggerChannelId === null || $triggerChannelId === (int) $telemetryLog->device_channel_id;
+                $channelKeyMatches = $triggerChannelKey === null || $triggerChannelKey === $telemetryLog->channel?->key;
+                $parameterMatches = $triggerParameterKey === null || (is_array($payload) && array_key_exists($triggerParameterKey, $payload));
 
-                return $deviceMatches && $deviceTypeMatches && $topicMatches;
+                return $deviceMatches && $channelMatches && $channelKeyMatches && $parameterMatches;
             })
             ->values();
     }
@@ -119,8 +123,9 @@ class DatabaseTriggerMatcher implements TriggerMatcher
      * @return array<int, array{
      *     workflow_version_id: int,
      *     device_id: int|null,
-     *     device_type_id: int|null,
-     *     schema_version_topic_id: int|null,
+     *     device_channel_id: int|null,
+     *     channel_key: string|null,
+     *     parameter_key: string|null,
      *     filter_expression: array<string, mixed>|null
      * }>
      */
@@ -131,8 +136,9 @@ class DatabaseTriggerMatcher implements TriggerMatcher
         /** @var array<int, array{
          *     workflow_version_id: int,
          *     device_id: int|null,
-         *     device_type_id: int|null,
-         *     schema_version_topic_id: int|null,
+         *     device_channel_id: int|null,
+         *     channel_key: string|null,
+         *     parameter_key: string|null,
          *     filter_expression: array<string, mixed>|null
          * }> $resolved */
         $resolved = $this->cacheManager->store()->rememberForever($cacheKey, function () use ($organizationId): array {
@@ -145,8 +151,9 @@ class DatabaseTriggerMatcher implements TriggerMatcher
                 ->get([
                     'automation_telemetry_triggers.workflow_version_id',
                     'automation_telemetry_triggers.device_id',
-                    'automation_telemetry_triggers.device_type_id',
-                    'automation_telemetry_triggers.schema_version_topic_id',
+                    'automation_telemetry_triggers.device_channel_id',
+                    'automation_telemetry_triggers.channel_key',
+                    'automation_telemetry_triggers.parameter_key',
                     'automation_telemetry_triggers.filter_expression',
                 ])
                 ->map(function (AutomationTelemetryTrigger $trigger): array {
@@ -155,8 +162,9 @@ class DatabaseTriggerMatcher implements TriggerMatcher
                     return [
                         'workflow_version_id' => (int) $trigger->workflow_version_id,
                         'device_id' => is_numeric($trigger->device_id) ? (int) $trigger->device_id : null,
-                        'device_type_id' => is_numeric($trigger->device_type_id) ? (int) $trigger->device_type_id : null,
-                        'schema_version_topic_id' => is_numeric($trigger->schema_version_topic_id) ? (int) $trigger->schema_version_topic_id : null,
+                        'device_channel_id' => is_numeric($trigger->device_channel_id) ? (int) $trigger->device_channel_id : null,
+                        'channel_key' => $this->resolveNullableString($trigger->channel_key),
+                        'parameter_key' => $this->resolveNullableString($trigger->parameter_key),
                         'filter_expression' => is_array($filterExpression) ? $this->normalizeStringKeyArray($filterExpression) : null,
                     ];
                 })
@@ -210,6 +218,17 @@ class DatabaseTriggerMatcher implements TriggerMatcher
         }
 
         return null;
+    }
+
+    private function resolveNullableString(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $resolved = trim($value);
+
+        return $resolved !== '' ? $resolved : null;
     }
 
     /**

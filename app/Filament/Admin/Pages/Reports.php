@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Filament\Admin\Pages;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\ParameterCategory;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
+use App\Domain\DeviceProfile\Enums\ChannelDirection;
+use App\Domain\DeviceProfile\Enums\ParameterCategory;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Reporting\Actions\CreateReportRunAction;
 use App\Domain\Reporting\Actions\DeleteReportRunAction;
 use App\Domain\Reporting\Actions\UpdateOrganizationReportSettingsAction;
@@ -662,19 +662,19 @@ class Reports extends Page implements HasTable
             return [];
         }
 
-        $schemaVersionId = (int) $device->device_schema_version_id;
+        $profileVersionId = (int) $device->device_profile_version_id;
 
-        if ($schemaVersionId <= 0) {
+        if ($profileVersionId <= 0) {
             return [];
         }
 
         $reportType = ReportType::tryFrom($this->normalizeReportTypeValue($reportTypeValue));
-        $query = ParameterDefinition::query()
+        $query = ProfileParameterDefinition::query()
             ->where('is_active', true)
-            ->whereHas('topic', function (Builder $builder) use ($schemaVersionId): void {
+            ->whereHas('channel', function (Builder $builder) use ($profileVersionId): void {
                 $builder
-                    ->where('device_schema_version_id', $schemaVersionId)
-                    ->where('direction', TopicDirection::Publish->value);
+                    ->where('device_profile_version_id', $profileVersionId)
+                    ->where('direction', ChannelDirection::Publish->value);
             })
             ->orderBy('sequence');
 
@@ -696,7 +696,7 @@ class Reports extends Page implements HasTable
         return $query
             ->get(['key', 'label'])
             ->unique('key')
-            ->mapWithKeys(fn (ParameterDefinition $parameter): array => [
+            ->mapWithKeys(fn (ProfileParameterDefinition $parameter): array => [
                 $parameter->key => "{$parameter->label} ({$parameter->key})",
             ])
             ->all();
@@ -717,18 +717,18 @@ class Reports extends Page implements HasTable
             return [];
         }
 
-        $schemaVersionId = (int) $device->device_schema_version_id;
+        $profileVersionId = (int) $device->device_profile_version_id;
 
-        if ($schemaVersionId <= 0) {
+        if ($profileVersionId <= 0) {
             return [];
         }
 
-        $parameterDefinitions = ParameterDefinition::query()
+        $parameterDefinitions = ProfileParameterDefinition::query()
             ->where('is_active', true)
-            ->whereHas('topic', function (Builder $builder) use ($schemaVersionId): void {
+            ->whereHas('channel', function (Builder $builder) use ($profileVersionId): void {
                 $builder
-                    ->where('device_schema_version_id', $schemaVersionId)
-                    ->where('direction', TopicDirection::Publish->value);
+                    ->where('device_profile_version_id', $profileVersionId)
+                    ->where('direction', ChannelDirection::Publish->value);
             })
             ->get(['type', 'category', 'validation_rules']);
 
@@ -736,7 +736,7 @@ class Reports extends Page implements HasTable
             return [];
         }
 
-        $hasCounterParameters = $parameterDefinitions->contains(function (ParameterDefinition $parameter): bool {
+        $hasCounterParameters = $parameterDefinitions->contains(function (ProfileParameterDefinition $parameter): bool {
             $category = $parameter->category;
             $validationRules = is_array($parameter->validation_rules) ? $parameter->validation_rules : [];
             $validationCategory = is_string($validationRules['category'] ?? null) ? $validationRules['category'] : null;
@@ -746,7 +746,7 @@ class Reports extends Page implements HasTable
                 && ($category === ParameterCategory::Counter || $validationCategory === ParameterCategory::Counter->value);
         });
 
-        $hasStateParameters = $parameterDefinitions->contains(function (ParameterDefinition $parameter): bool {
+        $hasStateParameters = $parameterDefinitions->contains(function (ProfileParameterDefinition $parameter): bool {
             $category = $parameter->category;
             $validationRules = is_array($parameter->validation_rules) ? $parameter->validation_rules : [];
             $validationCategory = is_string($validationRules['category'] ?? null) ? $validationRules['category'] : null;

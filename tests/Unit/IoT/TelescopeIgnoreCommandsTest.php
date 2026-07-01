@@ -16,7 +16,7 @@ it('ignores long-running iot commands from telescope recording', function (): vo
         ->toContain('iot:ingest-telemetry')
         ->toContain('iot:listen-for-device-states')
         ->toContain('iot:listen-for-device-presence')
-        ->toContain('iot:mock-device');
+        ->not->toContain('iot:mock-device');
 });
 
 it('stops telescope recording when the telemetry ingestion command boots', function (): void {

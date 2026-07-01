@@ -6,8 +6,8 @@ namespace App\Domain\Telemetry\Models;
 
 use App\Domain\DataIngestion\Models\IngestionMessage;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Domain\Telemetry\Enums\ValidationStatus;
 use Database\Factories\Domain\Telemetry\Models\DeviceTelemetryLogFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -66,19 +66,19 @@ class DeviceTelemetryLog extends Model
     }
 
     /**
-     * @return BelongsTo<DeviceSchemaVersion, $this>
+     * @return BelongsTo<DeviceProfileVersion, $this>
      */
-    public function schemaVersion(): BelongsTo
+    public function profileVersion(): BelongsTo
     {
-        return $this->belongsTo(DeviceSchemaVersion::class, 'device_schema_version_id');
+        return $this->belongsTo(DeviceProfileVersion::class, 'device_profile_version_id');
     }
 
     /**
-     * @return BelongsTo<SchemaVersionTopic, $this>
+     * @return BelongsTo<DeviceChannel, $this>
      */
-    public function topic(): BelongsTo
+    public function channel(): BelongsTo
     {
-        return $this->belongsTo(SchemaVersionTopic::class, 'schema_version_topic_id');
+        return $this->belongsTo(DeviceChannel::class, 'device_channel_id');
     }
 
     /**

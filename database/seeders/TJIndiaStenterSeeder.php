@@ -19,12 +19,12 @@ class TJIndiaStenterSeeder extends TJIndiaMigrationSeederSupport
             'status' => [
                 'label' => 'Status',
                 'required' => true,
-                'allowed_device_type_keys' => ['status'],
+                'allowed_device_profile_keys' => ['status'],
             ],
             'length' => [
                 'label' => 'Length',
                 'required' => true,
-                'allowed_device_type_keys' => ['fabric_length_counter'],
+                'allowed_device_profile_keys' => ['fabric_length_counter'],
             ],
         ],
     ];

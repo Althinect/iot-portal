@@ -32,9 +32,9 @@ class WidgetBootstrapPayloadBuilder
                     'type' => (string) $widget->type,
                     'title' => (string) $widget->title,
                     'topic' => [
-                        'id' => (int) $widget->schema_version_topic_id,
+                        'id' => (int) $widget->device_channel_id,
                         'label' => $widget->topic?->label,
-                        'suffix' => $widget->topic?->suffix,
+                        'address' => $widget->topic?->address,
                     ],
                     'device' => [
                         'id' => $widget->device_id === null ? null : (int) $widget->device_id,

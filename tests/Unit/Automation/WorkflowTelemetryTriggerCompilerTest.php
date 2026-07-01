@@ -9,12 +9,10 @@ use App\Domain\Automation\Models\AutomationWorkflow;
 use App\Domain\Automation\Models\AutomationWorkflowVersion;
 use App\Domain\Automation\Services\WorkflowTelemetryTriggerCompiler;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -44,26 +42,21 @@ function createCompilerWorkflow(Organization $organization): AutomationWorkflow
 
 function createCompilerFixture(Organization $organization): array
 {
-    $deviceType = DeviceType::factory()->forOrganization($organization->id)->create();
-    $schema = DeviceSchema::factory()->forDeviceType($deviceType)->create();
-    $schemaVersion = DeviceSchemaVersion::factory()->active()->create([
-        'device_schema_id' => $schema->id,
-    ]);
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
 
     $device = Device::factory()->create([
         'organization_id' => $organization->id,
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
     ]);
 
-    $topic = SchemaVersionTopic::factory()->publish()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    $channel = DeviceChannel::factory()->telemetry()->create([
+        'device_profile_version_id' => $profileVersion->id,
         'key' => 'telemetry',
-        'suffix' => 'telemetry',
+        'address' => 'telemetry',
     ]);
 
-    $parameter = ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    $parameter = ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'voltage',
         'label' => 'Voltage',
         'json_path' => 'metrics.voltage',
@@ -74,7 +67,7 @@ function createCompilerFixture(Organization $organization): array
 
     return [
         'device' => $device,
-        'topic' => $topic,
+        'channel' => $channel,
         'parameter' => $parameter,
     ];
 }
@@ -100,8 +93,8 @@ it('compiles configured telemetry trigger nodes into trigger rows', function ():
                         'mode' => 'event',
                         'source' => [
                             'device_id' => $fixture['device']->id,
-                            'topic_id' => $fixture['topic']->id,
-                            'parameter_definition_id' => $fixture['parameter']->id,
+                            'device_channel_id' => $fixture['channel']->id,
+                            'parameter_key' => $fixture['parameter']->key,
                         ],
                     ],
                 ],
@@ -118,7 +111,9 @@ it('compiles configured telemetry trigger nodes into trigger rows', function ():
         ->and($trigger?->organization_id)->toBe($organization->id)
         ->and($trigger?->workflow_version_id)->toBe($version->id)
         ->and($trigger?->device_id)->toBe($fixture['device']->id)
-        ->and($trigger?->schema_version_topic_id)->toBe($fixture['topic']->id);
+        ->and($trigger?->device_channel_id)->toBe($fixture['channel']->id)
+        ->and($trigger?->channel_key)->toBe($fixture['channel']->key)
+        ->and($trigger?->parameter_key)->toBe($fixture['parameter']->key);
 });
 
 it('skips telemetry nodes with incomplete configuration', function (): void {
@@ -140,8 +135,8 @@ it('skips telemetry nodes with incomplete configuration', function (): void {
                         'mode' => 'event',
                         'source' => [
                             'device_id' => null,
-                            'topic_id' => null,
-                            'parameter_definition_id' => null,
+                            'device_channel_id' => null,
+                            'parameter_key' => null,
                         ],
                     ],
                 ],
@@ -169,8 +164,9 @@ it('replaces existing compiled triggers on recompile', function (): void {
         'organization_id' => $organization->id,
         'workflow_version_id' => $version->id,
         'device_id' => null,
-        'device_type_id' => null,
-        'schema_version_topic_id' => null,
+        'device_channel_id' => null,
+        'channel_key' => null,
+        'parameter_key' => null,
         'filter_expression' => null,
     ]);
 
@@ -185,8 +181,8 @@ it('replaces existing compiled triggers on recompile', function (): void {
                         'mode' => 'event',
                         'source' => [
                             'device_id' => $fixture['device']->id,
-                            'topic_id' => $fixture['topic']->id,
-                            'parameter_definition_id' => $fixture['parameter']->id,
+                            'device_channel_id' => $fixture['channel']->id,
+                            'parameter_key' => $fixture['parameter']->key,
                         ],
                     ],
                 ],
@@ -201,5 +197,6 @@ it('replaces existing compiled triggers on recompile', function (): void {
 
     expect($triggers)->toHaveCount(1)
         ->and($triggers->first()?->device_id)->toBe($fixture['device']->id)
-        ->and($triggers->first()?->schema_version_topic_id)->toBe($fixture['topic']->id);
+        ->and($triggers->first()?->device_channel_id)->toBe($fixture['channel']->id)
+        ->and($triggers->first()?->parameter_key)->toBe($fixture['parameter']->key);
 });

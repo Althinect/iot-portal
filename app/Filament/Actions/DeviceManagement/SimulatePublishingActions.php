@@ -6,7 +6,7 @@ namespace App\Filament\Actions\DeviceManagement;
 
 use App\Domain\DeviceManagement\Jobs\SimulateDevicePublishingJob;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Forms\Components\Radio;
@@ -24,7 +24,7 @@ final class SimulatePublishingActions
             ->label('Simulate Publishing')
             ->icon(Heroicon::OutlinedPlay)
             ->modalHeading('Simulate Publishing')
-            ->modalDescription('Publish simulated telemetry messages for this device, based on the active publish topic parameters.')
+            ->modalDescription('Publish simulated telemetry messages for this device, based on the active publish channel parameters.')
             ->tooltip(fn (Device $record): ?string => self::missingPublishTopicReason($record))
             ->schema([
                 TextInput::make('count')
@@ -45,22 +45,22 @@ final class SimulatePublishingActions
                     ->default(1)
                     ->required(),
 
-                Radio::make('schema_version_topic_id')
-                    ->label('Publish Topic')
-                    ->helperText('Choose which publish topic to simulate.')
-                    ->options(fn (Device $record): array => self::publishTopicOptions($record))
+                Radio::make('device_channel_id')
+                    ->label('Publish Channel')
+                    ->helperText('Choose which publish channel to simulate.')
+                    ->options(fn (Device $record): array => self::publishChannelOptions($record))
                     ->default('all')
                     ->required()
                     ->columns(1),
             ])
             ->disabled(fn (Device $record): bool => self::missingPublishTopicReason($record) !== null)
             ->action(function (array $data, Device $record): void {
-                $topics = self::publishTopics($record);
+                $channels = self::publishChannels($record);
 
-                if ($topics->isEmpty()) {
+                if ($channels->isEmpty()) {
                     Notification::make()
-                        ->title('No publish topics found')
-                        ->body('This device\'s schema version has no publish topics configured.')
+                        ->title('No publish channels found')
+                        ->body('This device profile version has no publish channels configured.')
                         ->warning()
                         ->send();
 
@@ -70,14 +70,14 @@ final class SimulatePublishingActions
                 $count = isset($data['count']) ? (int) $data['count'] : 10;
                 $interval = isset($data['interval']) ? (int) $data['interval'] : 1;
 
-                $topicSelection = $data['schema_version_topic_id'] ?? 'all';
-                $schemaVersionTopicId = is_numeric($topicSelection) ? (int) $topicSelection : null;
+                $channelSelection = $data['device_channel_id'] ?? 'all';
+                $deviceChannelId = is_numeric($channelSelection) ? (int) $channelSelection : null;
 
                 SimulateDevicePublishingJob::dispatchIterations(
                     deviceId: $record->id,
                     count: $count,
                     intervalSeconds: $interval,
-                    schemaVersionTopicId: $schemaVersionTopicId,
+                    deviceChannelId: $deviceChannelId,
                 );
 
                 Notification::make()
@@ -116,7 +116,7 @@ final class SimulatePublishingActions
             ])
             ->requiresConfirmation()
             ->action(function (Collection $records, array $data): void {
-                $records->loadMissing('schemaVersion.topics');
+                $records->loadMissing('profileVersion.channels');
 
                 $count = isset($data['count']) ? (int) $data['count'] : 10;
                 $interval = isset($data['interval']) ? (int) $data['interval'] : 1;
@@ -129,9 +129,9 @@ final class SimulatePublishingActions
                         continue;
                     }
 
-                    $topics = self::publishTopics($record);
+                    $channels = self::publishChannels($record);
 
-                    if ($topics->isEmpty()) {
+                    if ($channels->isEmpty()) {
                         $skipped++;
 
                         continue;
@@ -141,7 +141,7 @@ final class SimulatePublishingActions
                         deviceId: $record->id,
                         count: $count,
                         intervalSeconds: $interval,
-                        schemaVersionTopicId: null,
+                        deviceChannelId: null,
                     );
 
                     $queued++;
@@ -150,7 +150,7 @@ final class SimulatePublishingActions
                 if ($queued === 0) {
                     Notification::make()
                         ->title('No devices queued')
-                        ->body('None of the selected devices have publish topics configured.')
+                        ->body('None of the selected devices have publish channels configured.')
                         ->warning()
                         ->send();
 
@@ -173,14 +173,14 @@ final class SimulatePublishingActions
     }
 
     /**
-     * @return SupportCollection<int, SchemaVersionTopic>
+     * @return SupportCollection<int, DeviceChannel>
      */
-    private static function publishTopics(Device $record): SupportCollection
+    private static function publishChannels(Device $record): SupportCollection
     {
-        $record->loadMissing('schemaVersion.topics');
+        $record->loadMissing('profileVersion.channels');
 
-        return $record->schemaVersion?->topics
-            ?->filter(fn (SchemaVersionTopic $topic): bool => $topic->isPublish())
+        return $record->profileVersion?->channels
+            ?->filter(fn (DeviceChannel $channel): bool => $channel->isPublish())
             ->sortBy('sequence')
                 ?? collect();
     }
@@ -188,21 +188,21 @@ final class SimulatePublishingActions
     /**
      * @return array<int|string, string>
      */
-    private static function publishTopicOptions(Device $record): array
+    private static function publishChannelOptions(Device $record): array
     {
-        $topics = self::publishTopics($record);
+        $channels = self::publishChannels($record);
 
         /** @var array<string, string> $options */
         $options = [];
 
-        if ($topics->isEmpty()) {
+        if ($channels->isEmpty()) {
             return $options;
         }
 
-        $options['all'] = 'All publish topics';
+        $options['all'] = 'All publish channels';
 
-        foreach ($topics as $topic) {
-            $options[(string) $topic->id] = "{$topic->label} ({$topic->suffix})";
+        foreach ($channels as $channel) {
+            $options[(string) $channel->id] = "{$channel->label} ({$channel->address})";
         }
 
         return $options;
@@ -210,12 +210,12 @@ final class SimulatePublishingActions
 
     private static function missingPublishTopicReason(Device $record): ?string
     {
-        if ($record->getAttribute('device_schema_version_id') === null) {
-            return 'Assign a schema version to this device to simulate publishing.';
+        if ($record->getAttribute('device_profile_version_id') === null) {
+            return 'Assign a profile version to this device to simulate publishing.';
         }
 
-        if (self::publishTopics($record)->isEmpty()) {
-            return 'No publish topics are configured for this schema version.';
+        if (self::publishChannels($record)->isEmpty()) {
+            return 'No publish channels are configured for this profile version.';
         }
 
         return null;

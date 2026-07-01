@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\MetricUnit;
-use App\Domain\DeviceSchema\Enums\ParameterCategory;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\MetricUnit;
+use App\Domain\DeviceProfile\Enums\ParameterCategory;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 
 class TeejayWaterFlowVolumeSeeder extends TeejayMigrationSeederSupport
 {
@@ -66,13 +66,13 @@ class TeejayWaterFlowVolumeSeeder extends TeejayMigrationSeederSupport
             notes: 'Recovered Teejay water flow and volume contract with Laravel-side decode profiles.',
         );
 
-        $topic = $schemaVersion->topics()->where('key', 'telemetry')->first();
+        $topic = $schemaVersion->channels()->where('key', 'telemetry')->first();
 
-        if (! $topic instanceof SchemaVersionTopic) {
+        if (! $topic instanceof DeviceChannel) {
             throw new \RuntimeException('Teejay water flow telemetry topic could not be resolved.');
         }
 
-        /** @var array<string, ParameterDefinition> $parametersByKey */
+        /** @var array<string, ProfileParameterDefinition> $parametersByKey */
         $parametersByKey = $topic->parameters()->orderBy('sequence')->get()->keyBy('key')->all();
         $expectedExternalIds = [];
 

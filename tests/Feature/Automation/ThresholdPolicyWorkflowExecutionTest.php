@@ -12,13 +12,11 @@ use App\Domain\Automation\Models\AutomationWorkflow;
 use App\Domain\Automation\Models\AutomationWorkflowVersion;
 use App\Domain\Automation\Services\ThresholdPolicyWorkflowProjector;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
-use App\Domain\DeviceSchema\Enums\MetricUnit;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\MetricUnit;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Shared\Models\User;
 use App\Domain\Telemetry\Enums\ValidationStatus;
@@ -210,8 +208,8 @@ it('normalizes a managed threshold alert once and opens a fresh row on the next 
  * @return array{
  *     organization: Organization,
  *     device: Device,
- *     topic: SchemaVersionTopic,
- *     parameter: ParameterDefinition,
+ *     channel: DeviceChannel,
+ *     parameter: ProfileParameterDefinition,
  *     workflow: AutomationWorkflow,
  *     profile: AutomationNotificationProfile
  * }
@@ -219,21 +217,15 @@ it('normalizes a managed threshold alert once and opens a fresh row on the next 
 function createThresholdPolicyExecutionFixture(): array
 {
     $organization = Organization::factory()->create();
-    $deviceType = DeviceType::factory()->forOrganization($organization->id)->mqtt()->create();
-    $schema = DeviceSchema::factory()->forDeviceType($deviceType)->create([
-        'name' => 'Cold Room Schema',
-    ]);
-    $schemaVersion = DeviceSchemaVersion::factory()->active()->create([
-        'device_schema_id' => $schema->id,
-    ]);
-    $topic = SchemaVersionTopic::factory()->publish()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
+    $channel = DeviceChannel::factory()->telemetry()->create([
+        'device_profile_version_id' => $profileVersion->id,
         'key' => 'telemetry',
         'label' => 'Telemetry',
-        'suffix' => 'telemetry',
+        'address' => 'telemetry',
     ]);
-    $parameter = ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    $parameter = ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'temperature',
         'label' => 'Temperature',
         'json_path' => '$.temperature',
@@ -244,8 +236,7 @@ function createThresholdPolicyExecutionFixture(): array
     ]);
     $device = Device::factory()->create([
         'organization_id' => $organization->id,
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
         'name' => 'CLD 03 - 02',
         'connection_state' => 'online',
         'last_seen_at' => now(),
@@ -282,8 +273,8 @@ function createThresholdPolicyExecutionFixture(): array
                         'mode' => 'event',
                         'source' => [
                             'device_id' => $device->id,
-                            'topic_id' => $topic->id,
-                            'parameter_definition_id' => $parameter->id,
+                            'device_channel_id' => $channel->id,
+                            'parameter_key' => $parameter->key,
                         ],
                     ],
                 ],
@@ -358,15 +349,16 @@ function createThresholdPolicyExecutionFixture(): array
     AutomationTelemetryTrigger::factory()->create([
         'organization_id' => $organization->id,
         'device_id' => $device->id,
-        'device_type_id' => $device->device_type_id,
         'workflow_version_id' => $version->id,
-        'schema_version_topic_id' => $topic->id,
+        'device_channel_id' => $channel->id,
+        'channel_key' => $channel->key,
+        'parameter_key' => $parameter->key,
     ]);
 
     return [
         'organization' => $organization,
         'device' => $device,
-        'topic' => $topic,
+        'channel' => $channel,
         'parameter' => $parameter,
         'workflow' => $workflow,
         'profile' => $profile,
@@ -377,8 +369,8 @@ function createThresholdPolicyExecutionFixture(): array
  * @return array{
  *     organization: Organization,
  *     device: Device,
- *     topic: SchemaVersionTopic,
- *     parameter: ParameterDefinition,
+ *     channel: DeviceChannel,
+ *     parameter: ProfileParameterDefinition,
  *     workflow: AutomationWorkflow,
  *     profile: NotificationProfile,
  *     policy: ThresholdPolicy
@@ -387,21 +379,15 @@ function createThresholdPolicyExecutionFixture(): array
 function createManagedThresholdPolicyExecutionFixture(): array
 {
     $organization = Organization::factory()->create();
-    $deviceType = DeviceType::factory()->forOrganization($organization->id)->mqtt()->create();
-    $schema = DeviceSchema::factory()->forDeviceType($deviceType)->create([
-        'name' => 'Cold Room Schema',
-    ]);
-    $schemaVersion = DeviceSchemaVersion::factory()->active()->create([
-        'device_schema_id' => $schema->id,
-    ]);
-    $topic = SchemaVersionTopic::factory()->publish()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
+    $channel = DeviceChannel::factory()->telemetry()->create([
+        'device_profile_version_id' => $profileVersion->id,
         'key' => 'telemetry',
         'label' => 'Telemetry',
-        'suffix' => 'telemetry',
+        'address' => 'telemetry',
     ]);
-    $parameter = ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    $parameter = ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'temperature',
         'label' => 'Temperature',
         'json_path' => '$.temperature',
@@ -412,8 +398,7 @@ function createManagedThresholdPolicyExecutionFixture(): array
     ]);
     $device = Device::factory()->create([
         'organization_id' => $organization->id,
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
         'name' => 'CLD 03 - 02',
         'connection_state' => 'online',
         'last_seen_at' => now(),
@@ -437,7 +422,8 @@ function createManagedThresholdPolicyExecutionFixture(): array
     $policy = ThresholdPolicy::factory()->create([
         'organization_id' => $organization->id,
         'device_id' => $device->id,
-        'parameter_definition_id' => $parameter->id,
+        'device_channel_id' => $channel->id,
+        'parameter_key' => $parameter->key,
         'notification_profile_id' => $profile->id,
         'name' => 'Cold Room Threshold Policy',
         'minimum_value' => 2,
@@ -454,7 +440,7 @@ function createManagedThresholdPolicyExecutionFixture(): array
     return [
         'organization' => $organization,
         'device' => $device,
-        'topic' => $topic,
+        'channel' => $channel,
         'parameter' => $parameter,
         'workflow' => $workflow,
         'profile' => $profile,
@@ -466,7 +452,7 @@ function createThresholdPolicyExecutionTelemetryLog(array $fixture, float $value
 {
     return DeviceTelemetryLog::factory()
         ->forDevice($fixture['device'])
-        ->forTopic($fixture['topic'])
+        ->forChannel($fixture['channel'])
         ->create([
             'transformed_values' => [
                 'temperature' => $value,

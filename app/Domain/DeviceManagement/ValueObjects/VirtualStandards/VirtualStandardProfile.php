@@ -30,7 +30,7 @@ final readonly class VirtualStandardProfile
     /**
      * @param  array<string, mixed>  $data
      */
-    public static function fromArray(string $deviceTypeKey, array $data): ?self
+    public static function fromArray(string $deviceProfileKey, array $data): ?self
     {
         $sourceDefinitions = $data['sources'] ?? null;
 
@@ -63,10 +63,10 @@ final readonly class VirtualStandardProfile
             : null;
 
         return new self(
-            key: $deviceTypeKey,
+            key: $deviceProfileKey,
             label: is_string($data['label'] ?? null) && trim((string) $data['label']) !== ''
                 ? trim((string) $data['label'])
-                : Str::headline($deviceTypeKey),
+                : Str::headline($deviceProfileKey),
             description: is_string($data['description'] ?? null) ? trim((string) $data['description']) : '',
             shiftSchedule: $shiftSchedule,
             sources: $sources,
@@ -101,9 +101,9 @@ final readonly class VirtualStandardProfile
     /**
      * @return array<int, string>
      */
-    public function allowedDeviceTypeKeysForPurpose(string $purpose): array
+    public function allowedDeviceProfileKeysForPurpose(string $purpose): array
     {
-        return $this->source($purpose)->allowedDeviceTypeKeys ?? [];
+        return $this->source($purpose)->allowedDeviceProfileKeys ?? [];
     }
 
     /**
@@ -126,7 +126,7 @@ final readonly class VirtualStandardProfile
      *     label: string,
      *     description: string,
      *     shift_schedule: array{id: string, label: string}|null,
-     *     sources: array<string, array{label: string, required: bool, allowed_device_type_keys: array<int, string>}>
+     *     sources: array<string, array{label: string, required: bool, allowed_device_profile_keys: array<int, string>}>
      * }
      */
     public function toArray(): array

@@ -7,12 +7,10 @@ use App\Domain\Automation\Enums\AutomationWorkflowStatus;
 use App\Domain\Automation\Models\AutomationWorkflow;
 use App\Domain\Automation\Services\WorkflowNodeConfigValidator;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -42,42 +40,38 @@ function createWorkflowRecord(Organization $organization): AutomationWorkflow
 
 function createWorkflowDeviceFixture(Organization $organization): array
 {
-    $deviceType = DeviceType::factory()->forOrganization($organization->id)->create();
-    $schema = DeviceSchema::factory()->forDeviceType($deviceType)->create();
-    $schemaVersion = DeviceSchemaVersion::factory()->active()->create([
-        'device_schema_id' => $schema->id,
-    ]);
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
 
     $device = Device::factory()->create([
         'organization_id' => $organization->id,
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
     ]);
 
-    $publishTopic = SchemaVersionTopic::factory()->publish()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    $publishChannel = DeviceChannel::factory()->telemetry()->create([
+        'device_profile_version_id' => $profileVersion->id,
         'key' => 'telemetry',
-        'suffix' => 'telemetry',
+        'address' => 'telemetry',
     ]);
 
-    $subscribeTopic = SchemaVersionTopic::factory()->subscribe()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    $commandChannel = DeviceChannel::factory()->command()->create([
+        'device_profile_version_id' => $profileVersion->id,
         'key' => 'commands',
-        'suffix' => 'commands',
+        'address' => 'commands',
     ]);
 
-    $voltageParameter = ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $publishTopic->id,
+    $voltageParameter = ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $publishChannel->id,
         'key' => 'voltage',
         'label' => 'Voltage',
         'json_path' => 'metrics.voltage',
         'type' => ParameterDataType::Decimal,
         'required' => true,
         'is_active' => true,
+        'mutation_expression' => null,
     ]);
 
-    $brightnessParameter = ParameterDefinition::factory()->subscribe()->create([
-        'schema_version_topic_id' => $subscribeTopic->id,
+    $brightnessParameter = ProfileParameterDefinition::factory()->subscribe()->create([
+        'device_channel_id' => $commandChannel->id,
         'key' => 'brightness',
         'label' => 'Brightness',
         'json_path' => 'brightness',
@@ -93,8 +87,8 @@ function createWorkflowDeviceFixture(Organization $organization): array
 
     return [
         'device' => $device,
-        'publishTopic' => $publishTopic,
-        'subscribeTopic' => $subscribeTopic,
+        'publishChannel' => $publishChannel,
+        'commandChannel' => $commandChannel,
         'voltageParameter' => $voltageParameter,
         'brightnessParameter' => $brightnessParameter,
     ];
@@ -114,7 +108,7 @@ it('fails when telemetry trigger config is missing required fields', function ()
                         'mode' => 'event',
                         'source' => [
                             'device_id' => 123,
-                            'topic_id' => 456,
+                            'device_channel_id' => 456,
                         ],
                     ],
                 ],
@@ -124,7 +118,7 @@ it('fails when telemetry trigger config is missing required fields', function ()
     ]);
 
     expect(fn () => app(WorkflowNodeConfigValidator::class)->validate($workflow, $graph))
-        ->toThrow(RuntimeException::class, 'missing source device, topic, or parameter');
+        ->toThrow(RuntimeException::class, 'missing source device, channel, or parameter');
 });
 
 it('fails when condition node has invalid json logic', function (): void {
@@ -167,7 +161,7 @@ it('fails when command payload values do not match parameter requirements', func
                     'config' => [
                         'target' => [
                             'device_id' => $fixture['device']->id,
-                            'topic_id' => $fixture['subscribeTopic']->id,
+                            'device_channel_id' => $fixture['commandChannel']->id,
                         ],
                         'payload_mode' => 'schema_form',
                         'payload' => [
@@ -206,8 +200,8 @@ it('validates query node configuration when source and sql are valid', function 
                             [
                                 'alias' => 'source_1',
                                 'device_id' => $fixture['device']->id,
-                                'topic_id' => $fixture['publishTopic']->id,
-                                'parameter_definition_id' => $fixture['voltageParameter']->id,
+                                'device_channel_id' => $fixture['publishChannel']->id,
+                                'parameter_key' => $fixture['voltageParameter']->key,
                             ],
                         ],
                         'sql' => 'SELECT AVG(source_1.value) AS value FROM source_1',
@@ -244,8 +238,8 @@ it('fails when query node sql is not select-only', function (): void {
                             [
                                 'alias' => 'source_1',
                                 'device_id' => $fixture['device']->id,
-                                'topic_id' => $fixture['publishTopic']->id,
-                                'parameter_definition_id' => $fixture['voltageParameter']->id,
+                                'device_channel_id' => $fixture['publishChannel']->id,
+                                'parameter_key' => $fixture['voltageParameter']->key,
                             ],
                         ],
                         'sql' => 'SELECT update AS value FROM source_1',
@@ -282,8 +276,8 @@ it('fails when query node source is outside workflow organization scope', functi
                             [
                                 'alias' => 'source_1',
                                 'device_id' => $otherFixture['device']->id,
-                                'topic_id' => $otherFixture['publishTopic']->id,
-                                'parameter_definition_id' => $otherFixture['voltageParameter']->id,
+                                'device_channel_id' => $otherFixture['publishChannel']->id,
+                                'parameter_key' => $otherFixture['voltageParameter']->key,
                             ],
                         ],
                         'sql' => 'SELECT AVG(source_1.value) AS value FROM source_1',

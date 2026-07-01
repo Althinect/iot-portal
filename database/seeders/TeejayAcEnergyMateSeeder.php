@@ -6,12 +6,12 @@ namespace Database\Seeders;
 
 use App\Domain\DataIngestion\Models\DeviceSignalBinding;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\MetricUnit;
-use App\Domain\DeviceSchema\Enums\ParameterCategory;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\MetricUnit;
+use App\Domain\DeviceProfile\Enums\ParameterCategory;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 
 class TeejayAcEnergyMateSeeder extends TeejayMigrationSeederSupport
 {
@@ -48,9 +48,9 @@ class TeejayAcEnergyMateSeeder extends TeejayMigrationSeederSupport
                 derivedParameters: $schemaConfig['derived_parameters'],
             );
 
-            $topic = $schemaVersion->topics()->where('key', 'telemetry')->first();
+            $topic = $schemaVersion->channels()->where('key', 'telemetry')->first();
 
-            if (! $topic instanceof SchemaVersionTopic) {
+            if (! $topic instanceof DeviceChannel) {
                 throw new \RuntimeException('Teejay AC Energy Mate telemetry topic could not be resolved.');
             }
 
@@ -66,7 +66,7 @@ class TeejayAcEnergyMateSeeder extends TeejayMigrationSeederSupport
             $schemaVersion = $schemaVersions[$signature] ?? null;
             $schemaConfig = $this->schemaConfigurationsBySignature([$deviceConfig])[$signature] ?? null;
 
-            if (! $parentDevice instanceof Device || ! $schemaVersion instanceof DeviceSchemaVersion || ! is_array($schemaConfig) || ! is_string($deviceConfig['peripheral_type_hex'])) {
+            if (! $parentDevice instanceof Device || ! $schemaVersion instanceof DeviceProfileVersion || ! is_array($schemaConfig) || ! is_string($deviceConfig['peripheral_type_hex'])) {
                 continue;
             }
 
@@ -93,7 +93,7 @@ class TeejayAcEnergyMateSeeder extends TeejayMigrationSeederSupport
                 ],
             );
 
-            /** @var array<string, ParameterDefinition> $parametersByKey */
+            /** @var array<string, ProfileParameterDefinition> $parametersByKey */
             $parametersByKey = $parametersBySchemaSignature[$signature] ?? [];
             $bindings = [];
 
@@ -132,7 +132,7 @@ class TeejayAcEnergyMateSeeder extends TeejayMigrationSeederSupport
         DeviceSignalBinding::query()
             ->whereHas('device', fn ($query) => $query
                 ->where('organization_id', $organization->id)
-                ->whereHas('deviceType', fn ($typeQuery) => $typeQuery->where('key', self::DEVICE_TYPE_KEY)))
+                ->whereHas('profileVersion.profile', fn ($profileQuery) => $profileQuery->where('key', self::DEVICE_TYPE_KEY)))
             ->where('source_adapter', 'imoni');
     }
 
@@ -165,7 +165,7 @@ class TeejayAcEnergyMateSeeder extends TeejayMigrationSeederSupport
                 'unit' => MetricUnit::Volts->value,
                 'required' => true,
                 'is_critical' => true,
-                'validation_rules' => ['min' => 1800, 'max' => 2800, 'category' => 'static'],
+                'validation_rules' => ['min' => 0, 'max' => 280, 'category' => 'static'],
                 'mutation_expression' => $defaultMutations['PhaseAVoltage'],
                 'sequence' => 2,
             ],
@@ -177,7 +177,7 @@ class TeejayAcEnergyMateSeeder extends TeejayMigrationSeederSupport
                 'unit' => MetricUnit::Volts->value,
                 'required' => true,
                 'is_critical' => true,
-                'validation_rules' => ['min' => 1800, 'max' => 2800, 'category' => 'static'],
+                'validation_rules' => ['min' => 0, 'max' => 280, 'category' => 'static'],
                 'mutation_expression' => $defaultMutations['PhaseBVoltage'],
                 'sequence' => 3,
             ],
@@ -189,7 +189,7 @@ class TeejayAcEnergyMateSeeder extends TeejayMigrationSeederSupport
                 'unit' => MetricUnit::Volts->value,
                 'required' => true,
                 'is_critical' => true,
-                'validation_rules' => ['min' => 1800, 'max' => 2800, 'category' => 'static'],
+                'validation_rules' => ['min' => 0, 'max' => 280, 'category' => 'static'],
                 'mutation_expression' => $defaultMutations['PhaseCVoltage'],
                 'sequence' => 4,
             ],
@@ -285,18 +285,18 @@ class TeejayAcEnergyMateSeeder extends TeejayMigrationSeederSupport
     }
 
     /**
-     * @return array<string, array<string, mixed>>
+     * @return array<string, array<string, mixed>|null>
      */
     private function defaultMutationExpressions(): array
     {
         return [
             'TotalEnergy' => ['/' => [['var' => 'val'], 1000]],
-            'PhaseAVoltage' => ['/' => [['var' => 'val'], 10]],
-            'PhaseBVoltage' => ['/' => [['var' => 'val'], 10]],
-            'PhaseCVoltage' => ['/' => [['var' => 'val'], 10]],
-            'PhaseACurrent' => ['/' => [['var' => 'val'], 100]],
-            'PhaseBCurrent' => ['/' => [['var' => 'val'], 100]],
-            'PhaseCCurrent' => ['/' => [['var' => 'val'], 100]],
+            'PhaseAVoltage' => null,
+            'PhaseBVoltage' => null,
+            'PhaseCVoltage' => null,
+            'PhaseACurrent' => null,
+            'PhaseBCurrent' => null,
+            'PhaseCCurrent' => null,
         ];
     }
 

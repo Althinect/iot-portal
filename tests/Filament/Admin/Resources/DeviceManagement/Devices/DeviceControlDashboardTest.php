@@ -5,14 +5,13 @@ declare(strict_types=1);
 use App\Domain\DeviceControl\Enums\CommandStatus;
 use App\Domain\DeviceControl\Models\DeviceCommandLog;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceManagement\Publishing\Mqtt\MqttCommandPublisher;
 use App\Domain\DeviceManagement\Publishing\Nats\NatsDeviceStateStore;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceManagement\ValueObjects\Protocol\MqttProtocolConfig;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\User;
 use App\Events\CommandDispatched;
 use App\Events\CommandSent;
@@ -25,21 +24,29 @@ uses(RefreshDatabase::class);
 
 function createTestDeviceForDashboard(): Device
 {
-    $schemaVersion = DeviceSchemaVersion::factory()->create([
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create([
         'firmware_template' => 'const char* DEVICE_ID = "{{DEVICE_ID}}";',
+        'protocol_config' => (new MqttProtocolConfig(
+            brokerHost: 'localhost',
+            brokerPort: 1883,
+            username: null,
+            password: null,
+            useTls: false,
+            baseTopic: 'devices',
+        ))->toArray(),
     ]);
 
-    $subscribeTopic = SchemaVersionTopic::factory()->subscribe()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    $commandChannel = DeviceChannel::factory()->command()->create([
+        'device_profile_version_id' => $profileVersion->id,
         'key' => 'control',
         'label' => 'Control',
-        'suffix' => 'control',
+        'address' => 'control',
         'qos' => 2,
         'retain' => false,
     ]);
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $subscribeTopic->id,
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $commandChannel->id,
         'key' => 'power',
         'json_path' => 'power',
         'type' => ParameterDataType::String,
@@ -51,31 +58,19 @@ function createTestDeviceForDashboard(): Device
         'is_active' => true,
     ]);
 
-    $publishTopic = SchemaVersionTopic::factory()->publish()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    DeviceChannel::factory()->stateChannel()->create([
+        'device_profile_version_id' => $profileVersion->id,
         'key' => 'state',
         'label' => 'State',
-        'suffix' => 'state',
+        'address' => 'state',
         'qos' => 2,
         'retain' => true,
     ]);
 
-    $deviceType = DeviceType::factory()->mqtt()->create([
-        'protocol_config' => [
-            'broker_host' => 'localhost',
-            'broker_port' => 1883,
-            'username' => null,
-            'password' => null,
-            'use_tls' => false,
-            'base_topic' => 'devices',
-        ],
-    ]);
-
     return Device::factory()->create([
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
         'external_id' => 'pump-42',
-    ]);
+    ])->load('profileVersion.channels.parameters');
 }
 
 function bindDashboardFakeNats(): void
@@ -210,10 +205,10 @@ it('sends a command via the dispatcher and creates a log', function (): void {
     $device = createTestDeviceForDashboard();
     bindDashboardFakeNats();
 
-    $topic = $device->schemaVersion->topics->firstWhere('direction', TopicDirection::Subscribe);
+    $channel = $device->profileVersion?->channels->first(fn (DeviceChannel $channel): bool => $channel->isSubscribe());
 
     livewire(DeviceControlDashboard::class, ['record' => $device->id])
-        ->set('selectedTopicId', (string) $topic->id)
+        ->set('selectedChannelId', (string) $channel?->id)
         ->set('useAdvancedJson', true)
         ->set('commandPayloadJson', json_encode(['power' => 'on']))
         ->call('sendCommand')
@@ -221,7 +216,7 @@ it('sends a command via the dispatcher and creates a log', function (): void {
 
     $this->assertDatabaseHas('device_command_logs', [
         'device_id' => $device->id,
-        'schema_version_topic_id' => $topic->id,
+        'device_channel_id' => $channel?->id,
         'status' => CommandStatus::Sent->value,
     ]);
 });
@@ -229,11 +224,11 @@ it('sends a command via the dispatcher and creates a log', function (): void {
 it('shows command history in the table', function (): void {
     $device = createTestDeviceForDashboard();
 
-    $topic = $device->schemaVersion->topics->firstWhere('direction', TopicDirection::Subscribe);
+    $channel = $device->profileVersion?->channels->first(fn (DeviceChannel $channel): bool => $channel->isSubscribe());
 
     DeviceCommandLog::factory()->sent()->create([
         'device_id' => $device->id,
-        'schema_version_topic_id' => $topic->id,
+        'device_channel_id' => $channel?->id,
         'command_payload' => ['power' => 'on'],
     ]);
 
@@ -243,10 +238,10 @@ it('shows command history in the table', function (): void {
 
 it('validates invalid JSON before sending', function (): void {
     $device = createTestDeviceForDashboard();
-    $topic = $device->schemaVersion->topics->firstWhere('direction', TopicDirection::Subscribe);
+    $channel = $device->profileVersion?->channels->first(fn (DeviceChannel $channel): bool => $channel->isSubscribe());
 
     livewire(DeviceControlDashboard::class, ['record' => $device->id])
-        ->set('selectedTopicId', (string) $topic->id)
+        ->set('selectedChannelId', (string) $channel?->id)
         ->set('useAdvancedJson', true)
         ->set('commandPayloadJson', 'not-valid-json')
         ->call('sendCommand')
@@ -254,34 +249,22 @@ it('validates invalid JSON before sending', function (): void {
 });
 
 it('warns when no subscribe topics are available', function (): void {
-    $schemaVersion = DeviceSchemaVersion::factory()->create();
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
 
-    $publishTopic = SchemaVersionTopic::factory()->publish()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    DeviceChannel::factory()->telemetry()->create([
+        'device_profile_version_id' => $profileVersion->id,
         'key' => 'state',
         'label' => 'State',
-        'suffix' => 'state',
-    ]);
-
-    $deviceType = DeviceType::factory()->mqtt()->create([
-        'protocol_config' => [
-            'broker_host' => 'localhost',
-            'broker_port' => 1883,
-            'username' => null,
-            'password' => null,
-            'use_tls' => false,
-            'base_topic' => 'devices',
-        ],
+        'address' => 'state',
     ]);
 
     $device = Device::factory()->create([
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
     ]);
 
     livewire(DeviceControlDashboard::class, ['record' => $device->id])
         ->call('sendCommand')
-        ->assertNotified('No topic selected');
+        ->assertNotified('No channel selected');
 });
 
 it('loads initial device state from the NATS KV store on mount', function (): void {
@@ -344,17 +327,26 @@ it('handles NATS failure gracefully on mount', function (): void {
 });
 
 it('renders color picker controls when widget is configured as color', function (): void {
-    $schemaVersion = DeviceSchemaVersion::factory()->create();
-
-    $subscribeTopic = SchemaVersionTopic::factory()->subscribe()->create([
-        'device_schema_version_id' => $schemaVersion->id,
-        'key' => 'control',
-        'label' => 'Control',
-        'suffix' => 'control',
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create([
+        'protocol_config' => (new MqttProtocolConfig(
+            brokerHost: 'localhost',
+            brokerPort: 1883,
+            username: null,
+            password: null,
+            useTls: false,
+            baseTopic: 'devices',
+        ))->toArray(),
     ]);
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $subscribeTopic->id,
+    $commandChannel = DeviceChannel::factory()->command()->create([
+        'device_profile_version_id' => $profileVersion->id,
+        'key' => 'control',
+        'label' => 'Control',
+        'address' => 'control',
+    ]);
+
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $commandChannel->id,
         'key' => 'color_hex',
         'label' => 'Color',
         'json_path' => 'color_hex',
@@ -367,20 +359,8 @@ it('renders color picker controls when widget is configured as color', function 
         'is_active' => true,
     ]);
 
-    $deviceType = DeviceType::factory()->mqtt()->create([
-        'protocol_config' => [
-            'broker_host' => 'localhost',
-            'broker_port' => 1883,
-            'username' => null,
-            'password' => null,
-            'use_tls' => false,
-            'base_topic' => 'devices',
-        ],
-    ]);
-
     $device = Device::factory()->create([
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
     ]);
 
     $component = livewire(DeviceControlDashboard::class, ['record' => $device->id]);

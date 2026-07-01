@@ -6,7 +6,8 @@ namespace App\Domain\IoTDashboard\Application;
 
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Publishing\Nats\NatsDeviceStateStore;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceManagement\ValueObjects\Protocol\MqttProtocolConfig;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\Telemetry\Services\TelemetryQueryService;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
@@ -19,7 +20,7 @@ class HotStateLatestTelemetryReader
         private readonly TelemetryQueryService $telemetryQuery,
     ) {}
 
-    public function read(Device $device, SchemaVersionTopic $topic, ?int $lookbackMinutes = null): ?LatestTelemetryState
+    public function read(Device $device, DeviceChannel $topic, ?int $lookbackMinutes = null): ?LatestTelemetryState
     {
         $hotState = $this->readHotState($device, $topic, $lookbackMinutes);
 
@@ -29,23 +30,29 @@ class HotStateLatestTelemetryReader
 
         $latestLog = $this->telemetryQuery->latestLog(
             deviceId: (int) $device->id,
-            schemaVersionTopicId: (int) $topic->id,
+            deviceChannelId: (int) $topic->id,
             lookbackMinutes: $lookbackMinutes,
         );
 
         return $latestLog === null ? null : LatestTelemetryState::fromTelemetryLog($latestLog);
     }
 
-    private function readHotState(Device $device, SchemaVersionTopic $topic, ?int $lookbackMinutes): ?LatestTelemetryState
+    private function readHotState(Device $device, DeviceChannel $topic, ?int $lookbackMinutes): ?LatestTelemetryState
     {
         if (! (bool) config('iot_dashboard.hot_state_reads.enabled', false)) {
+            return null;
+        }
+
+        $mqttTopic = $this->resolvedTopic($device, $topic);
+
+        if ($mqttTopic === null) {
             return null;
         }
 
         try {
             $state = $this->stateStore->getStateByTopic(
                 deviceUuid: $device->uuid,
-                topic: $topic->resolvedTopic($device),
+                topic: $mqttTopic,
                 host: $this->resolveHost(),
                 port: $this->resolvePort(),
             );
@@ -81,6 +88,17 @@ class HotStateLatestTelemetryReader
             status: is_string($payload['status'] ?? null) ? $payload['status'] : null,
             storedAt: $this->parseCarbon($state['stored_at'] ?? null),
         );
+    }
+
+    private function resolvedTopic(Device $device, DeviceChannel $channel): ?string
+    {
+        $device->loadMissing('profileVersion');
+
+        $protocolConfig = $device->profileVersion?->protocol_config;
+        $baseTopic = $protocolConfig instanceof MqttProtocolConfig ? $protocolConfig->getBaseTopic() : 'device';
+        $identifier = $device->external_id ?: $device->uuid;
+
+        return trim($baseTopic, '/').'/'.$identifier.'/'.trim($channel->address, '/');
     }
 
     private function isWithinLookback(?CarbonImmutable $recordedAt, ?int $lookbackMinutes): bool

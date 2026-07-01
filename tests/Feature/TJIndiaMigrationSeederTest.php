@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
+use App\Domain\DeviceProfile\Models\DeviceProfile;
 use App\Domain\Shared\Models\Organization;
 use Database\Seeders\TJIndiaFabricLengthSeeder;
 use Database\Seeders\TJIndiaHubsSeeder;
@@ -73,7 +73,7 @@ it('seeds tj india hubs with canonical source imeis', function (): void {
     $hubExternalIds = Device::query()
         ->where('organization_id', $organization->id)
         ->whereNull('parent_device_id')
-        ->whereHas('deviceType', fn ($query) => $query->where('key', 'legacy_hub'))
+        ->whereHas('profileVersion.profile', fn ($query) => $query->where('key', 'legacy_hub'))
         ->orderBy('external_id')
         ->pluck('external_id')
         ->all();
@@ -94,7 +94,7 @@ it('seeds tj india fabric length devices with canonicalized shared-peripheral id
     $stenter02 = Device::query()->where('name', 'IN-TJ-Stenter02')->firstOrFail();
     $compactor01 = Device::query()->where('name', 'IN-TJ-Compactor01')->firstOrFail();
 
-    $fabricLengthVersions = DeviceType::query()
+    $fabricLengthVersions = DeviceProfile::query()
         ->where('key', 'fabric_length_counter')
         ->firstOrFail()
         ->schemas()

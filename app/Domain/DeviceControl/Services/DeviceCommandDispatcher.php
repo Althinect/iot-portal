@@ -6,10 +6,11 @@ namespace App\Domain\DeviceControl\Services;
 
 use App\Domain\DeviceControl\Enums\CommandStatus;
 use App\Domain\DeviceControl\Models\DeviceCommandLog;
-use App\Domain\DeviceControl\Models\DeviceDesiredTopicState;
+use App\Domain\DeviceControl\Models\DeviceDesiredChannelState;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Publishing\Mqtt\MqttCommandPublisher;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Services\DeviceProfileContractResolver;
 use App\Events\CommandDispatched;
 use App\Events\CommandSent;
 use Illuminate\Log\LogManager;
@@ -25,6 +26,7 @@ final readonly class DeviceCommandDispatcher
     public function __construct(
         private MqttCommandPublisher $mqttPublisher,
         private LogManager $logManager,
+        private DeviceProfileContractResolver $contractResolver,
     ) {}
 
     /**
@@ -37,25 +39,37 @@ final readonly class DeviceCommandDispatcher
      */
     public function dispatch(
         Device $device,
-        SchemaVersionTopic $topic,
+        DeviceChannel $channel,
         array $payload,
         ?int $userId = null,
         ?string $host = null,
         ?int $port = null,
     ): DeviceCommandLog {
-        $device->loadMissing('deviceType');
+        $device->loadMissing('profileVersion');
+
+        if ($device->profileVersion === null) {
+            throw new \RuntimeException('Device has no profile version assigned.');
+        }
+
+        $contract = $this->contractResolver->resolve($device->profileVersion);
+        $channelDefinition = $contract->channelById((int) $channel->id);
+
+        if ($channelDefinition === null || ! $channelDefinition->isPurposeCommand()) {
+            throw new \RuntimeException('Selected channel is not a command channel for this device profile.');
+        }
+
         $correlationId = (string) Str::uuid();
         $payloadForPublishing = $this->injectCorrelationMeta($payload, $correlationId);
         $resolvedHost = $this->resolveMqttHost($host);
         $resolvedPort = $this->resolveMqttPort($port);
-        $mqttTopic = $this->resolveTopicWithExternalId($device, $topic);
+        $mqttTopic = $channelDefinition->resolvedAddress($this->deviceIdentifier($device), $contract->protocolConfig);
 
         $this->log()->debug('Dispatching command', [
             'device_id' => $device->id,
             'device_external_id' => $device->external_id,
             'device_uuid' => $device->uuid,
-            'topic_id' => $topic->id,
-            'topic_suffix' => $topic->suffix,
+            'device_channel_id' => $channel->id,
+            'channel_key' => $channel->key,
             'mqtt_topic' => $mqttTopic,
             'mqtt_host' => $resolvedHost,
             'mqtt_port' => $resolvedPort,
@@ -66,17 +80,17 @@ final readonly class DeviceCommandDispatcher
 
         $commandLog = DeviceCommandLog::create([
             'device_id' => $device->id,
-            'schema_version_topic_id' => $topic->id,
+            'device_channel_id' => $channel->id,
             'user_id' => $userId,
             'command_payload' => $payload,
             'correlation_id' => $correlationId,
             'status' => CommandStatus::Pending,
         ]);
 
-        DeviceDesiredTopicState::updateOrCreate(
+        DeviceDesiredChannelState::updateOrCreate(
             [
                 'device_id' => $device->id,
-                'schema_version_topic_id' => $topic->id,
+                'device_channel_id' => $channel->id,
             ],
             [
                 'desired_payload' => $payload,
@@ -85,7 +99,7 @@ final readonly class DeviceCommandDispatcher
             ],
         );
 
-        $commandLog->load('device', 'topic');
+        $commandLog->load('device', 'channel');
 
         $this->log()->debug('Broadcasting CommandDispatched', [
             'command_log_id' => $commandLog->id,
@@ -187,12 +201,11 @@ final readonly class DeviceCommandDispatcher
         return is_numeric($configuredPort) ? (int) $configuredPort : 1883;
     }
 
-    private function resolveTopicWithExternalId(Device $device, SchemaVersionTopic $topic): string
+    private function deviceIdentifier(Device $device): string
     {
-        $baseTopic = $device->deviceType?->protocol_config?->getBaseTopic() ?? 'device';
-        $identifier = $device->external_id ?: $device->uuid;
+        $externalId = $device->getAttribute('external_id');
 
-        return trim($baseTopic, '/').'/'.$identifier.'/'.$topic->suffix;
+        return is_string($externalId) && trim($externalId) !== '' ? $externalId : (string) $device->uuid;
     }
 
     /**

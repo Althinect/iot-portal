@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Domain\DeviceManagement\Services;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceManagement\ValueObjects\VirtualStandards\VirtualStandardProfile;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 
 class VirtualStandardProfileRegistry
 {
@@ -17,12 +17,13 @@ class VirtualStandardProfileRegistry
     {
         $resolvedProfiles = [];
 
-        DeviceType::query()
-            ->whereNull('organization_id')
+        DeviceProfileVersion::query()
+            ->with('profile:id,key,organization_id')
             ->whereNotNull('virtual_standard_profile')
-            ->get(['id', 'key', 'virtual_standard_profile'])
-            ->each(function (DeviceType $deviceType) use (&$resolvedProfiles): void {
-                $profile = $this->profileFromDeviceType($deviceType);
+            ->whereHas('profile', fn ($query) => $query->whereNull('organization_id'))
+            ->get(['id', 'device_profile_id', 'virtual_standard_profile'])
+            ->each(function (DeviceProfileVersion $version) use (&$resolvedProfiles): void {
+                $profile = $this->profileFromDeviceProfileVersion($version);
 
                 if ($profile === null) {
                     return;
@@ -34,63 +35,68 @@ class VirtualStandardProfileRegistry
         return $resolvedProfiles;
     }
 
-    public function forDeviceType(DeviceType|string|null $deviceType): ?VirtualStandardProfile
+    public function forDeviceProfileVersion(DeviceProfileVersion|string|null $profileVersion): ?VirtualStandardProfile
     {
-        if ($deviceType instanceof DeviceType) {
-            return $this->profileFromDeviceType($deviceType);
+        if ($profileVersion instanceof DeviceProfileVersion) {
+            return $this->profileFromDeviceProfileVersion($profileVersion);
         }
 
-        if (! is_string($deviceType) || trim($deviceType) === '') {
+        if (! is_string($profileVersion) || trim($profileVersion) === '') {
             return null;
         }
 
-        $resolvedDeviceType = DeviceType::query()
-            ->whereNull('organization_id')
-            ->where('key', $deviceType)
-            ->first(['id', 'key', 'virtual_standard_profile']);
+        $resolvedProfileVersion = DeviceProfileVersion::query()
+            ->with('profile:id,key,organization_id')
+            ->whereHas('profile', fn ($query) => $query
+                ->whereNull('organization_id')
+                ->where('key', $profileVersion))
+            ->first(['id', 'device_profile_id', 'virtual_standard_profile']);
 
-        return $resolvedDeviceType instanceof DeviceType
-            ? $this->profileFromDeviceType($resolvedDeviceType)
+        return $resolvedProfileVersion instanceof DeviceProfileVersion
+            ? $this->profileFromDeviceProfileVersion($resolvedProfileVersion)
             : null;
     }
 
-    private function profileFromDeviceType(DeviceType $deviceType): ?VirtualStandardProfile
+    private function profileFromDeviceProfileVersion(DeviceProfileVersion $profileVersion): ?VirtualStandardProfile
     {
-        $resolvedDeviceType = $deviceType;
+        $resolvedProfileVersion = $profileVersion;
 
-        if (! array_key_exists('virtual_standard_profile', $deviceType->getAttributes())) {
-            $freshDeviceType = DeviceType::query()
-                ->whereKey($deviceType->getKey())
-                ->first(['id', 'key', 'virtual_standard_profile']);
+        if (! array_key_exists('virtual_standard_profile', $profileVersion->getAttributes())) {
+            $freshProfileVersion = DeviceProfileVersion::query()
+                ->with('profile:id,key')
+                ->whereKey($profileVersion->getKey())
+                ->first(['id', 'device_profile_id', 'virtual_standard_profile']);
 
-            if (! $freshDeviceType instanceof DeviceType) {
+            if (! $freshProfileVersion instanceof DeviceProfileVersion) {
                 return null;
             }
 
-            $resolvedDeviceType = $freshDeviceType;
+            $resolvedProfileVersion = $freshProfileVersion;
         }
 
-        $profile = $resolvedDeviceType->getAttributeValue('virtual_standard_profile');
-        $deviceTypeKey = $resolvedDeviceType->getAttributeValue('key');
+        $profile = $resolvedProfileVersion->getAttributeValue('virtual_standard_profile');
+        $profileKey = $resolvedProfileVersion->profile?->key;
 
-        if (! is_array($profile) || ! is_string($deviceTypeKey)) {
+        if (! is_array($profile) || ! is_string($profileKey)) {
             return null;
         }
 
         /** @var array<string, mixed> $profile */
-        return VirtualStandardProfile::fromArray($deviceTypeKey, $profile);
+        return VirtualStandardProfile::fromArray($profileKey, $profile);
     }
 
-    public function forDeviceTypeId(mixed $deviceTypeId): ?VirtualStandardProfile
+    public function forDeviceProfileVersionId(mixed $profileVersionId): ?VirtualStandardProfile
     {
-        if (! is_numeric($deviceTypeId)) {
+        if (! is_numeric($profileVersionId)) {
             return null;
         }
 
-        $deviceType = DeviceType::query()->find((int) $deviceTypeId, ['id', 'key', 'virtual_standard_profile']);
+        $profileVersion = DeviceProfileVersion::query()
+            ->with('profile:id,key')
+            ->find((int) $profileVersionId, ['id', 'device_profile_id', 'virtual_standard_profile']);
 
-        return $deviceType instanceof DeviceType
-            ? $this->forDeviceType($deviceType)
+        return $profileVersion instanceof DeviceProfileVersion
+            ? $this->forDeviceProfileVersion($profileVersion)
             : null;
     }
 
@@ -100,10 +106,10 @@ class VirtualStandardProfileRegistry
             return null;
         }
 
-        $device->loadMissing('deviceType');
+        $device->loadMissing('profileVersion.profile');
 
-        return $device->deviceType instanceof DeviceType
-            ? $this->forDeviceType($device->deviceType)
+        return $device->profileVersion instanceof DeviceProfileVersion
+            ? $this->forDeviceProfileVersion($device->profileVersion)
             : null;
     }
 
@@ -118,9 +124,9 @@ class VirtualStandardProfileRegistry
     /**
      * @return array<int, string>
      */
-    public function allowedDeviceTypeKeysForPurpose(VirtualStandardProfile $profile, string $purpose): array
+    public function allowedDeviceProfileKeysForPurpose(VirtualStandardProfile $profile, string $purpose): array
     {
-        return $profile->allowedDeviceTypeKeysForPurpose($purpose);
+        return $profile->allowedDeviceProfileKeysForPurpose($purpose);
     }
 
     /**

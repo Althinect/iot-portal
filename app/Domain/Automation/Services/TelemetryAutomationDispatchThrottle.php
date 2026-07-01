@@ -45,8 +45,8 @@ class TelemetryAutomationDispatchThrottle
             ? (string) $telemetryLog->device->organization_id
             : 'global';
         $deviceId = $telemetryLog->device_id > 0 ? (string) $telemetryLog->device_id : 'unknown-device';
-        $topicId = $telemetryLog->schema_version_topic_id > 0 ? (string) $telemetryLog->schema_version_topic_id : 'unknown-topic';
+        $channelId = $telemetryLog->device_channel_id > 0 ? (string) $telemetryLog->device_channel_id : 'unknown-channel';
 
-        return "automation:telemetry-dispatch:workflow:{$workflowVersionId}:org:{$organizationId}:device:{$deviceId}:topic:{$topicId}";
+        return "automation:telemetry-dispatch:workflow:{$workflowVersionId}:org:{$organizationId}:device:{$deviceId}:channel:{$channelId}";
     }
 }

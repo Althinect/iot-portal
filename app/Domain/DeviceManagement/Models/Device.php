@@ -6,13 +6,13 @@ namespace App\Domain\DeviceManagement\Models;
 
 use App\Domain\DataIngestion\Models\DeviceSignalBinding;
 use App\Domain\DeviceControl\Models\DeviceCommandLog;
+use App\Domain\DeviceControl\Models\DeviceDesiredChannelState;
 use App\Domain\DeviceControl\Models\DeviceDesiredState;
-use App\Domain\DeviceControl\Models\DeviceDesiredTopicState;
 use App\Domain\DeviceManagement\Services\DevicePresencePolicy;
 use App\Domain\DeviceManagement\Services\VirtualStandardProfileRegistry;
 use App\Domain\DeviceManagement\ValueObjects\VirtualStandards\VirtualStandardProfile;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\DeviceTwin;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use Database\Factories\Domain\DeviceManagement\Models\DeviceFactory;
@@ -94,19 +94,11 @@ class Device extends Model
     }
 
     /**
-     * @return BelongsTo<DeviceType, $this>
+     * @return BelongsTo<DeviceProfileVersion, $this>
      */
-    public function deviceType(): BelongsTo
+    public function profileVersion(): BelongsTo
     {
-        return $this->belongsTo(DeviceType::class);
-    }
-
-    /**
-     * @return BelongsTo<DeviceSchemaVersion, $this>
-     */
-    public function schemaVersion(): BelongsTo
-    {
-        return $this->belongsTo(DeviceSchemaVersion::class, 'device_schema_version_id');
+        return $this->belongsTo(DeviceProfileVersion::class, 'device_profile_version_id');
     }
 
     /**
@@ -178,11 +170,11 @@ class Device extends Model
     }
 
     /**
-     * @return HasMany<DeviceDesiredTopicState, $this>
+     * @return HasMany<DeviceDesiredChannelState, $this>
      */
-    public function desiredTopicStates(): HasMany
+    public function desiredChannelStates(): HasMany
     {
-        return $this->hasMany(DeviceDesiredTopicState::class);
+        return $this->hasMany(DeviceDesiredChannelState::class);
     }
 
     /**
@@ -214,6 +206,14 @@ class Device extends Model
     public function temporaryDevice(): HasOne
     {
         return $this->hasOne(TemporaryDevice::class);
+    }
+
+    /**
+     * @return HasOne<DeviceTwin, $this>
+     */
+    public function twin(): HasOne
+    {
+        return $this->hasOne(DeviceTwin::class);
     }
 
     public function isHub(): bool
@@ -261,27 +261,27 @@ class Device extends Model
 
     public function canBeControlled(): bool
     {
-        if ($this->getAttribute('device_schema_version_id') === null) {
+        if ($this->getAttribute('device_profile_version_id') === null) {
             return false;
         }
 
-        $this->loadMissing('schemaVersion.topics');
+        $this->loadMissing('profileVersion.channels');
 
-        return $this->schemaVersion?->topics
-            ?->contains(fn (SchemaVersionTopic $topic): bool => $topic->isPurposeCommand() || $topic->isSubscribe())
+        return $this->profileVersion?->channels
+            ?->contains(fn ($channel): bool => $channel->isPurposeCommand() || $channel->isSubscribe())
             ?? false;
     }
 
     public function canBeSimulated(): bool
     {
-        if ($this->getAttribute('device_schema_version_id') === null) {
+        if ($this->getAttribute('device_profile_version_id') === null) {
             return false;
         }
 
-        $this->loadMissing('schemaVersion.topics');
+        $this->loadMissing('profileVersion.channels');
 
-        return $this->schemaVersion?->topics
-            ?->contains(fn (SchemaVersionTopic $topic): bool => $topic->isPublish())
+        return $this->profileVersion?->channels
+            ?->contains(fn ($channel): bool => $channel->isPublish())
             ?? false;
     }
 

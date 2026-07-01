@@ -6,19 +6,19 @@ namespace Database\Seeders;
 
 use App\Domain\DataIngestion\Models\DeviceSignalBinding;
 use App\Domain\DeviceManagement\Enums\MqttSecurityMode;
-use App\Domain\DeviceManagement\Enums\ProtocolType;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceManagement\ValueObjects\Protocol\MqttProtocolConfig;
-use App\Domain\DeviceSchema\Enums\MetricUnit;
-use App\Domain\DeviceSchema\Enums\ParameterCategory;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Enums\TopicPurpose;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ChannelDirection;
+use App\Domain\DeviceProfile\Enums\ChannelPurpose;
+use App\Domain\DeviceProfile\Enums\ChannelTransport;
+use App\Domain\DeviceProfile\Enums\MetricUnit;
+use App\Domain\DeviceProfile\Enums\ParameterCategory;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Enums\Protocol;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfile;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 use Illuminate\Database\Seeder;
 
@@ -441,8 +441,7 @@ class SriLankanMigrationSeeder extends Seeder
                     'external_id' => $hubConfig['external_id'],
                 ],
                 [
-                    'device_type_id' => $hubSchemaVersion->schema->device_type_id,
-                    'device_schema_version_id' => $hubSchemaVersion->id,
+                    'device_profile_version_id' => $this->profileVersionForSchemaVersion($hubSchemaVersion)->id,
                     'parent_device_id' => null,
                     'name' => $hubConfig['name'],
                     'metadata' => [
@@ -507,7 +506,7 @@ class SriLankanMigrationSeeder extends Seeder
         $this->cleanupRetiredDevices($organization);
     }
 
-    private function upsertHubSchemaVersion(): DeviceSchemaVersion
+    private function upsertHubSchemaVersion(): DeviceProfileVersion
     {
         return $this->upsertSchemaVersion(
             deviceTypeKey: self::HUB_DEVICE_TYPE_KEY,
@@ -517,7 +516,7 @@ class SriLankanMigrationSeeder extends Seeder
             topicKey: 'heartbeat',
             topicLabel: 'Heartbeat',
             topicSuffix: 'heartbeat',
-            purpose: TopicPurpose::State,
+            purpose: ChannelPurpose::State,
             parameters: [
                 [
                     'key' => 'source_id',
@@ -531,7 +530,7 @@ class SriLankanMigrationSeeder extends Seeder
         );
     }
 
-    private function upsertClimateSchemaVersion(): DeviceSchemaVersion
+    private function upsertClimateSchemaVersion(): DeviceProfileVersion
     {
         return $this->upsertSchemaVersion(
             deviceTypeKey: self::CLIMATE_DEVICE_TYPE_KEY,
@@ -541,7 +540,7 @@ class SriLankanMigrationSeeder extends Seeder
             topicKey: 'telemetry',
             topicLabel: 'Telemetry',
             topicSuffix: 'telemetry',
-            purpose: TopicPurpose::Telemetry,
+            purpose: ChannelPurpose::Telemetry,
             parameters: [
                 [
                     'key' => 'temperature',
@@ -572,7 +571,7 @@ class SriLankanMigrationSeeder extends Seeder
         );
     }
 
-    private function upsertEgravitySchemaVersion(): DeviceSchemaVersion
+    private function upsertEgravitySchemaVersion(): DeviceProfileVersion
     {
         return $this->upsertSchemaVersion(
             deviceTypeKey: self::EGRAVITY_DEVICE_TYPE_KEY,
@@ -582,7 +581,7 @@ class SriLankanMigrationSeeder extends Seeder
             topicKey: 'telemetry',
             topicLabel: 'Telemetry',
             topicSuffix: 'telemetry',
-            purpose: TopicPurpose::Telemetry,
+            purpose: ChannelPurpose::Telemetry,
             parameters: [
                 [
                     'key' => 'temperature',
@@ -653,42 +652,27 @@ class SriLankanMigrationSeeder extends Seeder
         string $topicKey,
         string $topicLabel,
         string $topicSuffix,
-        TopicPurpose $purpose,
+        ChannelPurpose $purpose,
         array $parameters,
         int $version = 1,
         string $status = 'active',
         string $notes = 'SriLankan Airlines migration onboarding schema.',
-    ): DeviceSchemaVersion {
-        $deviceType = DeviceType::query()->updateOrCreate(
+    ): DeviceProfileVersion {
+        $deviceType = DeviceProfile::query()->updateOrCreate(
             [
                 'organization_id' => null,
                 'key' => $deviceTypeKey,
             ],
             [
                 'name' => $deviceTypeName,
-                'default_protocol' => ProtocolType::Mqtt,
-                'protocol_config' => (new MqttProtocolConfig(
-                    brokerHost: 'nats',
-                    brokerPort: 1883,
-                    username: null,
-                    password: null,
-                    useTls: false,
-                    baseTopic: $baseTopic,
-                    securityMode: MqttSecurityMode::UsernamePassword,
-                ))->toArray(),
             ],
         );
 
-        $schema = DeviceSchema::query()->firstOrCreate(
-            [
-                'device_type_id' => $deviceType->id,
-                'name' => $schemaName,
-            ],
-        );
+        $schema = $deviceType;
 
-        $schemaVersion = DeviceSchemaVersion::query()->firstOrCreate(
+        $schemaVersion = DeviceProfileVersion::query()->firstOrCreate(
             [
-                'device_schema_id' => $schema->id,
+                'device_profile_id' => $schema->id,
                 'version' => $version,
             ],
             [
@@ -702,16 +686,65 @@ class SriLankanMigrationSeeder extends Seeder
             'notes' => $notes,
         ])->save();
 
-        $topic = SchemaVersionTopic::query()->updateOrCreate(
+        $profile = DeviceProfile::query()->updateOrCreate(
             [
-                'device_schema_version_id' => $schemaVersion->id,
+                'organization_id' => null,
+                'key' => $deviceTypeKey,
+            ],
+            [
+                'name' => $deviceTypeName,
+                'tags' => null,
+            ],
+        );
+
+        $profileVersion = DeviceProfileVersion::query()->updateOrCreate(
+            [
+                'device_profile_id' => $profile->id,
+                'version' => $version,
+            ],
+            [
+                'status' => $status,
+                'protocol' => Protocol::Mqtt,
+                'protocol_config' => (new MqttProtocolConfig(
+                    brokerHost: 'nats',
+                    brokerPort: 1883,
+                    username: null,
+                    password: null,
+                    useTls: false,
+                    baseTopic: $baseTopic,
+                    securityMode: MqttSecurityMode::UsernamePassword,
+                ))->toArray(),
+                'notes' => $notes,
+            ],
+        );
+
+        $topic = DeviceChannel::query()->updateOrCreate(
+            [
+                'device_profile_version_id' => $schemaVersion->id,
                 'key' => $topicKey,
             ],
             [
                 'label' => $topicLabel,
-                'direction' => TopicDirection::Publish,
+                'direction' => ChannelDirection::Publish,
                 'purpose' => $purpose,
-                'suffix' => $topicSuffix,
+                'address' => $topicSuffix,
+                'qos' => 1,
+                'retain' => false,
+                'sequence' => 0,
+            ],
+        );
+
+        $channel = DeviceChannel::query()->updateOrCreate(
+            [
+                'device_profile_version_id' => $profileVersion->id,
+                'key' => $topicKey,
+            ],
+            [
+                'label' => $topicLabel,
+                'direction' => ChannelDirection::Publish,
+                'purpose' => $purpose === ChannelPurpose::State ? ChannelPurpose::State : ChannelPurpose::Telemetry,
+                'transport' => ChannelTransport::Mqtt,
+                'address' => $topicSuffix,
                 'qos' => 1,
                 'retain' => false,
                 'sequence' => 0,
@@ -719,9 +752,29 @@ class SriLankanMigrationSeeder extends Seeder
         );
 
         foreach ($parameters as $parameter) {
-            ParameterDefinition::query()->updateOrCreate(
+            ProfileParameterDefinition::query()->updateOrCreate(
                 [
-                    'schema_version_topic_id' => $topic->id,
+                    'device_channel_id' => $topic->id,
+                    'key' => $parameter['key'],
+                ],
+                [
+                    'label' => $parameter['label'],
+                    'json_path' => $parameter['json_path'],
+                    'type' => $parameter['type'],
+                    'unit' => $parameter['unit'] ?? null,
+                    'required' => $parameter['required'] ?? false,
+                    'is_critical' => $parameter['is_critical'] ?? false,
+                    'category' => $parameter['category'] ?? ParameterCategory::Measurement,
+                    'validation_rules' => $parameter['validation_rules'] ?? null,
+                    'mutation_expression' => $parameter['mutation_expression'] ?? null,
+                    'sequence' => $parameter['sequence'] ?? 0,
+                    'is_active' => true,
+                ],
+            );
+
+            ProfileParameterDefinition::query()->updateOrCreate(
+                [
+                    'device_channel_id' => $channel->id,
                     'key' => $parameter['key'],
                 ],
                 [
@@ -745,12 +798,40 @@ class SriLankanMigrationSeeder extends Seeder
             $parameters,
         );
 
-        ParameterDefinition::query()
-            ->where('schema_version_topic_id', $topic->id)
+        ProfileParameterDefinition::query()
+            ->where('device_channel_id', $topic->id)
             ->whereNotIn('key', $parameterKeys)
             ->delete();
 
-        return $schemaVersion->fresh(['schema']);
+        ProfileParameterDefinition::query()
+            ->where('device_channel_id', $channel->id)
+            ->whereNotIn('key', $parameterKeys)
+            ->delete();
+
+        return $schemaVersion->fresh(['profile']);
+    }
+
+    private function profileVersionForSchemaVersion(DeviceProfileVersion $schemaVersion): DeviceProfileVersion
+    {
+        $schemaVersion->loadMissing('profile');
+        $deviceType = $schemaVersion->profile;
+
+        if (! $deviceType instanceof DeviceProfile) {
+            throw new \RuntimeException('Unable to resolve mirrored profile version for schema version.');
+        }
+
+        $profileVersion = DeviceProfileVersion::query()
+            ->where('version', (int) $schemaVersion->version)
+            ->whereHas('profile', fn ($query) => $query
+                ->whereNull('organization_id')
+                ->where('key', $deviceType->key))
+            ->first();
+
+        if (! $profileVersion instanceof DeviceProfileVersion) {
+            throw new \RuntimeException("Mirrored profile version [{$deviceType->key}:{$schemaVersion->version}] was not found.");
+        }
+
+        return $profileVersion;
     }
 
     /**
@@ -759,7 +840,7 @@ class SriLankanMigrationSeeder extends Seeder
     private function upsertChildDevice(
         Organization $organization,
         ?Device $parentDevice,
-        DeviceSchemaVersion $schemaVersion,
+        DeviceProfileVersion $schemaVersion,
         string $externalId,
         string $name,
         array $metadata,
@@ -771,8 +852,7 @@ class SriLankanMigrationSeeder extends Seeder
                 'external_id' => $externalId,
             ],
             [
-                'device_type_id' => $schemaVersion->schema->device_type_id,
-                'device_schema_version_id' => $schemaVersion->id,
+                'device_profile_version_id' => $this->profileVersionForSchemaVersion($schemaVersion)->id,
                 'parent_device_id' => $parentDevice?->id,
                 'name' => $name,
                 'metadata' => $metadata,
@@ -801,21 +881,30 @@ class SriLankanMigrationSeeder extends Seeder
      *     legacy_metadata: array<string, mixed>
      * }  $deviceConfig
      */
-    private function syncBindings(Device $device, ?Device $parentDevice, DeviceSchemaVersion $schemaVersion, array $deviceConfig): void
+    private function syncBindings(Device $device, ?Device $parentDevice, DeviceProfileVersion $schemaVersion, array $deviceConfig): void
     {
-        $telemetryTopic = $schemaVersion->topics()->where('key', 'telemetry')->first();
+        $telemetryChannel = $schemaVersion->channels()->where('key', 'telemetry')->first();
 
-        if (! $telemetryTopic instanceof SchemaVersionTopic) {
+        if (! $telemetryChannel instanceof DeviceChannel) {
             return;
         }
 
-        /** @var array<string, ParameterDefinition> $parametersByKey */
-        $parametersByKey = $telemetryTopic->parameters()
+        /** @var array<string, ProfileParameterDefinition> $parametersByKey */
+        $parametersByKey = $telemetryChannel->parameters()
             ->get()
             ->keyBy('key')
             ->all();
 
-        $expectedParameterIds = [];
+        $channel = DeviceChannel::query()
+            ->where('device_profile_version_id', $device->device_profile_version_id)
+            ->where('key', 'telemetry')
+            ->first();
+
+        if (! $channel instanceof DeviceChannel) {
+            return;
+        }
+
+        $expectedParameterKeys = [];
         $sourceIdentity = $deviceConfig['source_external_id']
             ?? $parentDevice?->external_id
             ?? $device->external_id;
@@ -827,16 +916,17 @@ class SriLankanMigrationSeeder extends Seeder
         foreach ($this->parametersForProfile($deviceConfig['parameter_profile']) as $parameterKey => $sourceJsonPath) {
             $parameter = $parametersByKey[$parameterKey] ?? null;
 
-            if (! $parameter instanceof ParameterDefinition) {
+            if (! $parameter instanceof ProfileParameterDefinition) {
                 continue;
             }
 
-            $expectedParameterIds[] = $parameter->id;
+            $expectedParameterKeys[] = $parameter->key;
 
             DeviceSignalBinding::query()->updateOrCreate(
                 [
                     'device_id' => $device->id,
-                    'parameter_definition_id' => $parameter->id,
+                    'device_channel_id' => $channel->id,
+                    'parameter_key' => $parameter->key,
                 ],
                 [
                     'source_topic' => $this->sourceTopicFor(
@@ -845,7 +935,7 @@ class SriLankanMigrationSeeder extends Seeder
                     ),
                     'source_json_path' => $sourceJsonPath,
                     'source_adapter' => $deviceConfig['source_adapter'],
-                    'sequence' => count($expectedParameterIds) - 1,
+                    'sequence' => count($expectedParameterKeys) - 1,
                     'is_active' => true,
                     'metadata' => [
                         'migration_origin' => self::ORGANIZATION_SLUG,
@@ -859,8 +949,8 @@ class SriLankanMigrationSeeder extends Seeder
         DeviceSignalBinding::query()
             ->where('device_id', $device->id)
             ->when(
-                $expectedParameterIds !== [],
-                fn ($query) => $query->whereNotIn('parameter_definition_id', $expectedParameterIds),
+                $expectedParameterKeys !== [],
+                fn ($query) => $query->whereNotIn('parameter_key', $expectedParameterKeys),
             )
             ->delete();
     }

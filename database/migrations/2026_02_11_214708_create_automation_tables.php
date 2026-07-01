@@ -52,13 +52,14 @@ return new class extends Migration
             $table->foreignId('organization_id')->constrained()->cascadeOnDelete();
             $table->foreignId('workflow_version_id')->constrained('automation_workflow_versions')->cascadeOnDelete();
             $table->foreignId('device_id')->nullable()->constrained()->nullOnDelete();
-            $table->foreignId('device_type_id')->nullable()->constrained('device_types')->nullOnDelete();
-            $table->foreignId('schema_version_topic_id')->nullable()->constrained('schema_version_topics')->nullOnDelete();
+            $table->foreignId('device_channel_id')->nullable()->constrained('device_channels')->nullOnDelete();
+            $table->string('channel_key')->nullable();
+            $table->string('parameter_key')->nullable();
             $table->jsonb('filter_expression')->nullable();
             $table->timestamps();
 
-            $table->index(['organization_id', 'device_id', 'schema_version_topic_id'], 'automation_trigger_device_topic_idx');
-            $table->index(['organization_id', 'device_type_id'], 'automation_trigger_device_type_idx');
+            $table->index(['organization_id', 'device_id', 'device_channel_id'], 'automation_trigger_device_channel_idx');
+            $table->index(['organization_id', 'channel_key', 'parameter_key'], 'automation_trigger_channel_parameter_idx');
         });
 
         Schema::create('automation_schedule_triggers', function (Blueprint $table): void {

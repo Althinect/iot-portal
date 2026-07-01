@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\IoTDashboard\Models;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\IoTDashboard\Casts\WidgetConfigCast;
 use App\Domain\IoTDashboard\Casts\WidgetLayoutCast;
 use App\Domain\IoTDashboard\Contracts\WidgetConfig;
@@ -61,11 +61,11 @@ class IoTDashboardWidget extends Model
     }
 
     /**
-     * @return BelongsTo<SchemaVersionTopic, $this>
+     * @return BelongsTo<DeviceChannel, $this>
      */
     public function topic(): BelongsTo
     {
-        return $this->belongsTo(SchemaVersionTopic::class, 'schema_version_topic_id');
+        return $this->belongsTo(DeviceChannel::class, 'device_channel_id');
     }
 
     /**

@@ -44,7 +44,8 @@ class CommandCompleted implements ShouldBroadcastNow
         return [
             'command_log_id' => $this->commandLog->id,
             'device_uuid' => $this->commandLog->device?->uuid,
-            'topic' => $this->commandLog->topic?->suffix,
+            'channel' => $this->commandLog->channel?->key,
+            'channel_address' => $this->commandLog->channel?->address,
             'status' => $this->commandLog->status->value, /** @phpstan-ignore property.nonObject */
             'response_payload' => $this->commandLog->response_payload,
             'completed_at' => $this->commandLog->completed_at?->toIso8601String(), /** @phpstan-ignore method.nonObject */

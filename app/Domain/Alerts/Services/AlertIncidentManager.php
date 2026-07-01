@@ -44,7 +44,8 @@ class AlertIncidentManager
                 'organization_id' => $this->requirePositiveInt($policy->organization_id, 'organization id'),
                 'threshold_policy_id' => $policyId,
                 'device_id' => $this->requirePositiveInt($policy->device_id, 'device id'),
-                'parameter_definition_id' => $this->requirePositiveInt($policy->parameter_definition_id, 'parameter definition id'),
+                'device_channel_id' => $this->requirePositiveInt($policy->device_channel_id, 'device channel id'),
+                'parameter_key' => $this->requireNonEmptyString($policy->parameter_key, 'parameter key'),
                 'alerted_at' => $telemetryLog->recorded_at,
                 'alerted_telemetry_log_id' => $this->requireStringKey($telemetryLog->getKey(), 'telemetry log id'),
             ]);
@@ -184,6 +185,15 @@ class AlertIncidentManager
             if ($resolvedValue !== '') {
                 return $resolvedValue;
             }
+        }
+
+        throw new RuntimeException("Unable to resolve {$field}.");
+    }
+
+    private function requireNonEmptyString(mixed $value, string $field): string
+    {
+        if (is_string($value) && trim($value) !== '') {
+            return trim($value);
         }
 
         throw new RuntimeException("Unable to resolve {$field}.");

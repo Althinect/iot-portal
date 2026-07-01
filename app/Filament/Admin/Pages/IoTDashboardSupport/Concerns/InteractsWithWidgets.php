@@ -51,7 +51,7 @@ trait InteractsWithWidgets
         IoTDashboardWidget::query()->create([
             'iot_dashboard_id' => $dashboard->id,
             'device_id' => $resolvedInput['device']->id,
-            'schema_version_topic_id' => $resolvedInput['topic']->id,
+            'device_channel_id' => $resolvedInput['topic']->id,
             'type' => $type->value,
             'title' => $this->resolveTitle($data),
             'config' => $config,
@@ -129,7 +129,7 @@ trait InteractsWithWidgets
             IoTDashboardWidget::query()->create([
                 'iot_dashboard_id' => $dashboard->id,
                 'device_id' => $widget->device_id,
-                'schema_version_topic_id' => $widget->schema_version_topic_id,
+                'device_channel_id' => $widget->device_channel_id,
                 'type' => $widget->type,
                 'title' => $duplicateTitle,
                 'config' => $widget->configArray(),
@@ -188,7 +188,7 @@ trait InteractsWithWidgets
         }
 
         return $this->widgetFormOptionsService()->defaultStateMappings(
-            $data['schema_version_topic_id'] ?? null,
+            $data['device_channel_id'] ?? null,
             $parameterKey,
         );
     }

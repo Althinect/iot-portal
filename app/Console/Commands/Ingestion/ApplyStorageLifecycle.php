@@ -48,7 +48,7 @@ class ApplyStorageLifecycle extends Command
             ALTER TABLE device_telemetry_logs SET (
                 timescaledb.compress,
                 timescaledb.compress_orderby = 'recorded_at DESC',
-                timescaledb.compress_segmentby = 'device_id, schema_version_topic_id'
+                timescaledb.compress_segmentby = 'device_id, device_channel_id'
             )
         SQL);
 

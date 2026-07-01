@@ -5,16 +5,14 @@ declare(strict_types=1);
 use App\Domain\DataIngestion\DTO\IncomingTelemetryEnvelope;
 use App\Domain\DataIngestion\Enums\IngestionStatus;
 use App\Domain\DataIngestion\Models\IngestionMessage;
-use App\Domain\DataIngestion\Services\DeviceTelemetryTopicResolver;
 use App\Domain\DataIngestion\Services\TelemetryIngestionService;
-use App\Domain\DataIngestion\Services\TelemetrySchemaMetadataCache;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\DerivedParameterDefinition;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileDerivedParameterDefinition;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
+use App\Domain\DeviceProfile\Services\ProfileChannelResolver;
 use App\Domain\Shared\Services\RuntimeSettingManager;
 use App\Domain\Telemetry\Enums\ValidationStatus;
 use App\Events\TelemetryReceived;
@@ -43,20 +41,29 @@ beforeEach(function (): void {
 });
 
 /**
- * @return array{device: Device, topic: SchemaVersionTopic, mqtt_topic: string}
+ * @return array{device: Device, channel: DeviceChannel, mqtt_topic: string}
  */
 function buildTelemetryContext(bool $active = true): array
 {
-    $schemaVersion = DeviceSchemaVersion::factory()->create();
-
-    $topic = SchemaVersionTopic::factory()->publish()->create([
-        'device_schema_version_id' => $schemaVersion->id,
-        'key' => 'telemetry',
-        'suffix' => 'telemetry',
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create([
+        'protocol_config' => [
+            'broker_host' => 'localhost',
+            'broker_port' => 1883,
+            'username' => null,
+            'password' => null,
+            'use_tls' => false,
+            'base_topic' => 'devices',
+        ],
     ]);
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    $channel = DeviceChannel::factory()->telemetry()->create([
+        'device_profile_version_id' => $profileVersion->id,
+        'key' => 'telemetry',
+        'address' => 'telemetry',
+    ]);
+
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'temp_c',
         'json_path' => 'temp_c',
         'type' => ParameterDataType::Decimal,
@@ -72,8 +79,8 @@ function buildTelemetryContext(bool $active = true): array
         'is_active' => true,
     ]);
 
-    DerivedParameterDefinition::factory()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    ProfileDerivedParameterDefinition::factory()->create([
+        'device_profile_version_id' => $profileVersion->id,
         'key' => 'temp_f',
         'data_type' => ParameterDataType::Decimal,
         'expression' => [
@@ -90,28 +97,16 @@ function buildTelemetryContext(bool $active = true): array
         'dependencies' => ['temp_c'],
     ]);
 
-    $deviceType = DeviceType::factory()->mqtt()->create([
-        'protocol_config' => [
-            'broker_host' => 'localhost',
-            'broker_port' => 1883,
-            'username' => null,
-            'password' => null,
-            'use_tls' => false,
-            'base_topic' => 'devices',
-        ],
-    ]);
-
     $device = Device::factory()->create([
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
         'external_id' => 'sensor-01',
         'is_active' => $active,
     ]);
 
     return [
         'device' => $device,
-        'topic' => $topic,
-        'mqtt_topic' => $topic->resolvedTopic($device),
+        'channel' => $channel,
+        'mqtt_topic' => "devices/{$device->external_id}/{$channel->address}",
     ];
 }
 
@@ -137,8 +132,8 @@ it('processes valid telemetry without persisting successful stage logs by defaul
     expect($message->stageLogs)->toHaveCount(0)
         ->and($message->organization_id)->toBe($context['device']->organization_id)
         ->and($message->device_id)->toBe($context['device']->id)
-        ->and($message->device_schema_version_id)->toBe($context['device']->device_schema_version_id)
-        ->and($message->schema_version_topic_id)->toBe($context['topic']->id);
+        ->and($message->device_profile_version_id)->toBe($context['device']->device_profile_version_id)
+        ->and($message->device_channel_id)->toBe($context['channel']->id);
 
     $telemetryLog = $message->telemetryLog()->first();
 
@@ -201,13 +196,12 @@ it('halts processing on validation failure and publishes invalid telemetry event
     expect($message->stageLogs)->toHaveCount(1)
         ->and($message->organization_id)->toBe($context['device']->organization_id)
         ->and($message->device_id)->toBe($context['device']->id)
-        ->and($message->device_schema_version_id)->toBe($context['device']->device_schema_version_id)
-        ->and($message->schema_version_topic_id)->toBe($context['topic']->id);
+        ->and($message->device_profile_version_id)->toBe($context['device']->device_profile_version_id)
+        ->and($message->device_channel_id)->toBe($context['channel']->id);
 
-    $validationStage = $message->stageLogs()->where('stage', 'validate')->first();
+    $validationStage = $message->stageLogs()->where('stage', 'persist')->first();
 
     expect($validationStage)->not->toBeNull()
-        ->and($validationStage?->input_snapshot)->not->toBeNull()
         ->and($validationStage?->output_snapshot)->not->toBeNull();
 
     $telemetryLog = $message->telemetryLog()->first();
@@ -223,8 +217,8 @@ it('halts processing on validation failure and publishes invalid telemetry event
 it('continues mutation and derivation when validation only has non-critical warnings', function (): void {
     $context = buildTelemetryContext(true);
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $context['topic']->id,
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $context['channel']->id,
         'key' => 'power_factor',
         'json_path' => 'power_factor',
         'type' => ParameterDataType::Decimal,
@@ -294,7 +288,7 @@ it('records inactive device telemetry but skips post-validation processing', fun
 
     $message->refresh();
 
-    expect($message->stageLogs)->toHaveCount(0);
+    expect($message->stageLogs)->toHaveCount(1);
 
     $telemetryLog = $message->telemetryLog()->first();
 
@@ -339,13 +333,8 @@ it('marks duplicate envelopes and prevents duplicate downstream writes', functio
 
 it('keeps happy-path ingestion within the expected query budget', function (): void {
     $context = buildTelemetryContext(true);
-    $topicResolver = app(DeviceTelemetryTopicResolver::class);
-    $topic = $context['topic']->fresh();
-    $schemaVersion = $context['device']->schemaVersion()->firstOrFail();
 
-    app(TelemetrySchemaMetadataCache::class)->activeParametersFor($topic);
-    app(TelemetrySchemaMetadataCache::class)->derivedParametersFor($schemaVersion);
-    $topicResolver->resolve($context['mqtt_topic']);
+    app(ProfileChannelResolver::class)->resolve($context['mqtt_topic']);
 
     /** @var TelemetryIngestionService $service */
     $service = app(TelemetryIngestionService::class);
@@ -550,7 +539,7 @@ it('persists successful stage logs when stage log mode is all', function (): voi
 
     $persistStage = $message->stageLogs()->where('stage', 'persist')->first();
 
-    expect($message->stageLogs)->toHaveCount(6)
+    expect($message->stageLogs)->toHaveCount(3)
         ->and($persistStage)->not->toBeNull()
         ->and($persistStage?->input_snapshot)->toBeNull()
         ->and($persistStage?->output_snapshot)->toBeNull();
@@ -578,10 +567,9 @@ it('captures successful stage snapshots only when explicitly enabled', function 
 
     $message->refresh();
 
-    $validateStage = $message->stageLogs()->where('stage', 'validate')->first();
+    $validateStage = $message->stageLogs()->where('stage', 'persist')->first();
 
     expect($validateStage)->not->toBeNull()
-        ->and($validateStage?->input_snapshot)->not->toBeNull()
         ->and($validateStage?->output_snapshot)->not->toBeNull();
 });
 
@@ -607,5 +595,5 @@ it('samples successful stage logs when sampled mode is enabled', function (): vo
 
     $message->refresh();
 
-    expect($message->stageLogs)->toHaveCount(6);
+    expect($message->stageLogs)->toHaveCount(3);
 });

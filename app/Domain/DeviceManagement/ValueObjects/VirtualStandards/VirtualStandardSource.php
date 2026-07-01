@@ -9,13 +9,13 @@ use Illuminate\Support\Str;
 final readonly class VirtualStandardSource
 {
     /**
-     * @param  array<int, string>  $allowedDeviceTypeKeys
+     * @param  array<int, string>  $allowedDeviceProfileKeys
      */
     public function __construct(
         public string $purpose,
         public string $label,
         public bool $required,
-        public array $allowedDeviceTypeKeys = [],
+        public array $allowedDeviceProfileKeys = [],
     ) {}
 
     /**
@@ -23,16 +23,16 @@ final readonly class VirtualStandardSource
      */
     public static function fromArray(string $purpose, array $data): self
     {
-        $allowedDeviceTypeKeys = [];
-        $allowedDeviceTypeKeyCandidates = $data['allowed_device_type_keys'] ?? null;
+        $allowedDeviceProfileKeys = [];
+        $allowedDeviceProfileKeyCandidates = $data['allowed_device_profile_keys'] ?? null;
 
-        if (is_array($allowedDeviceTypeKeyCandidates)) {
-            foreach ($allowedDeviceTypeKeyCandidates as $allowedDeviceTypeKeyCandidate) {
-                if (! is_string($allowedDeviceTypeKeyCandidate) || trim($allowedDeviceTypeKeyCandidate) === '') {
+        if (is_array($allowedDeviceProfileKeyCandidates)) {
+            foreach ($allowedDeviceProfileKeyCandidates as $allowedDeviceProfileKeyCandidate) {
+                if (! is_string($allowedDeviceProfileKeyCandidate) || trim($allowedDeviceProfileKeyCandidate) === '') {
                     continue;
                 }
 
-                $allowedDeviceTypeKeys[] = trim($allowedDeviceTypeKeyCandidate);
+                $allowedDeviceProfileKeys[] = trim($allowedDeviceProfileKeyCandidate);
             }
         }
 
@@ -42,28 +42,28 @@ final readonly class VirtualStandardSource
                 ? trim((string) $data['label'])
                 : Str::headline($purpose),
             required: (bool) ($data['required'] ?? false),
-            allowedDeviceTypeKeys: $allowedDeviceTypeKeys,
+            allowedDeviceProfileKeys: $allowedDeviceProfileKeys,
         );
     }
 
     /**
-     * @return array{label: string, required: bool, allowed_device_type_keys: array<int, string>}
+     * @return array{label: string, required: bool, allowed_device_profile_keys: array<int, string>}
      */
     public function toArray(): array
     {
         return [
             'label' => $this->label,
             'required' => $this->required,
-            'allowed_device_type_keys' => $this->allowedDeviceTypeKeys,
+            'allowed_device_profile_keys' => $this->allowedDeviceProfileKeys,
         ];
     }
 
-    public function allowsDeviceTypeKey(?string $deviceTypeKey): bool
+    public function allowsDeviceProfileKey(?string $deviceProfileKey): bool
     {
-        if ($this->allowedDeviceTypeKeys === []) {
+        if ($this->allowedDeviceProfileKeys === []) {
             return true;
         }
 
-        return is_string($deviceTypeKey) && in_array($deviceTypeKey, $this->allowedDeviceTypeKeys, true);
+        return is_string($deviceProfileKey) && in_array($deviceProfileKey, $this->allowedDeviceProfileKeys, true);
     }
 }

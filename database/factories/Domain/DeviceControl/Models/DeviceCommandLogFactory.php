@@ -7,7 +7,7 @@ namespace Database\Factories\Domain\DeviceControl\Models;
 use App\Domain\DeviceControl\Enums\CommandStatus;
 use App\Domain\DeviceControl\Models\DeviceCommandLog;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\Shared\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -19,24 +19,28 @@ class DeviceCommandLogFactory extends Factory
     protected $model = DeviceCommandLog::class;
 
     /**
-     * Define the model's default state.
-     *
      * @return array<string, mixed>
      */
     public function definition(): array
     {
+        $device = Device::factory()->create();
+        $commandChannel = DeviceChannel::factory()
+            ->command()
+            ->create(['device_profile_version_id' => $device->device_profile_version_id]);
+
+        $responseChannel = DeviceChannel::factory()
+            ->publish()
+            ->create(['device_profile_version_id' => $device->device_profile_version_id]);
+
         return [
-            'device_id' => Device::factory(),
-            'schema_version_topic_id' => SchemaVersionTopic::factory()->subscribe(),
-            'response_schema_version_topic_id' => null,
+            'device_id' => $device->id,
+            'device_channel_id' => $commandChannel->id,
+            'response_device_channel_id' => $responseChannel->id,
             'user_id' => User::factory(),
-            'command_payload' => [
-                'brightness' => $this->faker->numberBetween(0, 100),
-            ],
-            'correlation_id' => $this->faker->optional()->uuid(),
-            'status' => CommandStatus::Pending,
+            'command_payload' => ['power' => true],
             'response_payload' => null,
-            'error_message' => null,
+            'correlation_id' => $this->faker->uuid(),
+            'status' => CommandStatus::Pending,
             'sent_at' => null,
             'acknowledged_at' => null,
             'completed_at' => null,
@@ -45,29 +49,35 @@ class DeviceCommandLogFactory extends Factory
 
     public function sent(): static
     {
-        return $this->state(fn () => [
+        return $this->state(fn (array $attributes): array => [
             'status' => CommandStatus::Sent,
             'sent_at' => now(),
         ]);
     }
 
+    public function acknowledged(): static
+    {
+        return $this->sent()->state(fn (array $attributes): array => [
+            'status' => CommandStatus::Acknowledged,
+            'acknowledged_at' => now(),
+        ]);
+    }
+
     public function completed(): static
     {
-        return $this->state(fn () => [
+        return $this->acknowledged()->state(fn (array $attributes): array => [
             'status' => CommandStatus::Completed,
-            'sent_at' => now()->subMinutes(2),
-            'acknowledged_at' => now()->subMinute(),
+            'response_payload' => ['accepted' => true],
             'completed_at' => now(),
-            'response_payload' => ['success' => true],
         ]);
     }
 
     public function failed(): static
     {
-        return $this->state(fn () => [
+        return $this->sent()->state(fn (array $attributes): array => [
             'status' => CommandStatus::Failed,
-            'sent_at' => now()->subMinutes(5),
-            'error_message' => 'Device not responding',
+            'error_message' => 'Command failed.',
+            'completed_at' => now(),
         ]);
     }
 }

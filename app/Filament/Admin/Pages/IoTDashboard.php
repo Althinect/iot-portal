@@ -298,7 +298,7 @@ class IoTDashboard extends Page
 
                 $widget->forceFill([
                     'device_id' => $resolvedInput['device']->id,
-                    'schema_version_topic_id' => $resolvedInput['topic']->id,
+                    'device_channel_id' => $resolvedInput['topic']->id,
                     'title' => trim((string) $data['title']),
                     'config' => $config,
                     'layout' => $layout,
@@ -410,6 +410,7 @@ class IoTDashboard extends Page
             ->color('gray')
             ->size('sm')
             ->dropdownPlacement('bottom-end')
+            ->dropdownTeleport()
             ->livewire($this);
     }
 

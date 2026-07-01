@@ -131,7 +131,7 @@ class CompressorUtilizationSnapshotResolver implements WidgetSnapshotResolver
     }
 
     /**
-     * @param  array{device_id: int, schema_version_topic_id: int, parameter_key: string}  $source
+     * @param  array{device_id: int, device_channel_id: int, parameter_key: string}  $source
      * @return array{label: string, value: string|null, color: string, is_running: bool, recorded_at: string|null}
      */
     private function latestState(?array $source, int $lookbackMinutes): array
@@ -142,7 +142,7 @@ class CompressorUtilizationSnapshotResolver implements WidgetSnapshotResolver
 
         $log = DeviceTelemetryLog::query()
             ->where('device_id', $source['device_id'])
-            ->where('schema_version_topic_id', $source['schema_version_topic_id'])
+            ->whereIn('device_channel_id', $this->channelIdsForInput((int) $source['device_channel_id']))
             ->where('recorded_at', '>=', CarbonImmutable::now('UTC')->subMinutes($lookbackMinutes))
             ->orderByDesc('recorded_at')
             ->orderByDesc('id')
@@ -162,7 +162,7 @@ class CompressorUtilizationSnapshotResolver implements WidgetSnapshotResolver
     }
 
     /**
-     * @param  array{device_id: int, schema_version_topic_id: int, parameter_key: string}  $source
+     * @param  array{device_id: int, device_channel_id: int, parameter_key: string}  $source
      * @return array<int, array{state: string, start_at: string, end_at: string, start_percent: float, width_percent: float}>
      */
     private function statusSegments(array $source, CarbonImmutable $startAt, CarbonImmutable $endAt): array
@@ -173,7 +173,7 @@ class CompressorUtilizationSnapshotResolver implements WidgetSnapshotResolver
     }
 
     /**
-     * @param  array{device_id: int, schema_version_topic_id: int, parameter_key: string}  $source
+     * @param  array{device_id: int, device_channel_id: int, parameter_key: string}  $source
      * @return array{on: int, off: int, unknown: int, segments: array<int, array{state: string, start_at: string, end_at: string, start_percent: float, width_percent: float}>}
      */
     private function statusDurations(array $source, CarbonImmutable $startAt, CarbonImmutable $endAt, bool $includeSegments = false): array
@@ -238,14 +238,14 @@ class CompressorUtilizationSnapshotResolver implements WidgetSnapshotResolver
     }
 
     /**
-     * @param  array{device_id: int, schema_version_topic_id: int, parameter_key: string}  $source
+     * @param  array{device_id: int, device_channel_id: int, parameter_key: string}  $source
      * @return Collection<int, DeviceTelemetryLog>
      */
     private function statusLogs(array $source, CarbonImmutable $startAt, CarbonImmutable $endAt): Collection
     {
         $previousLog = DeviceTelemetryLog::query()
             ->where('device_id', $source['device_id'])
-            ->where('schema_version_topic_id', $source['schema_version_topic_id'])
+            ->whereIn('device_channel_id', $this->channelIdsForInput((int) $source['device_channel_id']))
             ->where('recorded_at', '<=', $startAt)
             ->orderByDesc('recorded_at')
             ->orderByDesc('id')
@@ -253,7 +253,7 @@ class CompressorUtilizationSnapshotResolver implements WidgetSnapshotResolver
 
         $logs = DeviceTelemetryLog::query()
             ->where('device_id', $source['device_id'])
-            ->where('schema_version_topic_id', $source['schema_version_topic_id'])
+            ->whereIn('device_channel_id', $this->channelIdsForInput((int) $source['device_channel_id']))
             ->where('recorded_at', '>', $startAt)
             ->where('recorded_at', '<=', $endAt)
             ->orderBy('recorded_at')
@@ -266,7 +266,19 @@ class CompressorUtilizationSnapshotResolver implements WidgetSnapshotResolver
     }
 
     /**
-     * @param  array{device_id: int, schema_version_topic_id: int, parameter_key: string}  $source
+     * @return array<int, int>
+     */
+    private function channelIdsForInput(int $deviceChannelId): array
+    {
+        if ($deviceChannelId < 1) {
+            return [];
+        }
+
+        return [$deviceChannelId];
+    }
+
+    /**
+     * @param  array{device_id: int, device_channel_id: int, parameter_key: string}  $source
      * @return array<int, array{label: string, utilization_percent: float|null}>
      */
     private function dailyUtilizations(array $source, CarbonImmutable $now): array

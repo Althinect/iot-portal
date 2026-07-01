@@ -18,11 +18,10 @@ use App\Domain\Automation\Models\AutomationWorkflowVersion;
 use App\Domain\DeviceControl\Enums\CommandStatus;
 use App\Domain\DeviceControl\Services\DeviceCommandDispatcher;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\MetricUnit;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
-use App\Domain\DeviceSchema\Services\JsonLogicEvaluator;
+use App\Domain\DeviceProfile\Enums\MetricUnit;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
+use App\Domain\DeviceProfile\Services\JsonLogicEvaluator;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -111,7 +110,7 @@ class WorkflowRunExecutor
                 input: [
                     'telemetry_log_id' => $telemetryLogId,
                     'device_id' => $telemetryLog->device_id,
-                    'schema_version_topic_id' => $telemetryLog->schema_version_topic_id,
+                    'device_channel_id' => $telemetryLog->device_channel_id,
                 ],
                 output: $triggerContext['trigger'],
                 error: null,
@@ -213,7 +212,7 @@ class WorkflowRunExecutor
 
         $payload = $this->resolveAssociativeArray($telemetryLog->getAttribute('transformed_values'));
         $matchedTriggerNodes = [];
-        $parameterIds = [];
+        $parameterKeysByChannel = [];
 
         foreach ($graph->nodes as $node) {
             if (Arr::get($node, 'type') !== 'telemetry-trigger') {
@@ -221,10 +220,13 @@ class WorkflowRunExecutor
             }
 
             $sourceDeviceId = $this->resolvePositiveInt(Arr::get($node, 'data.config.source.device_id'));
-            $sourceTopicId = $this->resolvePositiveInt(Arr::get($node, 'data.config.source.topic_id'));
-            $parameterDefinitionId = $this->resolvePositiveInt(Arr::get($node, 'data.config.source.parameter_definition_id'));
+            $sourceChannelId = $this->resolvePositiveInt(
+                Arr::get($node, 'data.config.source.device_channel_id')
+                    ?? Arr::get($node, 'data.config.source.channel_id')
+            );
+            $parameterKey = $this->resolveNonEmptyString(Arr::get($node, 'data.config.source.parameter_key'));
 
-            if ($sourceDeviceId === null || $sourceTopicId === null || $parameterDefinitionId === null) {
+            if ($sourceDeviceId === null || $sourceChannelId === null || $parameterKey === null) {
                 continue;
             }
 
@@ -232,39 +234,47 @@ class WorkflowRunExecutor
                 continue;
             }
 
-            if ((int) $telemetryLog->schema_version_topic_id !== $sourceTopicId) {
+            if ((int) $telemetryLog->device_channel_id !== $sourceChannelId) {
                 continue;
             }
 
             $matchedTriggerNodes[] = [
                 'node' => $node,
-                'parameter_definition_id' => $parameterDefinitionId,
+                'device_channel_id' => $sourceChannelId,
+                'parameter_key' => $parameterKey,
             ];
 
-            $parameterIds[] = $parameterDefinitionId;
+            $parameterKeysByChannel[$sourceChannelId][] = $parameterKey;
         }
 
-        if ($matchedTriggerNodes === [] || $parameterIds === []) {
+        if ($matchedTriggerNodes === [] || $parameterKeysByChannel === []) {
             return [];
         }
 
-        $parameters = ParameterDefinition::query()
-            ->whereIn('id', array_values(array_unique($parameterIds)))
+        $parameters = ProfileParameterDefinition::query()
+            ->whereIn('device_channel_id', array_keys($parameterKeysByChannel))
+            ->whereIn('key', array_values(array_unique(array_merge(...array_values($parameterKeysByChannel)))))
             ->get()
+            ->keyBy(static fn (ProfileParameterDefinition $parameter): string => $parameter->device_channel_id.':'.$parameter->key);
+
+        $channels = DeviceChannel::query()
+            ->whereIn('id', array_keys($parameterKeysByChannel))
+            ->get(['id', 'key'])
             ->keyBy('id');
 
         $contexts = [];
 
         foreach ($matchedTriggerNodes as $matchedTriggerNode) {
-            $parameterDefinitionId = $matchedTriggerNode['parameter_definition_id'];
-            $parameter = $parameters->get($parameterDefinitionId);
+            $channelId = $matchedTriggerNode['device_channel_id'];
+            $parameterKey = $matchedTriggerNode['parameter_key'];
+            $parameter = $parameters->get($channelId.':'.$parameterKey);
+            $channel = $channels->get($channelId);
 
-            if (! $parameter instanceof ParameterDefinition) {
+            if (! $parameter instanceof ProfileParameterDefinition || ! $channel instanceof DeviceChannel) {
                 continue;
             }
 
-            $sourceTopicId = $this->resolvePositiveInt(Arr::get($matchedTriggerNode['node'], 'data.config.source.topic_id'));
-            if ($sourceTopicId === null || (int) $parameter->schema_version_topic_id !== $sourceTopicId) {
+            if ((int) $parameter->device_channel_id !== (int) $channel->id) {
                 continue;
             }
 
@@ -272,13 +282,13 @@ class WorkflowRunExecutor
                 'node' => $matchedTriggerNode['node'],
                 'trigger' => [
                     'value' => $this->resolveTelemetryValue($payload, $parameter),
-                    'parameter_definition_id' => $parameter->id,
                     'parameter_key' => $parameter->key,
                     'parameter_label' => $parameter->label,
                     'parameter_unit' => $parameter->unit,
                     'device_id' => (int) $telemetryLog->device_id,
                     'device_name' => $telemetryLog->device?->name,
-                    'schema_version_topic_id' => (int) $telemetryLog->schema_version_topic_id,
+                    'device_channel_id' => (int) $telemetryLog->device_channel_id,
+                    'channel_key' => $channel->key,
                     'recorded_at' => $telemetryLog->recorded_at->format(DATE_ATOM),
                 ],
                 'payload' => $payload,
@@ -1096,10 +1106,13 @@ class WorkflowRunExecutor
         string $nodeId,
     ): array {
         $targetDeviceId = $this->resolvePositiveInt(Arr::get($node, 'data.config.target.device_id'));
-        $targetTopicId = $this->resolvePositiveInt(Arr::get($node, 'data.config.target.topic_id'));
+        $targetChannelId = $this->resolvePositiveInt(
+            Arr::get($node, 'data.config.target.device_channel_id')
+                ?? Arr::get($node, 'data.config.target.channel_id')
+        );
         $payload = Arr::get($node, 'data.config.payload');
 
-        if ($targetDeviceId === null || $targetTopicId === null || ! is_array($payload)) {
+        if ($targetDeviceId === null || $targetChannelId === null || ! is_array($payload)) {
             $this->log()->warning('Command node failed due to incomplete configuration.', [
                 'run_correlation_id' => $runCorrelationId,
                 'node_id' => $nodeId,
@@ -1118,11 +1131,11 @@ class WorkflowRunExecutor
             ->where('organization_id', (int) $run->organization_id)
             ->find($targetDeviceId);
 
-        $targetSchemaVersionId = $device instanceof Device
-            ? $this->resolvePositiveInt($device->getAttribute('device_schema_version_id'))
+        $targetProfileVersionId = $device instanceof Device
+            ? $this->resolvePositiveInt($device->getAttribute('device_profile_version_id'))
             : null;
 
-        if (! $device instanceof Device || $targetSchemaVersionId === null) {
+        if (! $device instanceof Device || $targetProfileVersionId === null) {
             $this->log()->warning('Command node failed due to invalid target device.', [
                 'run_correlation_id' => $runCorrelationId,
                 'node_id' => $nodeId,
@@ -1136,30 +1149,29 @@ class WorkflowRunExecutor
             ];
         }
 
-        $topic = SchemaVersionTopic::query()
-            ->whereKey($targetTopicId)
-            ->where('device_schema_version_id', $targetSchemaVersionId)
-            ->where('direction', TopicDirection::Subscribe->value)
+        $channel = DeviceChannel::query()
+            ->whereKey($targetChannelId)
+            ->where('device_profile_version_id', $targetProfileVersionId)
             ->first();
 
-        if (! $topic instanceof SchemaVersionTopic) {
-            $this->log()->warning('Command node failed due to invalid target topic.', [
+        if (! $channel instanceof DeviceChannel || ! $channel->isPurposeCommand()) {
+            $this->log()->warning('Command node failed due to invalid target channel.', [
                 'run_correlation_id' => $runCorrelationId,
                 'node_id' => $nodeId,
-                'target_topic_id' => $targetTopicId,
+                'target_channel_id' => $targetChannelId,
                 'target_device_id' => $targetDeviceId,
             ]);
 
             return [
                 'status' => 'failed',
                 'output' => [],
-                'error' => ['reason' => 'command_target_topic_invalid'],
+                'error' => ['reason' => 'command_target_channel_invalid'],
             ];
         }
 
         $commandLog = $this->deviceCommandDispatcher->dispatch(
             device: $device,
-            topic: $topic,
+            channel: $channel,
             payload: $resolvedPayload,
             userId: null,
         );
@@ -1186,7 +1198,7 @@ class WorkflowRunExecutor
                 'command_log_id' => $commandLog->id,
                 'command_status' => $commandStatus,
                 'target_device_id' => $device->id,
-                'target_topic_id' => $topic->id,
+                'target_channel_id' => $channel->id,
             ],
             'error' => null,
         ];
@@ -1466,7 +1478,7 @@ class WorkflowRunExecutor
         }
 
         return ThresholdPolicy::query()
-            ->with(['device', 'parameterDefinition', 'notificationProfile.users'])
+            ->with(['device', 'deviceChannel', 'notificationProfile.users'])
             ->whereKey($thresholdPolicyId)
             ->where('organization_id', (int) $run->organization_id)
             ->first();
@@ -1496,7 +1508,7 @@ class WorkflowRunExecutor
         Alert $alert,
         array $executionContext,
     ): array {
-        $parameter = $policy->parameterDefinition;
+        $parameter = $policy->profileParameterDefinition();
         $device = $policy->device;
         $deviceName = $device instanceof Device
             ? $device->name
@@ -1591,10 +1603,10 @@ class WorkflowRunExecutor
     private function buildAlertCooldownCacheKey(AutomationRun $run, array $executionContext, string $nodeId): string
     {
         $deviceId = Arr::get($executionContext, 'trigger.device_id');
-        $topicId = Arr::get($executionContext, 'trigger.schema_version_topic_id');
+        $channelId = Arr::get($executionContext, 'trigger.device_channel_id');
 
         $resolvedDeviceId = is_int($deviceId) || is_string($deviceId) ? (string) $deviceId : 'none';
-        $resolvedTopicId = is_int($topicId) || is_string($topicId) ? (string) $topicId : 'none';
+        $resolvedChannelId = is_int($channelId) || is_string($channelId) ? (string) $channelId : 'none';
 
         return implode(':', [
             'automation',
@@ -1602,7 +1614,7 @@ class WorkflowRunExecutor
             (string) $run->workflow_version_id,
             Str::slug($nodeId, '_'),
             $resolvedDeviceId,
-            $resolvedTopicId,
+            $resolvedChannelId,
         ]);
     }
 
@@ -1624,7 +1636,7 @@ class WorkflowRunExecutor
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function resolveTelemetryValue(array $payload, ParameterDefinition $parameter): mixed
+    private function resolveTelemetryValue(array $payload, ProfileParameterDefinition $parameter): mixed
     {
         $value = $parameter->extractValue($payload);
 
@@ -1887,6 +1899,17 @@ class WorkflowRunExecutor
         $resolvedValue = (int) $value;
 
         return $resolvedValue > 0 ? $resolvedValue : null;
+    }
+
+    private function resolveNonEmptyString(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $resolved = trim($value);
+
+        return $resolved === '' ? null : $resolved;
     }
 
     /**

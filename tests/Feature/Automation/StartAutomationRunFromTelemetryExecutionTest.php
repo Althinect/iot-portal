@@ -9,13 +9,11 @@ use App\Domain\Automation\Models\AutomationWorkflowVersion;
 use App\Domain\DeviceControl\Enums\CommandStatus;
 use App\Domain\DeviceControl\Models\DeviceCommandLog;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceManagement\Publishing\Mqtt\MqttCommandPublisher;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use App\Notifications\Automation\AutomationWorkflowAlertNotification;
@@ -36,20 +34,16 @@ function createExecutionFixture(float $voltage): array
 {
     $organization = Organization::factory()->create();
 
-    $sourceDeviceType = DeviceType::factory()->forOrganization($organization->id)->mqtt()->create();
-    $sourceSchema = DeviceSchema::factory()->forDeviceType($sourceDeviceType)->create();
-    $sourceSchemaVersion = DeviceSchemaVersion::factory()->active()->create([
-        'device_schema_id' => $sourceSchema->id,
-    ]);
+    $sourceProfileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
 
-    $sourceTopic = SchemaVersionTopic::factory()->publish()->create([
-        'device_schema_version_id' => $sourceSchemaVersion->id,
+    $sourceChannel = DeviceChannel::factory()->telemetry()->create([
+        'device_profile_version_id' => $sourceProfileVersion->id,
         'key' => 'telemetry',
-        'suffix' => 'telemetry',
+        'address' => 'telemetry',
     ]);
 
-    $sourceParameter = ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $sourceTopic->id,
+    $sourceParameter = ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $sourceChannel->id,
         'key' => 'V1',
         'json_path' => 'voltages.V1',
         'type' => ParameterDataType::Decimal,
@@ -59,25 +53,20 @@ function createExecutionFixture(float $voltage): array
 
     $sourceDevice = Device::factory()->create([
         'organization_id' => $organization->id,
-        'device_type_id' => $sourceDeviceType->id,
-        'device_schema_version_id' => $sourceSchemaVersion->id,
+        'device_profile_version_id' => $sourceProfileVersion->id,
         'name' => 'Energy Meter',
     ]);
 
-    $targetDeviceType = DeviceType::factory()->forOrganization($organization->id)->mqtt()->create();
-    $targetSchema = DeviceSchema::factory()->forDeviceType($targetDeviceType)->create();
-    $targetSchemaVersion = DeviceSchemaVersion::factory()->active()->create([
-        'device_schema_id' => $targetSchema->id,
-    ]);
+    $targetProfileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
 
-    $targetTopic = SchemaVersionTopic::factory()->subscribe()->create([
-        'device_schema_version_id' => $targetSchemaVersion->id,
+    $targetChannel = DeviceChannel::factory()->command()->create([
+        'device_profile_version_id' => $targetProfileVersion->id,
         'key' => 'control',
-        'suffix' => 'control',
+        'address' => 'control',
     ]);
 
-    ParameterDefinition::factory()->subscribe()->create([
-        'schema_version_topic_id' => $targetTopic->id,
+    ProfileParameterDefinition::factory()->subscribe()->create([
+        'device_channel_id' => $targetChannel->id,
         'key' => 'power',
         'json_path' => 'power',
         'type' => ParameterDataType::Boolean,
@@ -86,8 +75,8 @@ function createExecutionFixture(float $voltage): array
         'is_active' => true,
     ]);
 
-    ParameterDefinition::factory()->subscribe()->create([
-        'schema_version_topic_id' => $targetTopic->id,
+    ProfileParameterDefinition::factory()->subscribe()->create([
+        'device_channel_id' => $targetChannel->id,
         'key' => 'color',
         'json_path' => 'color',
         'type' => ParameterDataType::String,
@@ -99,8 +88,7 @@ function createExecutionFixture(float $voltage): array
 
     $targetDevice = Device::factory()->create([
         'organization_id' => $organization->id,
-        'device_type_id' => $targetDeviceType->id,
-        'device_schema_version_id' => $targetSchemaVersion->id,
+        'device_profile_version_id' => $targetProfileVersion->id,
         'name' => 'RGB Strip',
     ]);
 
@@ -119,8 +107,8 @@ function createExecutionFixture(float $voltage): array
                         'mode' => 'event',
                         'source' => [
                             'device_id' => $sourceDevice->id,
-                            'topic_id' => $sourceTopic->id,
-                            'parameter_definition_id' => $sourceParameter->id,
+                            'device_channel_id' => $sourceChannel->id,
+                            'parameter_key' => $sourceParameter->key,
                         ],
                     ],
                 ],
@@ -152,7 +140,7 @@ function createExecutionFixture(float $voltage): array
                     'config' => [
                         'target' => [
                             'device_id' => $targetDevice->id,
-                            'topic_id' => $targetTopic->id,
+                            'device_channel_id' => $targetChannel->id,
                         ],
                         'payload_mode' => 'schema_form',
                         'payload' => [
@@ -181,13 +169,14 @@ function createExecutionFixture(float $voltage): array
         'organization_id' => $organization->id,
         'workflow_version_id' => $version->id,
         'device_id' => $sourceDevice->id,
-        'device_type_id' => $sourceDevice->device_type_id,
-        'schema_version_topic_id' => $sourceTopic->id,
+        'device_channel_id' => $sourceChannel->id,
+        'channel_key' => $sourceChannel->key,
+        'parameter_key' => $sourceParameter->key,
     ]);
 
     $telemetryLog = DeviceTelemetryLog::factory()
         ->forDevice($sourceDevice)
-        ->forTopic($sourceTopic)
+        ->forChannel($sourceChannel)
         ->create([
             'transformed_values' => [
                 'voltages' => ['V1' => $voltage],
@@ -203,7 +192,7 @@ function createExecutionFixture(float $voltage): array
         'version' => $version,
         'telemetryLog' => $telemetryLog,
         'targetDevice' => $targetDevice,
-        'targetTopic' => $targetTopic,
+        'targetChannel' => $targetChannel,
     ];
 }
 
@@ -232,20 +221,16 @@ function createQueryAlertExecutionFixture(): array
 {
     $organization = Organization::factory()->create();
 
-    $sourceDeviceType = DeviceType::factory()->forOrganization($organization->id)->mqtt()->create();
-    $sourceSchema = DeviceSchema::factory()->forDeviceType($sourceDeviceType)->create();
-    $sourceSchemaVersion = DeviceSchemaVersion::factory()->active()->create([
-        'device_schema_id' => $sourceSchema->id,
-    ]);
+    $sourceProfileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
 
-    $sourceTopic = SchemaVersionTopic::factory()->publish()->create([
-        'device_schema_version_id' => $sourceSchemaVersion->id,
+    $sourceChannel = DeviceChannel::factory()->telemetry()->create([
+        'device_profile_version_id' => $sourceProfileVersion->id,
         'key' => 'telemetry',
-        'suffix' => 'telemetry',
+        'address' => 'telemetry',
     ]);
 
-    $sourceParameter = ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $sourceTopic->id,
+    $sourceParameter = ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $sourceChannel->id,
         'key' => 'total_energy',
         'json_path' => 'energy.total',
         'type' => ParameterDataType::Decimal,
@@ -255,8 +240,7 @@ function createQueryAlertExecutionFixture(): array
 
     $sourceDevice = Device::factory()->create([
         'organization_id' => $organization->id,
-        'device_type_id' => $sourceDeviceType->id,
-        'device_schema_version_id' => $sourceSchemaVersion->id,
+        'device_profile_version_id' => $sourceProfileVersion->id,
         'name' => 'Energy Meter',
     ]);
 
@@ -275,8 +259,8 @@ function createQueryAlertExecutionFixture(): array
                         'mode' => 'event',
                         'source' => [
                             'device_id' => $sourceDevice->id,
-                            'topic_id' => $sourceTopic->id,
-                            'parameter_definition_id' => $sourceParameter->id,
+                            'device_channel_id' => $sourceChannel->id,
+                            'parameter_key' => $sourceParameter->key,
                         ],
                     ],
                 ],
@@ -295,8 +279,8 @@ function createQueryAlertExecutionFixture(): array
                             [
                                 'alias' => 'source_1',
                                 'device_id' => $sourceDevice->id,
-                                'topic_id' => $sourceTopic->id,
-                                'parameter_definition_id' => $sourceParameter->id,
+                                'device_channel_id' => $sourceChannel->id,
+                                'parameter_key' => $sourceParameter->key,
                             ],
                         ],
                         'sql' => 'SELECT COALESCE(SUM(source_1.value), 0) AS value FROM source_1',
@@ -359,15 +343,16 @@ function createQueryAlertExecutionFixture(): array
         'organization_id' => $organization->id,
         'workflow_version_id' => $version->id,
         'device_id' => $sourceDevice->id,
-        'device_type_id' => $sourceDevice->device_type_id,
-        'schema_version_topic_id' => $sourceTopic->id,
+        'device_channel_id' => $sourceChannel->id,
+        'channel_key' => $sourceChannel->key,
+        'parameter_key' => $sourceParameter->key,
     ]);
 
     return [
         'workflow' => $workflow,
         'version' => $version,
         'sourceDevice' => $sourceDevice,
-        'sourceTopic' => $sourceTopic,
+        'sourceChannel' => $sourceChannel,
     ];
 }
 
@@ -375,7 +360,7 @@ function createQueryAlertTelemetryLog(array $fixture, float $energyTotal, Carbon
 {
     return DeviceTelemetryLog::factory()
         ->forDevice($fixture['sourceDevice'])
-        ->forTopic($fixture['sourceTopic'])
+        ->forChannel($fixture['sourceChannel'])
         ->create([
             'transformed_values' => [
                 'energy' => ['total' => $energyTotal],
@@ -422,7 +407,7 @@ it('executes condition and command nodes when telemetry condition passes', funct
 
     expect($commandLog)->not->toBeNull()
         ->and($commandLog?->device_id)->toBe($fixture['targetDevice']->id)
-        ->and($commandLog?->schema_version_topic_id)->toBe($fixture['targetTopic']->id)
+        ->and($commandLog?->device_channel_id)->toBe($fixture['targetChannel']->id)
         ->and($commandLog?->command_payload)->toMatchArray([
             'power' => true,
             'color' => 'RED',
@@ -581,7 +566,7 @@ it('persists failed step details and snapshots even when success step logging is
     $fixture = createExecutionFixture(voltage: 120.5);
     $graph = $fixture['version']->graph_json;
 
-    data_set($graph, 'nodes.2.data.config.target.topic_id', 999999);
+    data_set($graph, 'nodes.2.data.config.target.device_channel_id', 999999);
     $fixture['version']->update(['graph_json' => $graph]);
 
     (new StartAutomationRunFromTelemetry(
@@ -596,7 +581,7 @@ it('persists failed step details and snapshots even when success step logging is
         ->and($run?->status->value)->toBe('failed')
         ->and($run?->steps()->count())->toBe(3)
         ->and($commandStep)->not->toBeNull()
-        ->and($commandStep?->error)->toHaveKey('reason', 'command_target_topic_invalid')
+        ->and($commandStep?->error)->toHaveKey('reason', 'command_target_channel_invalid')
         ->and($commandStep?->input_snapshot)->not->toBeNull()
         ->and($commandStep?->output_snapshot)->toBeArray();
 });

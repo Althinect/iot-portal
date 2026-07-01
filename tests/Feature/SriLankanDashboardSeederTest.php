@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 use App\Domain\Automation\Models\AutomationThresholdPolicy;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
 use App\Domain\Shared\Models\Organization;
@@ -44,7 +44,8 @@ it('seeds sri lankan status and history dashboards for the communicating cold-ro
     IoTDashboardWidget::query()->create([
         'iot_dashboard_id' => $statusDashboard->id,
         'device_id' => $firstScope['device']->id,
-        'schema_version_topic_id' => $firstScope['topic']->id,
+        'device_channel_id' => null,
+        'device_channel_id' => $firstScope['topic']->id,
         'title' => 'Legacy History Widget',
         'type' => 'line_chart',
         'config' => [
@@ -64,7 +65,8 @@ it('seeds sri lankan status and history dashboards for the communicating cold-ro
     IoTDashboardWidget::query()->create([
         'iot_dashboard_id' => $historyDashboard->id,
         'device_id' => $firstScope['device']->id,
-        'schema_version_topic_id' => $firstScope['topic']->id,
+        'device_channel_id' => null,
+        'device_channel_id' => $firstScope['topic']->id,
         'title' => 'Legacy Threshold Widget',
         'type' => 'threshold_status_card',
         'config' => [
@@ -148,7 +150,7 @@ it('seeds sri lankan status and history dashboards for the communicating cold-ro
             ->and($cardWidget)->not->toBeNull()
             ->and($cardWidget?->type)->toBe('threshold_status_card')
             ->and($cardWidget?->device_id)->toBe($scope['device']->id)
-            ->and($cardWidget?->schema_version_topic_id)->toBe($scope['topic']->id)
+            ->and($cardWidget?->device_channel_id)->toBe($scope['topic']->id)
             ->and($cardWidget?->sequence)->toBe($index + 1)
             ->and($cardWidget?->configArray())->toMatchArray([
                 'policy_id' => $policy?->id,
@@ -173,7 +175,7 @@ it('seeds sri lankan status and history dashboards for the communicating cold-ro
             ->and($chartWidget)->not->toBeNull()
             ->and($chartWidget?->type)->toBe('line_chart')
             ->and($chartWidget?->device_id)->toBe($scope['device']->id)
-            ->and($chartWidget?->schema_version_topic_id)->toBe($scope['topic']->id)
+            ->and($chartWidget?->device_channel_id)->toBe($scope['topic']->id)
             ->and($chartWidget?->sequence)->toBe($index + 1)
             ->and($chartWidget?->configArray())->toMatchArray([
                 'series' => [[
@@ -213,8 +215,8 @@ it('seeds sri lankan status and history dashboards for the communicating cold-ro
  *         maximum_value: float
  *     },
  *     device: Device,
- *     topic: SchemaVersionTopic,
- *     parameter: ParameterDefinition
+ *     topic: DeviceChannel,
+ *     parameter: ProfileParameterDefinition
  * }>
  */
 function resolveSriLankanConfiguredScopes(Organization $organization): array
@@ -234,7 +236,7 @@ function resolveSriLankanConfiguredScopes(Organization $organization): array
 
     $devices = Device::query()
         ->with([
-            'schemaVersion.topics' => fn ($query) => $query
+            'profileVersion.channels' => fn ($query) => $query
                 ->where('key', 'telemetry')
                 ->with([
                     'parameters' => fn ($query) => $query
@@ -257,23 +259,23 @@ function resolveSriLankanConfiguredScopes(Organization $organization): array
             continue;
         }
 
-        $topic = $device->schemaVersion?->topics
-            ?->first(fn (SchemaVersionTopic $topic): bool => resolveSriLankanParameterByKey($topic, $card['parameter_key']) instanceof ParameterDefinition);
+        $channel = $device->profileVersion?->channels
+            ?->first(fn (DeviceChannel $channel): bool => resolveSriLankanParameterByKey($channel, $card['parameter_key']) instanceof ProfileParameterDefinition);
 
-        if (! $topic instanceof SchemaVersionTopic) {
+        if (! $channel instanceof DeviceChannel) {
             continue;
         }
 
-        $parameter = resolveSriLankanParameterByKey($topic, $card['parameter_key']);
+        $parameter = resolveSriLankanParameterByKey($channel, $card['parameter_key']);
 
-        if (! $parameter instanceof ParameterDefinition) {
+        if (! $parameter instanceof ProfileParameterDefinition) {
             continue;
         }
 
         $scopes[] = [
             'card' => $card,
             'device' => $device,
-            'topic' => $topic,
+            'topic' => $channel,
             'parameter' => $parameter,
         ];
     }
@@ -281,11 +283,11 @@ function resolveSriLankanConfiguredScopes(Organization $organization): array
     return $scopes;
 }
 
-function resolveSriLankanParameterByKey(SchemaVersionTopic $topic, string $parameterKey): ?ParameterDefinition
+function resolveSriLankanParameterByKey(DeviceChannel $channel, string $parameterKey): ?ProfileParameterDefinition
 {
-    /** @var ParameterDefinition|null $parameter */
-    $parameter = $topic->parameters
-        ->first(fn (ParameterDefinition $parameter): bool => $parameter->key === $parameterKey);
+    /** @var ProfileParameterDefinition|null $parameter */
+    $parameter = $channel->parameters
+        ->first(fn (ProfileParameterDefinition $parameter): bool => $parameter->key === $parameterKey);
 
     return $parameter;
 }

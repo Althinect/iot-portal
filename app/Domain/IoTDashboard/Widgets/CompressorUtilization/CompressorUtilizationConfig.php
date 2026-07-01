@@ -10,7 +10,7 @@ use App\Domain\IoTDashboard\Enums\WidgetType;
 final class CompressorUtilizationConfig implements WidgetConfig
 {
     /**
-     * @param  array{status: array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null}  $sources
+     * @param  array{status: array{device_id: int, device_channel_id: int, parameter_key: string}|null}  $sources
      * @param  array<int, array{label: string, start_time: string, end_time: string}>  $shifts
      * @param  array<int, array{label: string, minimum: float, maximum: float, color: string}>  $percentageThresholds
      */
@@ -73,7 +73,7 @@ final class CompressorUtilizationConfig implements WidgetConfig
     }
 
     /**
-     * @return array{status: array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null}
+     * @return array{status: array{device_id: int, device_channel_id: int, parameter_key: string}|null}
      */
     public function sources(): array
     {
@@ -124,7 +124,7 @@ final class CompressorUtilizationConfig implements WidgetConfig
     }
 
     /**
-     * @return array{status: array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null}
+     * @return array{status: array{device_id: int, device_channel_id: int, parameter_key: string}|null}
      */
     private static function normalizeSources(mixed $sources): array
     {
@@ -136,7 +136,7 @@ final class CompressorUtilizationConfig implements WidgetConfig
     }
 
     /**
-     * @return array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null
+     * @return array{device_id: int, device_channel_id: int, parameter_key: string}|null
      */
     private static function normalizeSource(mixed $source): ?array
     {
@@ -145,7 +145,7 @@ final class CompressorUtilizationConfig implements WidgetConfig
         }
 
         $deviceId = self::toInt($source['device_id'] ?? null, 0);
-        $topicId = self::toInt($source['schema_version_topic_id'] ?? null, 0);
+        $topicId = self::toInt($source['device_channel_id'] ?? null, 0);
         $parameterKey = is_string($source['parameter_key'] ?? null) && trim($source['parameter_key']) !== ''
             ? trim($source['parameter_key'])
             : 'status';
@@ -156,7 +156,7 @@ final class CompressorUtilizationConfig implements WidgetConfig
 
         return [
             'device_id' => $deviceId,
-            'schema_version_topic_id' => $topicId,
+            'device_channel_id' => $topicId,
             'parameter_key' => $parameterKey,
         ];
     }

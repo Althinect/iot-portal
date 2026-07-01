@@ -34,7 +34,7 @@ class StateCardSnapshotResolver implements WidgetSnapshotResolver
         $logs = $deviceId === null
             ? collect()
             : $this->fetchTelemetryLogs(
-                schemaVersionTopicId: (int) $widget->schema_version_topic_id,
+                deviceChannelId: (int) $widget->device_channel_id,
                 deviceId: $deviceId,
                 lookbackMinutes: $config->lookbackMinutes(),
                 maxPoints: $config->maxPoints(),
@@ -83,13 +83,13 @@ class StateCardSnapshotResolver implements WidgetSnapshotResolver
      * @return Collection<int, DeviceTelemetryLog>
      */
     private function fetchTelemetryLogs(
-        int $schemaVersionTopicId,
+        int $deviceChannelId,
         int $deviceId,
         int $lookbackMinutes,
         int $maxPoints,
     ): Collection {
         return DeviceTelemetryLog::query()
-            ->where('schema_version_topic_id', $schemaVersionTopicId)
+            ->whereIn('device_channel_id', $this->channelIdsForInput($deviceChannelId))
             ->where('device_id', $deviceId)
             ->where('recorded_at', '>=', now()->subMinutes($lookbackMinutes))
             ->orderByDesc('recorded_at')
@@ -97,6 +97,18 @@ class StateCardSnapshotResolver implements WidgetSnapshotResolver
             ->get(['id', 'recorded_at', 'transformed_values'])
             ->sortBy('recorded_at')
             ->values();
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function channelIdsForInput(int $deviceChannelId): array
+    {
+        if ($deviceChannelId < 1) {
+            return [];
+        }
+
+        return [$deviceChannelId];
     }
 
     /**

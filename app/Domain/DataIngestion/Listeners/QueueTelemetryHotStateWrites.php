@@ -8,7 +8,7 @@ use App\Domain\DataIngestion\Concerns\InteractsWithTelemetrySideEffectsQueue;
 use App\Domain\DataIngestion\Contracts\HotStateStore;
 use App\Domain\DataIngestion\Models\IngestionMessage;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Events\TelemetryReceived;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
@@ -27,22 +27,22 @@ class QueueTelemetryHotStateWrites implements ShouldQueue
     public function handle(TelemetryReceived $event): void
     {
         $telemetryLog = $event->telemetryLog->loadMissing([
-            'device:id,uuid,external_id,device_type_id',
-            'topic:id,device_schema_version_id,key,suffix',
+            'device:id,uuid,external_id',
+            'channel:id,device_profile_version_id,key,address',
             'ingestionMessage:id,status',
         ]);
 
         if (
             $telemetryLog->processing_state !== 'processed'
             || ! $telemetryLog->device instanceof Device
-            || ! $telemetryLog->topic instanceof SchemaVersionTopic
+            || ! $telemetryLog->channel instanceof DeviceChannel
             || ! $telemetryLog->ingestionMessage instanceof IngestionMessage
         ) {
             return;
         }
 
         $device = $telemetryLog->device;
-        $topic = $telemetryLog->topic;
+        $channel = $telemetryLog->channel;
         $ingestionMessage = $telemetryLog->ingestionMessage;
         $finalValues = $telemetryLog->getAttribute('transformed_values');
 
@@ -52,7 +52,7 @@ class QueueTelemetryHotStateWrites implements ShouldQueue
 
         /** @var array<string, mixed> $finalValues */
         try {
-            $this->hotStateStore->store($device, $topic, $finalValues, $ingestionMessage, $telemetryLog);
+            $this->hotStateStore->store($device, $channel, $finalValues, $ingestionMessage, $telemetryLog);
         } catch (Throwable $exception) {
             if (! $this->shouldSkipTransientHotStateFailure($exception)) {
                 throw $exception;
@@ -60,7 +60,7 @@ class QueueTelemetryHotStateWrites implements ShouldQueue
 
             Log::channel('device_control')->warning('Telemetry hot-state write skipped after NATS timeout.', [
                 'device_uuid' => $device->uuid,
-                'topic_key' => $topic->key,
+                'channel_key' => $channel->key,
                 'ingestion_message_id' => $ingestionMessage->id,
                 'telemetry_log_id' => $telemetryLog->id,
                 'error' => $exception->getMessage(),

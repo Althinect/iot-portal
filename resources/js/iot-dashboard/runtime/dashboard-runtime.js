@@ -2,6 +2,7 @@ import { normalizeNumericValue } from './theme';
 import { GridLayoutManager } from './grid-layout-manager';
 import { PollingManager } from './polling-manager';
 import { RealtimeManager } from './realtime-manager';
+import { resolveRealtimePayloadChannelId } from './realtime-payload';
 import { historySelectionSnapshotRange, isAbsoluteHistorySelection } from '../history-range-state';
 import { lineChartOption } from '../widgets/line-chart/renderer';
 import { barChartOption } from '../widgets/bar-chart/renderer';
@@ -1038,9 +1039,8 @@ class DashboardRuntime {
     }
 
     appendRealtimePayload(payload) {
-        const topicId = Number(payload?.schema_version_topic_id ?? 0);
-
-        if (!Number.isInteger(topicId) || topicId <= 0) {
+        const channelId = resolveRealtimePayloadChannelId(payload);
+        if (channelId <= 0) {
             return;
         }
 
@@ -1063,7 +1063,7 @@ class DashboardRuntime {
             : new Date().toISOString();
 
         this.widgets.forEach((widget) => {
-            if (!this.isMatchingRealtimeStream(widget, topicId, deviceUuid)) {
+            if (!this.isMatchingRealtimeStream(widget, channelId, deviceUuid)) {
                 return;
             }
 
@@ -1077,15 +1077,15 @@ class DashboardRuntime {
         });
     }
 
-    isMatchingRealtimeStream(widget, topicId, deviceUuid) {
-        const widgetTopicId = Number(widget.topic?.id ?? 0);
+    isMatchingRealtimeStream(widget, channelId, deviceUuid) {
+        const widgetChannelId = Number(widget.topic?.id ?? 0);
         const widgetDeviceUuid = typeof widget.device?.uuid === 'string'
             ? widget.device.uuid
             : null;
 
         if (
             !widget.use_websocket
-            || widgetTopicId !== topicId
+            || widgetChannelId !== channelId
             || widget?.type === WIDGET_TYPES.barChart
             || this.usesFixedHistoryRange(widget)
         ) {

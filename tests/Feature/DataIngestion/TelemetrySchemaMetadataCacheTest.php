@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-use App\Domain\DataIngestion\Services\TelemetrySchemaMetadataCache;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\DerivedParameterDefinition;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileDerivedParameterDefinition;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
+use App\Domain\DeviceProfile\Services\DeviceProfileContractResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -18,98 +18,98 @@ uses(RefreshDatabase::class);
 beforeEach(function (): void {
     config()->set('cache.default', 'array');
     config()->set('cache.stores.file.path', storage_path('framework/cache/testing/'.Str::uuid()->toString()));
-    config()->set('ingestion.metadata_ttl_seconds', 300);
+    config()->set('device-profile.contract_ttl_seconds', 300);
 
     Cache::purge('file');
-    TelemetrySchemaMetadataCache::invalidateSharedVersion();
+    DeviceProfileContractResolver::invalidateSharedVersion();
 });
 
-it('reuses cached active parameter metadata for a topic within the ttl window', function (): void {
-    $schemaVersion = DeviceSchemaVersion::factory()->create();
-    $topic = SchemaVersionTopic::factory()->publish()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+it('reuses cached active profile parameter metadata for a channel within the ttl window', function (): void {
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
+    $channel = DeviceChannel::factory()->telemetry()->create([
+        'device_profile_version_id' => $profileVersion->id,
     ]);
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'temp_c',
         'type' => ParameterDataType::Decimal,
         'is_active' => true,
         'sequence' => 1,
     ]);
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'temp_f',
         'type' => ParameterDataType::Decimal,
         'is_active' => false,
         'sequence' => 2,
     ]);
 
-    $cache = app(TelemetrySchemaMetadataCache::class);
+    $resolver = app(DeviceProfileContractResolver::class);
 
-    $first = $cache->activeParametersFor($topic);
+    $first = $resolver->resolve($profileVersion)->channelByKey('telemetry')?->activeParameters() ?? [];
 
     DB::flushQueryLog();
     DB::enableQueryLog();
 
-    $second = $cache->activeParametersFor($topic);
-    $parameterDefinitionQueryCount = collect(DB::getQueryLog())
-        ->filter(static fn (array $query): bool => str_contains((string) $query['query'], 'parameter_definitions'))
+    $second = $resolver->resolve($profileVersion)->channelByKey('telemetry')?->activeParameters() ?? [];
+    $parameterQueryCount = collect(DB::getQueryLog())
+        ->filter(static fn (array $query): bool => str_contains((string) $query['query'], 'profile_parameter_definitions'))
         ->count();
 
     expect($first)->toHaveCount(1)
-        ->and($first->pluck('key')->all())->toBe(['temp_c'])
-        ->and($second->pluck('key')->all())->toBe(['temp_c'])
-        ->and($parameterDefinitionQueryCount)->toBe(0);
+        ->and(collect($first)->pluck('key')->all())->toBe(['temp_c'])
+        ->and(collect($second)->pluck('key')->all())->toBe(['temp_c'])
+        ->and($parameterQueryCount)->toBe(0);
 });
 
-it('reuses cached derived parameter metadata for a schema version within the ttl window', function (): void {
-    $schemaVersion = DeviceSchemaVersion::factory()->create();
+it('reuses cached profile derived parameter metadata for a profile version within the ttl window', function (): void {
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
 
-    DerivedParameterDefinition::factory()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    ProfileDerivedParameterDefinition::factory()->create([
+        'device_profile_version_id' => $profileVersion->id,
         'key' => 'temp_f',
     ]);
 
-    $cache = app(TelemetrySchemaMetadataCache::class);
+    $resolver = app(DeviceProfileContractResolver::class);
 
-    $first = $cache->derivedParametersFor($schemaVersion);
+    $first = $resolver->resolve($profileVersion)->derivedParameters();
 
     DB::flushQueryLog();
     DB::enableQueryLog();
 
-    $second = $cache->derivedParametersFor($schemaVersion);
-    $derivedParameterDefinitionQueryCount = collect(DB::getQueryLog())
-        ->filter(static fn (array $query): bool => str_contains((string) $query['query'], 'derived_parameter_definitions'))
+    $second = $resolver->resolve($profileVersion)->derivedParameters();
+    $derivedQueryCount = collect(DB::getQueryLog())
+        ->filter(static fn (array $query): bool => str_contains((string) $query['query'], 'profile_derived_parameter_definitions'))
         ->count();
 
     expect($first)->toHaveCount(1)
         ->and($first->pluck('key')->all())->toBe(['temp_f'])
         ->and($second->pluck('key')->all())->toBe(['temp_f'])
-        ->and($derivedParameterDefinitionQueryCount)->toBe(0);
+        ->and($derivedQueryCount)->toBe(0);
 });
 
-it('refreshes cached active parameter metadata immediately after parameter changes', function (): void {
-    $schemaVersion = DeviceSchemaVersion::factory()->create();
-    $topic = SchemaVersionTopic::factory()->publish()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+it('refreshes cached active profile parameter metadata immediately after parameter changes', function (): void {
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
+    $channel = DeviceChannel::factory()->telemetry()->create([
+        'device_profile_version_id' => $profileVersion->id,
     ]);
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'temp_c',
         'type' => ParameterDataType::Decimal,
         'is_active' => true,
         'sequence' => 1,
     ]);
 
-    $cache = app(TelemetrySchemaMetadataCache::class);
+    $resolver = app(DeviceProfileContractResolver::class);
 
-    $first = $cache->activeParametersFor($topic);
+    $first = $resolver->resolve($profileVersion)->channelByKey('telemetry')?->activeParameters() ?? [];
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'humidity',
         'type' => ParameterDataType::Decimal,
         'is_active' => true,
@@ -119,36 +119,36 @@ it('refreshes cached active parameter metadata immediately after parameter chang
     DB::flushQueryLog();
     DB::enableQueryLog();
 
-    $second = $cache->activeParametersFor($topic);
+    $second = $resolver->resolve($profileVersion)->channelByKey('telemetry')?->activeParameters() ?? [];
 
-    expect($first->pluck('key')->all())->toBe(['temp_c'])
-        ->and($second->pluck('key')->all())->toBe(['temp_c', 'humidity'])
+    expect(collect($first)->pluck('key')->all())->toBe(['temp_c'])
+        ->and(collect($second)->pluck('key')->all())->toBe(['temp_c', 'humidity'])
         ->and(count(DB::getQueryLog()))->toBeGreaterThan(0);
 });
 
-it('refreshes cached derived parameter metadata immediately after schema changes', function (): void {
-    $schemaVersion = DeviceSchemaVersion::factory()->create();
+it('refreshes cached profile derived parameter metadata immediately after profile changes', function (): void {
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
 
-    DerivedParameterDefinition::factory()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    ProfileDerivedParameterDefinition::factory()->create([
+        'device_profile_version_id' => $profileVersion->id,
         'key' => 'temp_f',
     ]);
 
-    $cache = app(TelemetrySchemaMetadataCache::class);
+    $resolver = app(DeviceProfileContractResolver::class);
 
-    $first = $cache->derivedParametersFor($schemaVersion);
+    $first = $resolver->resolve($profileVersion)->derivedParameters();
 
-    DerivedParameterDefinition::factory()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    ProfileDerivedParameterDefinition::factory()->create([
+        'device_profile_version_id' => $profileVersion->id,
         'key' => 'temp_k',
     ]);
 
     DB::flushQueryLog();
     DB::enableQueryLog();
 
-    $second = $cache->derivedParametersFor($schemaVersion);
+    $second = $resolver->resolve($profileVersion)->derivedParameters();
 
     expect($first->pluck('key')->all())->toBe(['temp_f'])
-        ->and($second->pluck('key')->all())->toBe(['temp_f', 'temp_k'])
+        ->and($second->pluck('key')->sort()->values()->all())->toBe(['temp_f', 'temp_k'])
         ->and(count(DB::getQueryLog()))->toBeGreaterThan(0);
 });

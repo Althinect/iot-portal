@@ -3,8 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
+use App\Domain\DeviceProfile\Models\DeviceProfile;
 use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Widgets\StenterUtilization\StenterUtilizationConfig;
@@ -23,7 +22,7 @@ it('seeds the witco, miracle dome, textrip, commercial bank, tj india, teejay, a
         ->pluck('slug')
         ->all();
 
-    $deviceTypeKeys = DeviceType::query()
+    $profileKeys = DeviceProfile::query()
         ->orderBy('key', 'asc')
         ->pluck('key')
         ->all();
@@ -55,9 +54,8 @@ it('seeds the witco, miracle dome, textrip, commercial bank, tj india, teejay, a
     $stenterFirstWidget = $stenterDashboard?->widgets
         ->firstWhere('title', 'TJ - Stenter01  (AGR) · Utilization');
 
-    $schemaVersions = fn (string $deviceTypeKey, string $schemaName): array => DeviceSchema::query()
-        ->where('name', $schemaName)
-        ->whereHas('deviceType', fn ($query) => $query->where('key', $deviceTypeKey))
+    $profileVersions = fn (string $profileKey): array => DeviceProfile::query()
+        ->where('key', $profileKey)
         ->firstOrFail()
         ->versions()
         ->orderBy('version')
@@ -74,7 +72,7 @@ it('seeds the witco, miracle dome, textrip, commercial bank, tj india, teejay, a
         'textrip',
         'tj-india',
         'witco',
-    ])->and($deviceTypeKeys)->toBe([
+    ])->and($profileKeys)->toBe([
         'energy_meter',
         'fabric_length_counter',
         'legacy_climate_sensor',
@@ -105,9 +103,9 @@ it('seeds the witco, miracle dome, textrip, commercial bank, tj india, teejay, a
         ->and(Device::query()->where('external_id', '169244041767793')->exists())->toBeTrue()
         ->and(Device::query()->where('external_id', '169244041767793-00')->exists())->toBeTrue()
         ->and(Device::query()->where('external_id', '869244041759659-21')->exists())->toBeTrue()
-        ->and($schemaVersions('energy_meter', 'Energy Meter Contract'))->toBe([1, 2, 3, 4, 5, 20])
-        ->and($schemaVersions('tank_level_sensor', 'Tank Level Sensor Contract'))->toBe([1, 2, 3, 4, 5, 6, 7])
-        ->and($schemaVersions('fabric_length_counter', 'Fabric Length Contract'))->toBe([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
+        ->and($profileVersions('energy_meter'))->toBe([1, 2, 3, 4, 5, 20])
+        ->and($profileVersions('tank_level_sensor'))->toBe([1, 2, 3, 4, 5, 6, 7])
+        ->and($profileVersions('fabric_length_counter'))->toBe([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
         ->and($stenterStandard?->isVirtual())->toBeTrue()
         ->and($stenterStandard?->parent_device_id)->toBeNull()
         ->and($stenterStandard?->virtualDeviceLinks)->toHaveCount(3)

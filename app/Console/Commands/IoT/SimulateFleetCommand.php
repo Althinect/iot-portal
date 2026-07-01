@@ -6,7 +6,7 @@ namespace App\Console\Commands\IoT;
 
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Publishing\FleetTelemetryLoadGenerator;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
+use App\Domain\DeviceProfile\Enums\ChannelDirection;
 use App\Domain\Shared\Models\Organization;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
@@ -19,7 +19,7 @@ class SimulateFleetCommand extends Command
                             {--devices=0 : Limit the number of devices to queue (0 = all)}
                             {--count=1 : Number of publish iterations per device}
                             {--interval=0 : Seconds between full-fleet iterations}
-                            {--topic-id= : Restrict simulation to a single publish topic ID}
+                            {--channel-id= : Restrict simulation to a single publish channel ID}
                             {--host= : NATS broker host}
                             {--port= : NATS broker port}';
 
@@ -39,8 +39,8 @@ class SimulateFleetCommand extends Command
         $publishCount = max(1, (int) $this->option('count'));
         $intervalSeconds = max(0, (int) $this->option('interval'));
         $simulateAllDevices = (bool) $this->option('all');
-        $topicOption = $this->option('topic-id');
-        $schemaVersionTopicId = is_numeric($topicOption) ? (int) $topicOption : null;
+        $channelOption = $this->option('channel-id');
+        $deviceChannelId = is_numeric($channelOption) ? (int) $channelOption : null;
         $hostOption = $this->option('host');
         $portOption = $this->option('port');
         $host = is_string($hostOption) && trim($hostOption) !== '' ? trim($hostOption) : null;
@@ -48,7 +48,7 @@ class SimulateFleetCommand extends Command
 
         $publishCapableDevicesQuery = $this->publishCapableDevicesQuery(
             organization: $organization,
-            schemaVersionTopicId: $schemaVersionTopicId,
+            deviceChannelId: $deviceChannelId,
         );
 
         $matchedTotalDevices = (clone $publishCapableDevicesQuery)->count();
@@ -88,7 +88,7 @@ class SimulateFleetCommand extends Command
         }
 
         $devices = $scopedDevicesQuery
-            ->with(['deviceType', 'schemaVersion.topics.parameters'])
+            ->with(['profileVersion.channels.parameters'])
             ->orderBy('devices.id')
             ->when($effectiveDeviceCount > 0, fn (Builder $query): Builder => $query->limit($effectiveDeviceCount))
             ->get();
@@ -102,7 +102,7 @@ class SimulateFleetCommand extends Command
             devices: $devices,
             count: $publishCount,
             intervalSeconds: $intervalSeconds,
-            schemaVersionTopicId: $schemaVersionTopicId,
+            deviceChannelId: $deviceChannelId,
             host: $host,
             port: $port,
         );
@@ -118,16 +118,16 @@ class SimulateFleetCommand extends Command
     /**
      * @return Builder<Device>
      */
-    private function publishCapableDevicesQuery(Organization $organization, ?int $schemaVersionTopicId): Builder
+    private function publishCapableDevicesQuery(Organization $organization, ?int $deviceChannelId): Builder
     {
         return Device::query()
             ->where('organization_id', $organization->id)
-            ->whereNotNull('device_schema_version_id')
-            ->whereHas('schemaVersion.topics', function (Builder $query) use ($schemaVersionTopicId): void {
-                $query->where('direction', TopicDirection::Publish->value);
+            ->whereNotNull('device_profile_version_id')
+            ->whereHas('profileVersion.channels', function (Builder $query) use ($deviceChannelId): void {
+                $query->where('direction', ChannelDirection::Publish->value);
 
-                if ($schemaVersionTopicId !== null) {
-                    $query->whereKey($schemaVersionTopicId);
+                if ($deviceChannelId !== null) {
+                    $query->whereKey($deviceChannelId);
                 }
             });
     }

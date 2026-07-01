@@ -7,7 +7,7 @@ namespace App\Filament\Actions\DeviceManagement;
 use App\Domain\DeviceControl\Enums\CommandStatus;
 use App\Domain\DeviceControl\Services\DeviceCommandDispatcher;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Textarea;
@@ -23,13 +23,13 @@ final class SendCommandActions
             ->label('Send Command')
             ->icon(Heroicon::OutlinedPaperAirplane)
             ->modalHeading('Send Command to Device')
-            ->modalDescription('Select a subscribe topic and send a JSON command payload to the device via NATS.')
-            ->tooltip(fn (Device $record): ?string => self::missingSubscribeTopicReason($record))
+            ->modalDescription('Select a command channel and send a JSON command payload to the device.')
+            ->tooltip(fn (Device $record): ?string => self::missingCommandChannelReason($record))
             ->schema([
-                Radio::make('schema_version_topic_id')
-                    ->label('Subscribe Topic')
-                    ->helperText('Choose which command topic to publish to.')
-                    ->options(fn (Device $record): array => self::subscribeTopicOptions($record))
+                Radio::make('device_channel_id')
+                    ->label('Command Channel')
+                    ->helperText('Choose which command channel to publish to.')
+                    ->options(fn (Device $record): array => self::commandChannelOptions($record))
                     ->required()
                     ->live()
                     ->columns(1),
@@ -42,17 +42,17 @@ final class SendCommandActions
                     ->default(fn (Device $record): string => self::defaultPayloadJson($record))
                     ->required(),
             ])
-            ->disabled(fn (Device $record): bool => self::missingSubscribeTopicReason($record) !== null)
+            ->disabled(fn (Device $record): bool => self::missingCommandChannelReason($record) !== null)
             ->action(function (array $data, Device $record): void {
-                $topicId = isset($data['schema_version_topic_id']) ? (int) $data['schema_version_topic_id'] : null;
+                $channelId = isset($data['device_channel_id']) ? (int) $data['device_channel_id'] : null;
                 $payloadJson = $data['command_payload_json'] ?? '{}';
 
-                $topic = SchemaVersionTopic::find($topicId);
+                $channel = DeviceChannel::find($channelId);
 
-                if (! $topic) {
+                if (! $channel) {
                     Notification::make()
-                        ->title('Topic not found')
-                        ->body('The selected subscribe topic could not be found.')
+                        ->title('Channel not found')
+                        ->body('The selected command channel could not be found.')
                         ->danger()
                         ->send();
 
@@ -77,7 +77,7 @@ final class SendCommandActions
 
                 $commandLog = $dispatcher->dispatch(
                     device: $record,
-                    topic: $topic,
+                    channel: $channel,
                     payload: $decodedPayload,
                     userId: is_int(auth()->id()) ? auth()->id() : null,
                 );
@@ -94,7 +94,7 @@ final class SendCommandActions
 
                 Notification::make()
                     ->title('Command sent')
-                    ->body("Command published to {$topic->suffix}. Check the dashboard for real-time status.")
+                    ->body("Command published to {$channel->address}. Check the dashboard for real-time status.")
                     ->success()
                     ->send();
             });
@@ -102,27 +102,32 @@ final class SendCommandActions
 
     private static function defaultPayloadJson(Device $record): string
     {
-        $topics = self::subscribeTopics($record);
+        $channels = self::commandChannels($record);
 
-        if ($topics->isEmpty()) {
+        if ($channels->isEmpty()) {
             return '{}';
         }
 
-        $firstTopic = $topics->first();
-        $template = $firstTopic->buildCommandPayloadTemplate();
+        $firstChannel = $channels->first();
+        $template = $firstChannel instanceof DeviceChannel
+            ? $firstChannel->parameters->where('is_active', true)->sortBy('sequence')->reduce(
+                fn (array $payload, $parameter): array => $parameter->placeValue($payload, $parameter->resolvedDefaultValue()),
+                []
+            )
+            : [];
 
         return json_encode($template, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}';
     }
 
     /**
-     * @return Collection<int, SchemaVersionTopic>
+     * @return Collection<int, DeviceChannel>
      */
-    private static function subscribeTopics(Device $record): Collection
+    private static function commandChannels(Device $record): Collection
     {
-        $record->loadMissing('schemaVersion.topics.parameters');
+        $record->loadMissing('profileVersion.channels.parameters');
 
-        return $record->schemaVersion?->topics
-            ?->filter(fn (SchemaVersionTopic $topic): bool => $topic->isSubscribe())
+        return $record->profileVersion?->channels
+            ?->filter(fn (DeviceChannel $channel): bool => $channel->isPurposeCommand())
             ->sortBy('sequence')
                 ?? collect();
     }
@@ -130,26 +135,26 @@ final class SendCommandActions
     /**
      * @return array<int|string, string>
      */
-    private static function subscribeTopicOptions(Device $record): array
+    private static function commandChannelOptions(Device $record): array
     {
-        $topics = self::subscribeTopics($record);
+        $channels = self::commandChannels($record);
         $options = [];
 
-        foreach ($topics as $topic) {
-            $options[(string) $topic->id] = "{$topic->label} ({$topic->suffix})";
+        foreach ($channels as $channel) {
+            $options[(string) $channel->id] = "{$channel->label} ({$channel->address})";
         }
 
         return $options;
     }
 
-    private static function missingSubscribeTopicReason(Device $record): ?string
+    private static function missingCommandChannelReason(Device $record): ?string
     {
-        if ($record->getAttribute('device_schema_version_id') === null) {
-            return 'Assign a schema version to this device to send commands.';
+        if ($record->getAttribute('device_profile_version_id') === null) {
+            return 'Assign a profile version to this device to send commands.';
         }
 
-        if (self::subscribeTopics($record)->isEmpty()) {
-            return 'No subscribe (command) topics are configured for this schema version.';
+        if (self::commandChannels($record)->isEmpty()) {
+            return 'No command channels are configured for this profile version.';
         }
 
         return null;

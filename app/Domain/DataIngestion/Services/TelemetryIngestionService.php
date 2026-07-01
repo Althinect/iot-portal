@@ -10,25 +10,23 @@ use App\Domain\DataIngestion\Enums\IngestionStatus;
 use App\Domain\DataIngestion\Models\IngestionMessage;
 use App\Domain\DataIngestion\Models\IngestionStageLog;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceManagement\Services\DevicePresenceService;
+use App\Domain\DeviceProfile\DTO\ChannelDefinition;
+use App\Domain\DeviceProfile\DTO\DeviceProfileContract;
+use App\Domain\DeviceProfile\Services\DeviceProfileIngestionService;
+use App\Domain\DeviceProfile\Services\ProfileChannelResolver;
 use App\Domain\Shared\Services\RuntimeSettingManager;
-use App\Domain\Telemetry\Enums\ValidationStatus;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use App\Events\TelemetryReceived;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 class TelemetryIngestionService
 {
     public function __construct(
-        private readonly DeviceTelemetryTopicResolver $topicResolver,
-        private readonly TelemetrySchemaMetadataCache $schemaMetadataCache,
-        private readonly TelemetryValidationService $validationService,
-        private readonly TelemetryMutationService $mutationService,
-        private readonly TelemetryDerivationService $derivationService,
-        private readonly TelemetryPersistenceService $persistenceService,
+        private readonly ProfileChannelResolver $channelResolver,
+        private readonly DeviceProfileIngestionService $profileIngestionService,
         private readonly RuntimeSettingManager $runtimeSettingManager,
+        private readonly DevicePresenceService $presenceService,
     ) {}
 
     public function ingest(IncomingTelemetryEnvelope $envelope): ?IngestionMessage
@@ -48,16 +46,15 @@ class TelemetryIngestionService
             return $ingestionMessage;
         }
 
-        $resolved = $this->topicResolver->resolve($envelope->mqttTopic);
+        $resolved = $this->channelResolver->resolve($envelope->mqttTopic);
 
         if ($resolved === null) {
-            $ingestionMessage->update([
+            $this->finalizeMessage($ingestionMessage, [
                 'status' => IngestionStatus::FailedTerminal,
                 'error_summary' => [
-                    'reason' => 'topic_not_registered',
-                    'mqtt_topic' => $envelope->mqttTopic,
+                    'reason' => 'channel_not_registered',
+                    'address' => $envelope->mqttTopic,
                 ],
-                'processed_at' => now(),
             ]);
 
             $this->logStage(
@@ -65,12 +62,11 @@ class TelemetryIngestionService
                 stage: IngestionStage::Ingress,
                 status: IngestionStatus::FailedTerminal,
                 inputSnapshot: [
-                    'mqtt_topic' => $envelope->mqttTopic,
+                    'source_subject' => $envelope->sourceSubject,
+                    'address' => $envelope->mqttTopic,
                     'payload' => $envelope->payload,
                 ],
-                errors: [
-                    'reason' => 'topic_not_registered',
-                ],
+                errors: ['reason' => 'channel_not_registered'],
             );
 
             return $ingestionMessage;
@@ -78,20 +74,23 @@ class TelemetryIngestionService
 
         /** @var Device $device */
         $device = $resolved['device'];
+        /** @var ChannelDefinition $channel */
+        $channel = $resolved['channel'];
+        /** @var DeviceProfileContract $contract */
+        $contract = $resolved['contract'];
 
-        /** @var SchemaVersionTopic $topic */
-        $topic = $resolved['topic'];
+        $messageContext = [
+            'organization_id' => $device->organization_id,
+            'device_id' => $device->id,
+            'device_profile_version_id' => $contract->versionId,
+            'device_channel_id' => $channel->id,
+        ];
 
         if (! $this->runtimeSettingManager->booleanValue('ingestion.pipeline.enabled', $device->organization_id)) {
             $this->finalizeMessage($ingestionMessage, [
-                'organization_id' => $device->organization_id,
-                'device_id' => $device->id,
-                'device_schema_version_id' => $device->device_schema_version_id,
-                'schema_version_topic_id' => $topic->id,
+                ...$messageContext,
                 'status' => IngestionStatus::FailedTerminal,
-                'error_summary' => [
-                    'reason' => 'organization_pipeline_disabled',
-                ],
+                'error_summary' => ['reason' => 'organization_pipeline_disabled'],
             ]);
 
             return $ingestionMessage;
@@ -99,39 +98,13 @@ class TelemetryIngestionService
 
         if ($this->runtimeSettingManager->stringValue('ingestion.pipeline.driver', $device->organization_id) !== 'laravel') {
             $this->finalizeMessage($ingestionMessage, [
-                'organization_id' => $device->organization_id,
-                'device_id' => $device->id,
-                'device_schema_version_id' => $device->device_schema_version_id,
-                'schema_version_topic_id' => $topic->id,
-                'status' => IngestionStatus::FailedTerminal,
-                'error_summary' => [
-                    'reason' => 'organization_driver_unsupported',
-                ],
-            ]);
-
-            return $ingestionMessage;
-        }
-
-        $schemaVersion = $device->schemaVersion ?? null;
-        $messageContext = [
-            'organization_id' => $device->organization_id,
-            'device_id' => $device->id,
-            'schema_version_topic_id' => $topic->id,
-        ];
-
-        if ($schemaVersion === null) {
-            $this->finalizeMessage($ingestionMessage, [
                 ...$messageContext,
                 'status' => IngestionStatus::FailedTerminal,
-                'error_summary' => [
-                    'reason' => 'schema_version_missing',
-                ],
+                'error_summary' => ['reason' => 'organization_driver_unsupported'],
             ]);
 
             return $ingestionMessage;
         }
-
-        $messageContext['device_schema_version_id'] = $schemaVersion->id;
 
         $this->logStage(
             ingestionMessage: $ingestionMessage,
@@ -139,157 +112,58 @@ class TelemetryIngestionService
             status: IngestionStatus::Completed,
             inputSnapshot: [
                 'source_subject' => $envelope->sourceSubject,
-                'mqtt_topic' => $envelope->mqttTopic,
+                'address' => $envelope->mqttTopic,
             ],
             outputSnapshot: [
                 'device_id' => $device->id,
-                'schema_version_topic_id' => $topic->id,
+                'device_channel_id' => $channel->id,
+                'device_profile_version_id' => $contract->versionId,
             ],
         );
 
-        $parameters = $this->resolveActiveParameters($topic);
-        $derivedParameters = $this->schemaMetadataCache->derivedParametersFor($schemaVersion);
-
-        $validationStartedAt = microtime(true);
-
-        $validationResult = $this->validationService->validate($envelope->payload, $parameters);
-
-        $validationStatus = $validationResult['passes'] === true
-            ? IngestionStatus::Completed
-            : IngestionStatus::FailedValidation;
-
-        $this->logStage(
-            ingestionMessage: $ingestionMessage,
-            stage: IngestionStage::Validate,
-            status: $validationStatus,
-            startedAt: $validationStartedAt,
-            inputSnapshot: [
-                'payload' => $envelope->payload,
-            ],
-            outputSnapshot: [
-                'extracted_values' => $validationResult['extracted_values'],
-                'status' => $validationResult['status']->value,
-            ],
-            errors: $validationResult['validation_errors'],
-        );
-
-        if ($validationResult['status'] === ValidationStatus::Invalid) {
-            $telemetryLog = $this->persistenceService->persist(
-                device: $device,
-                schemaVersion: $schemaVersion,
-                topic: $topic,
-                rawPayload: $envelope->payload,
-                finalValues: $validationResult['extracted_values'],
-                validationStatus: $validationResult['status'],
-                ingestionMessage: $ingestionMessage,
-                processingState: 'invalid',
-                validationErrors: $validationResult['validation_errors'],
-                receivedAt: $envelope->resolveReceivedAt(),
-            );
-
-            $this->finalizeMessage($ingestionMessage, [
-                ...$messageContext,
-                'status' => IngestionStatus::FailedValidation,
-                'error_summary' => [
-                    'validation_errors' => $validationResult['validation_errors'],
-                ],
-            ]);
-
-            $this->dispatchTelemetrySideEffects($ingestionMessage, $telemetryLog);
-
-            return $ingestionMessage;
-        }
-
-        if (! $device->is_active) {
-            $telemetryLog = $this->persistenceService->persist(
-                device: $device,
-                schemaVersion: $schemaVersion,
-                topic: $topic,
-                rawPayload: $envelope->payload,
-                finalValues: $validationResult['extracted_values'],
-                validationStatus: $validationResult['status'],
-                ingestionMessage: $ingestionMessage,
-                processingState: 'inactive_skipped',
-                validationErrors: $validationResult['validation_errors'],
-                receivedAt: $envelope->resolveReceivedAt(),
-            );
-
-            $this->finalizeMessage($ingestionMessage, [
-                ...$messageContext,
-                'status' => IngestionStatus::InactiveSkipped,
-            ]);
-
-            $this->dispatchTelemetrySideEffects($ingestionMessage, $telemetryLog);
-
-            return $ingestionMessage;
-        }
-
-        $mutationStartedAt = microtime(true);
-        $mutationResult = $this->mutationService->mutate($validationResult['extracted_values'], $parameters);
-
-        $this->logStage(
-            ingestionMessage: $ingestionMessage,
-            stage: IngestionStage::Mutate,
-            status: IngestionStatus::Completed,
-            startedAt: $mutationStartedAt,
-            inputSnapshot: [
-                'extracted_values' => $validationResult['extracted_values'],
-            ],
-            outputSnapshot: [
-                'mutated_values' => $mutationResult['mutated_values'],
-            ],
-            changeSet: $mutationResult['change_set'],
-        );
-
-        $derivationStartedAt = microtime(true);
-        $derivationResult = $this->derivationService->derive($mutationResult['mutated_values'], $derivedParameters);
-
-        $this->logStage(
-            ingestionMessage: $ingestionMessage,
-            stage: IngestionStage::Derive,
-            status: IngestionStatus::Completed,
-            startedAt: $derivationStartedAt,
-            inputSnapshot: [
-                'mutated_values' => $mutationResult['mutated_values'],
-            ],
-            outputSnapshot: [
-                'derived_values' => $derivationResult['derived_values'],
-                'final_values' => $derivationResult['final_values'],
-            ],
-        );
-
-        $persistStartedAt = microtime(true);
-
-        $telemetryLog = $this->persistenceService->persist(
+        $pipelineStartedAt = microtime(true);
+        $outcome = $this->profileIngestionService->ingest(
+            payload: $envelope->payload,
             device: $device,
-            schemaVersion: $schemaVersion,
-            topic: $topic,
-            rawPayload: $envelope->payload,
-            finalValues: $derivationResult['final_values'],
-            validationStatus: $validationResult['status'],
-            ingestionMessage: $ingestionMessage,
-            processingState: 'processed',
-            mutatedValues: $mutationResult['mutated_values'],
-            validationErrors: $validationResult['validation_errors'],
+            channel: $channel,
+            contract: $contract,
             receivedAt: $envelope->resolveReceivedAt(),
+            ingestionMessage: $ingestionMessage,
         );
+
+        $status = match ($outcome->processingState) {
+            'invalid' => IngestionStatus::FailedValidation,
+            'inactive_skipped' => IngestionStatus::InactiveSkipped,
+            default => IngestionStatus::Completed,
+        };
 
         $this->logStage(
             ingestionMessage: $ingestionMessage,
             stage: IngestionStage::Persist,
-            status: IngestionStatus::Completed,
-            startedAt: $persistStartedAt,
+            status: $status,
+            startedAt: $pipelineStartedAt,
             outputSnapshot: [
-                'device_telemetry_log_id' => $telemetryLog->id,
+                'device_telemetry_log_id' => $outcome->telemetryLog?->id,
+                'processing_state' => $outcome->processingState,
+                'validation_status' => $outcome->validationStatus->value,
+                'transformed_values' => $outcome->finalValues,
             ],
+            errors: $outcome->validationErrors,
         );
 
         $this->finalizeMessage($ingestionMessage, [
             ...$messageContext,
-            'status' => IngestionStatus::Completed,
+            'status' => $status,
+            'error_summary' => $outcome->validationErrors !== [] ? ['validation_errors' => $outcome->validationErrors] : null,
         ]);
 
-        $this->dispatchTelemetrySideEffects($ingestionMessage, $telemetryLog);
+        if ($outcome->telemetryLog instanceof DeviceTelemetryLog) {
+            if ($outcome->processingState !== 'inactive_skipped') {
+                $this->presenceService->markOnline($device, $envelope->resolveReceivedAt());
+            }
+
+            $this->dispatchTelemetrySideEffects($ingestionMessage, $outcome->telemetryLog);
+        }
 
         return $ingestionMessage;
     }
@@ -324,19 +198,9 @@ class TelemetryIngestionService
                 status: IngestionStatus::FailedTerminal,
                 startedAt: $dispatchStartedAt,
                 outputSnapshot: $dispatchOutput,
-                errors: [
-                    'side_effect_dispatch' => $exception->getMessage(),
-                ],
+                errors: ['side_effect_dispatch' => $exception->getMessage()],
             );
         }
-    }
-
-    /**
-     * @return Collection<int, ParameterDefinition>
-     */
-    private function resolveActiveParameters(SchemaVersionTopic $topic): Collection
-    {
-        return $this->schemaMetadataCache->activeParametersFor($topic);
     }
 
     /**

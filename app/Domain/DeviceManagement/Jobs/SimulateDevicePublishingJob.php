@@ -24,7 +24,7 @@ class SimulateDevicePublishingJob implements ShouldQueue
         public int $deviceId,
         public int $count = 1,
         public int $intervalSeconds = 0,
-        public ?int $schemaVersionTopicId = null,
+        public ?int $deviceChannelId = null,
     ) {
         $this->onConnection('redis-simulations');
         $this->onQueue('simulations');
@@ -34,7 +34,7 @@ class SimulateDevicePublishingJob implements ShouldQueue
         int $deviceId,
         int $count = 1,
         int $intervalSeconds = 0,
-        ?int $schemaVersionTopicId = null,
+        ?int $deviceChannelId = null,
     ): int {
         $iterations = max(1, $count);
         $dispatchCount = 0;
@@ -45,7 +45,7 @@ class SimulateDevicePublishingJob implements ShouldQueue
                 deviceId: $deviceId,
                 count: 1,
                 intervalSeconds: 0,
-                schemaVersionTopicId: $schemaVersionTopicId,
+                deviceChannelId: $deviceChannelId,
             );
 
             if ($intervalSeconds > 0 && $iteration > 0) {
@@ -70,7 +70,7 @@ class SimulateDevicePublishingJob implements ShouldQueue
             device: $device,
             count: $this->count,
             intervalSeconds: $this->intervalSeconds,
-            schemaVersionTopicId: $this->schemaVersionTopicId,
+            deviceChannelId: $this->deviceChannelId,
         );
     }
 }

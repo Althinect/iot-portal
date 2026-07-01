@@ -8,9 +8,10 @@ use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\ValueObjects\VirtualStandards\VirtualStandardProfile;
 use App\Domain\DeviceManagement\ValueObjects\VirtualStandards\VirtualStandardShiftSchedule;
 use App\Domain\DeviceManagement\ValueObjects\VirtualStandards\VirtualStandardSource;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
-use App\Filament\Admin\Resources\DeviceManagement\DeviceTypes\DeviceTypeResource;
-use App\Filament\Admin\Resources\DeviceSchema\DeviceSchemaVersions\DeviceSchemaVersionResource;
+use App\Domain\DeviceProfile\DTO\ChannelDefinition;
+use App\Domain\DeviceProfile\DTO\DeviceProfileContract;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Services\DeviceProfileContractResolver;
 use App\Filament\Admin\Resources\Shared\Organizations\OrganizationResource;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\KeyValueEntry;
@@ -55,18 +56,12 @@ class DeviceInfolist
                                 ? OrganizationResource::getUrl('view', ['record' => $record->organization_id])
                                 : null),
 
-                        TextEntry::make('deviceType.name')
-                            ->label('Device Type')
-                            ->url(fn (Device $record): ?string => $record->device_type_id
-                                ? DeviceTypeResource::getUrl('view', ['record' => $record->device_type_id])
-                                : null),
+                        TextEntry::make('profileVersion.profile.name')
+                            ->label('Profile'),
 
-                        TextEntry::make('schemaVersion.version')
-                            ->label('Schema Version')
-                            ->formatStateUsing(fn ($state) => "Version {$state}")
-                            ->url(fn (Device $record): ?string => $record->device_schema_version_id
-                                ? DeviceSchemaVersionResource::getUrl('view', ['record' => $record->device_schema_version_id])
-                                : null),
+                        TextEntry::make('profileVersion.version')
+                            ->label('Profile Version')
+                            ->formatStateUsing(fn ($state) => "Version {$state}"),
                     ])
                     ->columns(2),
 
@@ -214,35 +209,34 @@ class DeviceInfolist
                     ]),
 
                 Section::make('Command Payload Samples')
-                    ->description('These are example JSON payloads the device expects on subscribe topics, using default values from the schema.')
+                    ->description('Example JSON payloads the device expects on command channels, using profile defaults.')
                     ->schema([
                         KeyValueEntry::make('command_payload_samples')
                             ->valueLabel('JSON')
                             ->columnSpanFull()
                             ->state(function (Device $record): array {
-                                $record->loadMissing('schemaVersion.topics.parameters');
+                                $contract = self::contractFor($record);
 
-                                $topics = $record->schemaVersion?->topics
-                                    ?->filter(fn (SchemaVersionTopic $topic): bool => $topic->isSubscribe())
-                                    ->sortBy('sequence');
-
-                                if (! $topics || $topics->isEmpty()) {
+                                if ($contract === null) {
                                     return [];
                                 }
 
-                                return $topics->mapWithKeys(function (SchemaVersionTopic $topic): array {
-                                    $template = $topic->buildCommandPayloadTemplate();
+                                return $contract->commandChannels()
+                                    ->sortBy('sequence')
+                                    ->mapWithKeys(function (ChannelDefinition $channel): array {
+                                        $template = $channel->buildCommandPayloadTemplate();
 
-                                    return [
-                                        $topic->key => json_encode($template, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}',
-                                    ];
-                                })->all();
+                                        return [
+                                            $channel->key => json_encode($template, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}',
+                                        ];
+                                    })
+                                    ->all();
                             })
-                            ->visible(fn (Device $record): bool => $record->getAttribute('device_schema_version_id') !== null),
+                            ->visible(fn (Device $record): bool => $record->getAttribute('device_profile_version_id') !== null),
                     ]),
 
-                Section::make('MQTT Publish Payload Samples')
-                    ->description('Example topics + JSON payload structure the device should publish (Device → Platform). Copy and paste into your MQTT client.')
+                Section::make('Publish Payload Samples')
+                    ->description('Example transport addresses and JSON payload structure the device should publish.')
                     ->schema([
                         TextEntry::make('mqtt_publish_payload_samples')
                             ->label('Publish Samples')
@@ -250,30 +244,30 @@ class DeviceInfolist
                             ->placeholder('—')
                             ->extraAttributes(['class' => 'font-mono whitespace-pre-wrap'])
                             ->state(function (Device $record): string {
-                                $record->loadMissing('schemaVersion.topics.parameters', 'deviceType');
+                                $contract = self::contractFor($record);
 
-                                $topics = $record->schemaVersion?->topics
-                                    ?->filter(fn (SchemaVersionTopic $topic): bool => $topic->isPublish())
-                                    ->sortBy('sequence');
-
-                                if (! $topics || $topics->isEmpty()) {
+                                if ($contract === null) {
                                     return '';
                                 }
 
-                                $samples = $topics->map(function (SchemaVersionTopic $topic) use ($record): string {
-                                    $resolvedTopic = $topic->resolvedTopic($record);
-                                    $template = $topic->buildPublishPayloadTemplate();
-                                    $json = json_encode($template, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}';
+                                $identifier = self::deviceIdentifier($record);
+                                $samples = $contract->publishChannels()
+                                    ->sortBy('sequence')
+                                    ->map(function (ChannelDefinition $channel) use ($contract, $identifier): string {
+                                        $resolvedAddress = $channel->resolvedAddress($identifier, $contract->protocolConfig);
+                                        $template = $channel->buildPublishPayloadTemplate();
+                                        $json = json_encode($template, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}';
 
-                                    $qos = $topic->qos ?? 0;
-                                    $retain = $topic->retain ? 'true' : 'false';
+                                        $qos = $channel->qos;
+                                        $retain = $channel->retain ? 'true' : 'false';
 
-                                    return "Topic: {$resolvedTopic}\nQoS: {$qos}\nRetain: {$retain}\nPayload:\n{$json}";
-                                })->all();
+                                        return "Address: {$resolvedAddress}\nQoS: {$qos}\nRetain: {$retain}\nPayload:\n{$json}";
+                                    })
+                                    ->all();
 
                                 return implode("\n\n", $samples);
                             })
-                            ->visible(fn (Device $record): bool => $record->getAttribute('device_schema_version_id') !== null),
+                            ->visible(fn (Device $record): bool => $record->getAttribute('device_profile_version_id') !== null),
                     ]),
             ]);
     }
@@ -298,6 +292,24 @@ class DeviceInfolist
             ->all();
     }
 
+    private static function contractFor(Device $record): ?DeviceProfileContract
+    {
+        $record->loadMissing('profileVersion');
+
+        if (! $record->profileVersion instanceof DeviceProfileVersion) {
+            return null;
+        }
+
+        return app(DeviceProfileContractResolver::class)->resolve($record->profileVersion);
+    }
+
+    private static function deviceIdentifier(Device $record): string
+    {
+        $externalId = $record->getAttribute('external_id');
+
+        return is_string($externalId) && trim($externalId) !== '' ? $externalId : (string) $record->uuid;
+    }
+
     private static function virtualStandardPurposeSummary(Device $record): string
     {
         $profile = $record->virtualStandardProfile();
@@ -308,7 +320,7 @@ class DeviceInfolist
 
         return collect($profile->sources)
             ->map(function (VirtualStandardSource $source): string {
-                $allowedTypes = collect($source->allowedDeviceTypeKeys)
+                $allowedTypes = collect($source->allowedDeviceProfileKeys)
                     ->map(fn (string $key): string => Str::headline($key))
                     ->implode(', ');
 

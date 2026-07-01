@@ -50,7 +50,7 @@ class QueueTelemetryAutomationRuns implements ShouldQueue
         if ($telemetryLogId === null) {
             $this->log()->warning('Automation telemetry event skipped because telemetry id could not be resolved.', [
                 'device_id' => $telemetryLog->device_id,
-                'schema_version_topic_id' => $telemetryLog->schema_version_topic_id,
+                'device_channel_id' => $telemetryLog->device_channel_id,
             ]);
 
             return;

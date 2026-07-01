@@ -7,8 +7,8 @@ namespace App\Domain\IoTDashboard\Widgets\ThresholdStatusCard;
 use App\Domain\Alerts\Models\Alert;
 use App\Domain\Alerts\Models\ThresholdPolicy;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Services\JsonLogicEvaluator;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
+use App\Domain\DeviceProfile\Services\JsonLogicEvaluator;
 use App\Domain\IoTDashboard\Application\DashboardHistoryRange;
 use App\Domain\IoTDashboard\Contracts\WidgetConfig;
 use App\Domain\IoTDashboard\Contracts\WidgetSnapshotResolver;
@@ -50,7 +50,7 @@ class ThresholdStatusCardSnapshotResolver implements WidgetSnapshotResolver
         }
 
         $policy = ThresholdPolicy::query()
-            ->with(['device', 'parameterDefinition.topic'])
+            ->with(['device', 'deviceChannel'])
             ->where('organization_id', (int) $organizationId)
             ->find($config->policyId());
 
@@ -62,9 +62,9 @@ class ThresholdStatusCardSnapshotResolver implements WidgetSnapshotResolver
             ];
         }
 
-        $parameter = $policy->parameterDefinition;
+        $parameter = $policy->profileParameterDefinition();
         $device = $policy->device;
-        $topicId = $parameter instanceof ParameterDefinition ? (int) $parameter->schema_version_topic_id : null;
+        $topicId = $parameter instanceof ProfileParameterDefinition ? (int) $policy->device_channel_id : null;
 
         $latestLog = $topicId === null
             ? null

@@ -28,7 +28,7 @@ class FleetTelemetryLoadGenerator
         Collection $devices,
         int $count = 1,
         int $intervalSeconds = 0,
-        ?int $schemaVersionTopicId = null,
+        ?int $deviceChannelId = null,
         ?string $host = null,
         ?int $port = null,
     ): array {
@@ -64,7 +64,7 @@ class FleetTelemetryLoadGenerator
                     device: $device,
                     publisher: $publisher,
                     iteration: $iteration,
-                    schemaVersionTopicId: $schemaVersionTopicId,
+                    deviceChannelId: $deviceChannelId,
                     counterState: $deviceCounterState,
                 );
 

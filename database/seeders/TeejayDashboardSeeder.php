@@ -6,8 +6,8 @@ namespace Database\Seeders;
 
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Models\VirtualDeviceLink;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
@@ -44,10 +44,10 @@ class TeejayDashboardSeeder extends Seeder
         );
 
         $stenterDevices = Device::query()
-            ->with(['schemaVersion.topics', 'virtualDeviceLinks.sourceDevice.schemaVersion.topics.parameters'])
+            ->with(['profileVersion.channels', 'virtualDeviceLinks.sourceDevice.profileVersion.channels.parameters'])
             ->where('organization_id', $organization->id)
             ->where('is_virtual', true)
-            ->whereHas('deviceType', fn ($query) => $query->where('key', 'stenter_line'))
+            ->whereHas('profileVersion.profile', fn ($query) => $query->where('key', 'stenter_line'))
             ->orderBy('name')
             ->get();
 
@@ -69,7 +69,7 @@ class TeejayDashboardSeeder extends Seeder
 
             $topic = $this->resolveTelemetryTopic($device);
 
-            if (! $topic instanceof SchemaVersionTopic) {
+            if (! $topic instanceof DeviceChannel) {
                 continue;
             }
 
@@ -92,7 +92,8 @@ class TeejayDashboardSeeder extends Seeder
                 ],
                 [
                     'device_id' => $device->id,
-                    'schema_version_topic_id' => $topic->id,
+                    'device_channel_id' => $topic->id,
+                    'device_channel_id' => $topic->id,
                     'type' => WidgetType::StenterUtilization->value,
                     'config' => [
                         'sources' => $sources,
@@ -136,7 +137,7 @@ class TeejayDashboardSeeder extends Seeder
     }
 
     /**
-     * @return array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null
+     * @return array{device_id: int, device_channel_id: int, parameter_key: string}|null
      */
     private function virtualLinkSource(Device $device, string $purpose, string $parameterKey): ?array
     {
@@ -148,22 +149,24 @@ class TeejayDashboardSeeder extends Seeder
             return null;
         }
 
-        $topic = $sourceDevice->schemaVersion?->topics
-            ?->first(function (SchemaVersionTopic $candidate) use ($parameterKey): bool {
+        $sourceDevice->loadMissing('profileVersion.channels.parameters');
+
+        $topic = $sourceDevice->profileVersion?->channels
+            ?->first(function (DeviceChannel $candidate) use ($parameterKey): bool {
                 if (! $candidate->isPublish()) {
                     return false;
                 }
 
-                return $candidate->parameters->contains(fn (ParameterDefinition $parameter): bool => $parameter->key === $parameterKey && (bool) $parameter->is_active);
+                return $candidate->parameters->contains(fn (ProfileParameterDefinition $parameter): bool => $parameter->key === $parameterKey && (bool) $parameter->is_active);
             });
 
-        if (! $topic instanceof SchemaVersionTopic) {
+        if (! $topic instanceof DeviceChannel) {
             return null;
         }
 
         return [
             'device_id' => (int) $sourceDevice->id,
-            'schema_version_topic_id' => (int) $topic->id,
+            'device_channel_id' => $topic->id,
             'parameter_key' => $parameterKey,
         ];
     }
@@ -185,12 +188,12 @@ class TeejayDashboardSeeder extends Seeder
         ];
     }
 
-    private function resolveTelemetryTopic(Device $device): ?SchemaVersionTopic
+    private function resolveTelemetryTopic(Device $device): ?DeviceChannel
     {
-        $device->loadMissing('schemaVersion.topics');
+        $device->loadMissing('profileVersion.channels');
 
-        return $device->schemaVersion?->topics
-            ?->first(fn (SchemaVersionTopic $topic): bool => $topic->key === 'telemetry')
-            ?? $device->schemaVersion?->topics?->first(fn (SchemaVersionTopic $topic): bool => $topic->isPublish());
+        return $device->profileVersion?->channels
+            ?->first(fn (DeviceChannel $topic): bool => $topic->key === 'telemetry')
+            ?? $device->profileVersion?->channels?->first(fn (DeviceChannel $topic): bool => $topic->isPublish());
     }
 }

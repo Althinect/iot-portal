@@ -16,7 +16,7 @@ return new class extends Migration
         Schema::create('iot_dashboard_widgets', function (Blueprint $table) {
             $table->id();
             $table->foreignId('iot_dashboard_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('schema_version_topic_id')->constrained('schema_version_topics')->cascadeOnDelete();
+            $table->foreignId('device_channel_id')->nullable()->constrained('device_channels')->nullOnDelete();
             $table->string('type', 50)->default('line_chart');
             $table->string('title', 255);
             $table->jsonb('series_config');
@@ -30,7 +30,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['iot_dashboard_id', 'sequence'], 'iot_dashboard_widgets_dashboard_sequence_index');
-            $table->index('schema_version_topic_id', 'iot_dashboard_widgets_topic_index');
+            $table->index('device_channel_id', 'iot_dashboard_widgets_channel_index');
             $table->index(['iot_dashboard_id', 'type'], 'iot_dashboard_widgets_dashboard_type_index');
         });
     }

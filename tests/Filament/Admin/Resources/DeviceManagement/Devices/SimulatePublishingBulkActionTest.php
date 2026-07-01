@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 use App\Domain\DeviceManagement\Jobs\SimulateDevicePublishingJob;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfile;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Domain\Shared\Models\User;
 use App\Filament\Admin\Resources\DeviceManagement\Devices\Pages\ListDevices;
 use Filament\Actions\Testing\TestAction;
@@ -24,15 +23,15 @@ beforeEach(function (): void {
 it('queues simulation jobs for selected devices', function (): void {
     Queue::fake();
 
-    $schemaVersion = DeviceSchemaVersion::factory()->create();
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
 
-    SchemaVersionTopic::factory()->publish()->create([
-        'device_schema_version_id' => $schemaVersion->id,
-        'suffix' => 'telemetry',
+    DeviceChannel::factory()->telemetry()->create([
+        'device_profile_version_id' => $profileVersion->id,
+        'address' => 'telemetry',
     ]);
 
     $devices = Device::factory()->count(2)->create([
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
     ]);
 
     livewire(ListDevices::class)
@@ -47,15 +46,11 @@ it('queues simulation jobs for selected devices', function (): void {
 });
 
 it('can replicate a device from the list table', function (): void {
-    $deviceType = DeviceType::factory()->mqtt()->create();
-    $schema = DeviceSchema::factory()->forDeviceType($deviceType)->create();
-    $schemaVersion = DeviceSchemaVersion::factory()->active()->create([
-        'device_schema_id' => $schema->id,
-    ]);
+    $profile = DeviceProfile::factory()->global()->create();
+    $profileVersion = DeviceProfileVersion::factory()->forProfile($profile)->active()->mqtt()->create();
 
     $device = Device::factory()->create([
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
         'name' => 'Pump Controller',
         'external_id' => 'pump-01',
         'is_active' => true,
@@ -67,8 +62,7 @@ it('can replicate a device from the list table', function (): void {
             'name' => 'Pump Controller Copy',
             'external_id' => null,
             'organization_id' => $device->organization_id,
-            'device_type_id' => $device->device_type_id,
-            'device_schema_version_id' => $device->device_schema_version_id,
+            'device_profile_version_id' => $device->device_profile_version_id,
             'is_active' => false,
         ])
         ->assertHasNoFormErrors();
@@ -86,15 +80,11 @@ it('can replicate a device from the list table', function (): void {
 });
 
 it('allows overriding fields when replicating a device from the modal form', function (): void {
-    $deviceType = DeviceType::factory()->mqtt()->create();
-    $schema = DeviceSchema::factory()->forDeviceType($deviceType)->create();
-    $schemaVersion = DeviceSchemaVersion::factory()->active()->create([
-        'device_schema_id' => $schema->id,
-    ]);
+    $profile = DeviceProfile::factory()->global()->create();
+    $profileVersion = DeviceProfileVersion::factory()->forProfile($profile)->active()->mqtt()->create();
 
     $device = Device::factory()->create([
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
         'name' => 'Fan Controller',
         'external_id' => 'fan-01',
         'is_active' => true,
@@ -105,8 +95,7 @@ it('allows overriding fields when replicating a device from the modal form', fun
             'name' => 'Fan Controller Clone A',
             'external_id' => 'fan-01-clone-a',
             'organization_id' => $device->organization_id,
-            'device_type_id' => $device->device_type_id,
-            'device_schema_version_id' => $device->device_schema_version_id,
+            'device_profile_version_id' => $device->device_profile_version_id,
             'is_active' => true,
         ])
         ->assertHasNoFormErrors();
@@ -120,5 +109,5 @@ it('allows overriding fields when replicating a device from the modal form', fun
         ->and($replica?->name)->toBe('Fan Controller Clone A')
         ->and($replica?->external_id)->toBe('fan-01-clone-a')
         ->and($replica?->is_active)->toBeTrue()
-        ->and($replica?->device_schema_version_id)->toBe($device->device_schema_version_id);
+        ->and($replica?->device_profile_version_id)->toBe($device->device_profile_version_id);
 });

@@ -3,19 +3,19 @@
 declare(strict_types=1);
 
 use App\Domain\DeviceControl\Services\ControlSchemaBuilder;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 uses(TestCase::class, RefreshDatabase::class);
 
 it('builds dynamic control schema from parameter definitions', function (): void {
-    $topic = SchemaVersionTopic::factory()->subscribe()->create();
+    $channel = DeviceChannel::factory()->command()->create();
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'brightness_level',
         'label' => 'Brightness',
         'type' => ParameterDataType::Integer,
@@ -24,10 +24,11 @@ it('builds dynamic control schema from parameter definitions', function (): void
         'control_ui' => ['widget' => 'slider', 'step' => 1],
         'sequence' => 1,
         'is_active' => true,
+        'mutation_expression' => null,
     ]);
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'light_state',
         'label' => 'Light State',
         'type' => ParameterDataType::Boolean,
@@ -35,10 +36,11 @@ it('builds dynamic control schema from parameter definitions', function (): void
         'control_ui' => ['widget' => 'toggle'],
         'sequence' => 2,
         'is_active' => true,
+        'mutation_expression' => null,
     ]);
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'mode',
         'label' => 'Mode',
         'type' => ParameterDataType::String,
@@ -46,10 +48,11 @@ it('builds dynamic control schema from parameter definitions', function (): void
         'validation_rules' => ['enum' => ['auto', 'manual']],
         'sequence' => 3,
         'is_active' => true,
+        'mutation_expression' => null,
     ]);
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'apply',
         'label' => 'Apply',
         'type' => ParameterDataType::Boolean,
@@ -57,10 +60,11 @@ it('builds dynamic control schema from parameter definitions', function (): void
         'control_ui' => ['widget' => 'button', 'button_value' => true],
         'sequence' => 4,
         'is_active' => true,
+        'mutation_expression' => null,
     ]);
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'color_hex',
         'label' => 'Color',
         'type' => ParameterDataType::String,
@@ -69,13 +73,14 @@ it('builds dynamic control schema from parameter definitions', function (): void
         'control_ui' => ['widget' => 'color'],
         'sequence' => 5,
         'is_active' => true,
+        'mutation_expression' => null,
     ]);
 
     /** @var ControlSchemaBuilder $builder */
     $builder = app(ControlSchemaBuilder::class);
 
-    $schema = $builder->buildForTopic($topic);
-    $defaults = $builder->defaultControlValues($topic);
+    $schema = $builder->buildForChannel($channel);
+    $defaults = $builder->defaultControlValues($channel);
 
     expect($schema)->toHaveCount(5)
         ->and($schema[0]['widget'])->toBe('slider')

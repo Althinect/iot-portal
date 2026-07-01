@@ -46,7 +46,7 @@ class AlertResource extends Resource
                 'organization',
                 'thresholdPolicy',
                 'device',
-                'parameterDefinition',
+                'deviceChannel',
             ]));
     }
 

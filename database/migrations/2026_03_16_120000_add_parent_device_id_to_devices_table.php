@@ -16,7 +16,7 @@ return new class extends Migration
         Schema::table('devices', function (Blueprint $table) {
             $table->foreignId('parent_device_id')
                 ->nullable()
-                ->after('device_schema_version_id')
+                ->after('device_profile_version_id')
                 ->constrained('devices')
                 ->nullOnDelete();
         });

@@ -103,19 +103,19 @@ it('creates calibrated signal bindings for climate, iMoni Lite, and energy devic
     /** @var DeviceSignalBinding $temperatureBinding */
     $temperatureBinding = DeviceSignalBinding::query()
         ->where('device_id', $temperatureSensor->id)
-        ->whereHas('parameterDefinition', fn ($query) => $query->where('key', 'temperature'))
+        ->where('parameter_key', 'temperature')
         ->firstOrFail();
 
     /** @var DeviceSignalBinding $vaultDoorBinding */
     $vaultDoorBinding = DeviceSignalBinding::query()
         ->where('device_id', $vaultDoor->id)
-        ->whereHas('parameterDefinition', fn ($query) => $query->where('key', 'ioid1'))
+        ->where('parameter_key', 'ioid1')
         ->firstOrFail();
 
     /** @var DeviceSignalBinding $energyBinding */
     $energyBinding = DeviceSignalBinding::query()
         ->where('device_id', $lightDb->id)
-        ->whereHas('parameterDefinition', fn ($query) => $query->where('key', 'PhaseAVoltage'))
+        ->where('parameter_key', 'PhaseAVoltage')
         ->firstOrFail();
 
     expect($temperatureBinding->source_topic)->toBe('migration/source/imoni/169244041767793/81/telemetry')
@@ -123,7 +123,7 @@ it('creates calibrated signal bindings for climate, iMoni Lite, and energy devic
         ->and($temperatureBinding->metadata['legacy_source_path'] ?? null)->toBe('peripheralDataArr.THsensor1.2.3')
         ->and($vaultDoorBinding->source_topic)->toBe('migration/source/imoni/169244041760699/00/telemetry')
         ->and($vaultDoorBinding->source_json_path)->toBe('$.io_2_value')
-        ->and($lightDb->schemaVersion?->version)->toBe(20)
+        ->and($lightDb->profileVersion?->version)->toBe(20)
         ->and($energyBinding->source_topic)->toBe('migration/source/imoni/869244041759659/21/telemetry')
         ->and($energyBinding->source_json_path)->toBe('$.io_1_value')
         ->and($energyBinding->metadata['mutation_expression'] ?? null)->toBe([

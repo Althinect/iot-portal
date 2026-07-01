@@ -3,10 +3,9 @@
 declare(strict_types=1);
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceManagement\Models\TemporaryDevice;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
+use App\Domain\DeviceProfile\Models\DeviceProfile;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Shared\Models\User;
 use App\Filament\Admin\Resources\DeviceManagement\Devices\Pages\ListDevices;
@@ -26,17 +25,12 @@ beforeEach(function (): void {
 function createTemporaryDevicesListFixture(bool $temporary): Device
 {
     $organization = Organization::factory()->create();
-    $deviceType = DeviceType::factory()->forOrganization($organization->id)->mqtt()->create();
-    $schema = DeviceSchema::factory()->forDeviceType($deviceType)->create();
-    $schemaVersion = DeviceSchemaVersion::factory()->create([
-        'device_schema_id' => $schema->id,
-        'status' => 'active',
-    ]);
+    $profile = DeviceProfile::factory()->create(['organization_id' => $organization->id]);
+    $profileVersion = DeviceProfileVersion::factory()->forProfile($profile)->active()->mqtt()->create();
 
     $device = Device::factory()->create([
         'organization_id' => $organization->id,
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
     ]);
 
     if ($temporary) {

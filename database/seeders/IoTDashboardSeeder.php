@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ChannelDirection;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
@@ -29,15 +29,15 @@ class IoTDashboardSeeder extends Seeder
             return;
         }
 
-        $telemetryTopic = SchemaVersionTopic::query()
-            ->where('direction', TopicDirection::Publish->value)
+        $telemetryChannel = DeviceChannel::query()
+            ->where('direction', ChannelDirection::Publish->value)
             ->where('key', 'telemetry')
-            ->whereHas('schemaVersion.schema.deviceType', fn ($query) => $query->where('key', 'energy_meter'))
+            ->whereHas('profileVersion.profile', fn ($query) => $query->where('key', 'energy_meter'))
             ->orderBy('id')
             ->first();
 
-        if (! $telemetryTopic instanceof SchemaVersionTopic) {
-            $this->command?->warn('Energy meter telemetry topic not found. Run DeviceSchemaSeeder first.');
+        if (! $telemetryChannel instanceof DeviceChannel) {
+            $this->command?->warn('Energy meter telemetry channel not found. Run profile seeders first.');
 
             return;
         }
@@ -57,18 +57,18 @@ class IoTDashboardSeeder extends Seeder
 
         $device = Device::query()
             ->where('organization_id', $organization->id)
-            ->where('device_schema_version_id', $telemetryTopic->device_schema_version_id)
+            ->where('device_profile_version_id', $telemetryChannel->device_profile_version_id)
             ->orderBy('id')
             ->first();
 
         if (! $device instanceof Device) {
-            $this->command?->warn('No compatible device found for energy meter telemetry topic. Skipping widget seed.');
+            $this->command?->warn('No compatible device found for energy meter telemetry channel. Skipping widget seed.');
 
             return;
         }
 
-        $parameterLabels = ParameterDefinition::query()
-            ->where('schema_version_topic_id', $telemetryTopic->id)
+        $parameterLabels = ProfileParameterDefinition::query()
+            ->where('device_channel_id', $telemetryChannel->id)
             ->whereIn('key', ['V1', 'V2', 'V3', 'A1', 'total_energy_kwh'])
             ->pluck('label', 'key')
             ->all();
@@ -94,12 +94,13 @@ class IoTDashboardSeeder extends Seeder
         IoTDashboardWidget::query()->updateOrCreate(
             [
                 'iot_dashboard_id' => $dashboard->id,
-                'schema_version_topic_id' => $telemetryTopic->id,
+                'device_channel_id' => $telemetryChannel->id,
                 'title' => 'Energy Meter Voltages (V1 / V2 / V3)',
             ],
             [
                 'type' => WidgetType::LineChart->value,
                 'device_id' => $device->id,
+                'device_channel_id' => $telemetryChannel->id,
                 'config' => [
                     'series' => $seriesConfiguration,
                     'transport' => [
@@ -127,12 +128,13 @@ class IoTDashboardSeeder extends Seeder
         IoTDashboardWidget::query()->updateOrCreate(
             [
                 'iot_dashboard_id' => $dashboard->id,
-                'schema_version_topic_id' => $telemetryTopic->id,
+                'device_channel_id' => $telemetryChannel->id,
                 'title' => 'Hourly Energy Consumption (kWh)',
             ],
             [
                 'type' => WidgetType::BarChart->value,
                 'device_id' => $device->id,
+                'device_channel_id' => $telemetryChannel->id,
                 'config' => [
                     'series' => [
                         [
@@ -167,12 +169,13 @@ class IoTDashboardSeeder extends Seeder
         IoTDashboardWidget::query()->updateOrCreate(
             [
                 'iot_dashboard_id' => $dashboard->id,
-                'schema_version_topic_id' => $telemetryTopic->id,
+                'device_channel_id' => $telemetryChannel->id,
                 'title' => 'Daily Energy Consumption (kWh)',
             ],
             [
                 'type' => WidgetType::BarChart->value,
                 'device_id' => $device->id,
+                'device_channel_id' => $telemetryChannel->id,
                 'config' => [
                     'series' => [
                         [
@@ -207,12 +210,13 @@ class IoTDashboardSeeder extends Seeder
         IoTDashboardWidget::query()->updateOrCreate(
             [
                 'iot_dashboard_id' => $dashboard->id,
-                'schema_version_topic_id' => $telemetryTopic->id,
+                'device_channel_id' => $telemetryChannel->id,
                 'title' => 'Phase A Current Gauge (A1)',
             ],
             [
                 'type' => WidgetType::GaugeChart->value,
                 'device_id' => $device->id,
+                'device_channel_id' => $telemetryChannel->id,
                 'config' => [
                     'series' => [
                         [

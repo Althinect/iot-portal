@@ -4,15 +4,14 @@ declare(strict_types=1);
 
 use App\Domain\DeviceControl\Enums\CommandStatus;
 use App\Domain\DeviceControl\Models\DeviceCommandLog;
-use App\Domain\DeviceControl\Models\DeviceDesiredTopicState;
+use App\Domain\DeviceControl\Models\DeviceDesiredChannelState;
 use App\Domain\DeviceControl\Services\DeviceFeedbackReconciler;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceManagement\Publishing\Nats\NatsDeviceStateStore;
-use App\Domain\DeviceSchema\Enums\TopicLinkType;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopicLink;
+use App\Domain\DeviceProfile\Enums\ChannelLinkType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceChannelLink;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Events\CommandCompleted;
 use App\Events\DeviceConnectionChanged;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -23,27 +22,7 @@ uses(RefreshDatabase::class);
 
 function createDeviceWithLinkedFeedbackTopics(): array
 {
-    $version = DeviceSchemaVersion::factory()->create();
-
-    $commandTopic = SchemaVersionTopic::factory()->subscribe()->create([
-        'device_schema_version_id' => $version->id,
-        'key' => 'control',
-        'suffix' => 'control',
-    ]);
-
-    $stateTopic = SchemaVersionTopic::factory()->stateTopic()->create([
-        'device_schema_version_id' => $version->id,
-        'key' => 'state',
-        'suffix' => 'state',
-    ]);
-
-    SchemaVersionTopicLink::factory()->create([
-        'from_schema_version_topic_id' => $commandTopic->id,
-        'to_schema_version_topic_id' => $stateTopic->id,
-        'link_type' => TopicLinkType::StateFeedback,
-    ]);
-
-    $deviceType = DeviceType::factory()->mqtt()->create([
+    $version = DeviceProfileVersion::factory()->active()->mqtt()->create([
         'protocol_config' => [
             'broker_host' => 'localhost',
             'broker_port' => 1883,
@@ -54,13 +33,30 @@ function createDeviceWithLinkedFeedbackTopics(): array
         ],
     ]);
 
+    $commandChannel = DeviceChannel::factory()->command()->create([
+        'device_profile_version_id' => $version->id,
+        'key' => 'control',
+        'address' => 'control',
+    ]);
+
+    $stateChannel = DeviceChannel::factory()->stateChannel()->create([
+        'device_profile_version_id' => $version->id,
+        'key' => 'state',
+        'address' => 'state',
+    ]);
+
+    DeviceChannelLink::query()->create([
+        'from_device_channel_id' => $commandChannel->id,
+        'to_device_channel_id' => $stateChannel->id,
+        'link_type' => ChannelLinkType::StateFeedback,
+    ]);
+
     $device = Device::factory()->create([
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $version->id,
+        'device_profile_version_id' => $version->id,
         'external_id' => 'light-01',
     ]);
 
-    return [$device, $commandTopic, $stateTopic];
+    return [$device, $commandChannel, $stateChannel];
 }
 
 function bindFakeStateStore(): void
@@ -105,20 +101,20 @@ it('completes command logs using correlation id and reconciles desired topic sta
     Event::fake([CommandCompleted::class]);
     bindFakeStateStore();
 
-    [$device, $commandTopic, $stateTopic] = createDeviceWithLinkedFeedbackTopics();
+    [$device, $commandChannel, $stateChannel] = createDeviceWithLinkedFeedbackTopics();
 
     $correlationId = (string) Str::uuid();
 
     $commandLog = DeviceCommandLog::factory()->sent()->create([
         'device_id' => $device->id,
-        'schema_version_topic_id' => $commandTopic->id,
+        'device_channel_id' => $commandChannel->id,
         'correlation_id' => $correlationId,
         'command_payload' => ['power' => 'on'],
     ]);
 
-    DeviceDesiredTopicState::factory()->create([
+    DeviceDesiredChannelState::factory()->create([
         'device_id' => $device->id,
-        'schema_version_topic_id' => $commandTopic->id,
+        'device_channel_id' => $commandChannel->id,
         'desired_payload' => ['power' => 'on'],
         'correlation_id' => $correlationId,
         'reconciled_at' => null,
@@ -127,7 +123,7 @@ it('completes command logs using correlation id and reconciles desired topic sta
     /** @var DeviceFeedbackReconciler $reconciler */
     $reconciler = app(DeviceFeedbackReconciler::class);
 
-    $mqttTopic = $stateTopic->resolvedTopic($device);
+    $mqttTopic = "devices/{$device->external_id}/{$stateChannel->address}";
 
     $result = $reconciler->reconcileInboundMessage($mqttTopic, [
         'power' => 'on',
@@ -137,15 +133,15 @@ it('completes command logs using correlation id and reconciles desired topic sta
     ]);
 
     $commandLog->refresh();
-    $desiredState = DeviceDesiredTopicState::query()
+    $desiredState = DeviceDesiredChannelState::query()
         ->where('device_id', $device->id)
-        ->where('schema_version_topic_id', $commandTopic->id)
+        ->where('device_channel_id', $commandChannel->id)
         ->first();
 
     expect($result)->not->toBeNull()
         ->and($result['command_log_id'])->toBe($commandLog->id)
         ->and($commandLog->status)->toBe(CommandStatus::Completed)
-        ->and($commandLog->response_schema_version_topic_id)->toBe($stateTopic->id)
+        ->and($commandLog->response_device_channel_id)->toBe($stateChannel->id)
         ->and($desiredState?->reconciled_at)->not->toBeNull();
 
     Event::assertDispatched(CommandCompleted::class, fn (CommandCompleted $event): bool => $event->commandLog->id === $commandLog->id);
@@ -155,11 +151,11 @@ it('falls back to linked topic matching when command correlation id is absent', 
     config(['broadcasting.default' => 'null']);
     bindFakeStateStore();
 
-    [$device, $commandTopic, $stateTopic] = createDeviceWithLinkedFeedbackTopics();
+    [$device, $commandChannel, $stateChannel] = createDeviceWithLinkedFeedbackTopics();
 
     $commandLog = DeviceCommandLog::factory()->sent()->create([
         'device_id' => $device->id,
-        'schema_version_topic_id' => $commandTopic->id,
+        'device_channel_id' => $commandChannel->id,
         'correlation_id' => null,
         'command_payload' => ['power' => 'off', 'mode' => 'manual'],
     ]);
@@ -167,7 +163,7 @@ it('falls back to linked topic matching when command correlation id is absent', 
     /** @var DeviceFeedbackReconciler $reconciler */
     $reconciler = app(DeviceFeedbackReconciler::class);
 
-    $mqttTopic = $stateTopic->resolvedTopic($device);
+    $mqttTopic = "devices/{$device->external_id}/{$stateChannel->address}";
 
     $result = $reconciler->reconcileInboundMessage($mqttTopic, [
         'power' => 'off',
@@ -186,11 +182,11 @@ it('does not falsely complete a command when device state has no payload overlap
     Event::fake([CommandCompleted::class]);
     bindFakeStateStore();
 
-    [$device, $commandTopic, $stateTopic] = createDeviceWithLinkedFeedbackTopics();
+    [$device, $commandChannel, $stateChannel] = createDeviceWithLinkedFeedbackTopics();
 
     $commandLog = DeviceCommandLog::factory()->sent()->create([
         'device_id' => $device->id,
-        'schema_version_topic_id' => $commandTopic->id,
+        'device_channel_id' => $commandChannel->id,
         'correlation_id' => (string) Str::uuid(),
         'command_payload' => ['power' => true, 'brightness' => 80, 'color_hex' => '#00FF00'],
     ]);
@@ -198,7 +194,7 @@ it('does not falsely complete a command when device state has no payload overlap
     /** @var DeviceFeedbackReconciler $reconciler */
     $reconciler = app(DeviceFeedbackReconciler::class);
 
-    $mqttTopic = $stateTopic->resolvedTopic($device);
+    $mqttTopic = "devices/{$device->external_id}/{$stateChannel->address}";
 
     $result = $reconciler->reconcileInboundMessage($mqttTopic, [
         'power' => false,
@@ -221,14 +217,14 @@ it('marks the device as online when a state message is reconciled', function ():
     Event::fake([DeviceConnectionChanged::class]);
     bindFakeStateStore();
 
-    [$device, $commandTopic, $stateTopic] = createDeviceWithLinkedFeedbackTopics();
+    [$device, $commandChannel, $stateChannel] = createDeviceWithLinkedFeedbackTopics();
 
     $device->updateQuietly(['connection_state' => 'offline', 'last_seen_at' => null]);
 
     /** @var DeviceFeedbackReconciler $reconciler */
     $reconciler = app(DeviceFeedbackReconciler::class);
 
-    $mqttTopic = $stateTopic->resolvedTopic($device);
+    $mqttTopic = "devices/{$device->external_id}/{$stateChannel->address}";
 
     $result = $reconciler->reconcileInboundMessage($mqttTopic, [
         'power' => true,

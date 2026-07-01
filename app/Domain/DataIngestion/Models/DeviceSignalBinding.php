@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Domain\DataIngestion\Models;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Services\JsonLogicEvaluator;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Services\JsonLogicEvaluator;
 use Database\Factories\Domain\DataIngestion\Models\DeviceSignalBindingFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -45,11 +45,11 @@ class DeviceSignalBinding extends Model
     }
 
     /**
-     * @return BelongsTo<ParameterDefinition, $this>
+     * @return BelongsTo<DeviceChannel, $this>
      */
-    public function parameterDefinition(): BelongsTo
+    public function deviceChannel(): BelongsTo
     {
-        return $this->belongsTo(ParameterDefinition::class);
+        return $this->belongsTo(DeviceChannel::class);
     }
 
     public function normalizedSourceJsonPath(): ?string

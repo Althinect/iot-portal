@@ -32,10 +32,15 @@ class AlertFactory extends Factory
 
                 return (int) $policy?->device_id;
             },
-            'parameter_definition_id' => function (array $attributes): int {
+            'device_channel_id' => function (array $attributes): int {
                 $policy = ThresholdPolicy::query()->find($attributes['threshold_policy_id']);
 
-                return (int) $policy?->parameter_definition_id;
+                return (int) $policy?->device_channel_id;
+            },
+            'parameter_key' => function (array $attributes): string {
+                $policy = ThresholdPolicy::query()->find($attributes['threshold_policy_id']);
+
+                return (string) $policy?->parameter_key;
             },
             'alerted_at' => $this->faker->dateTimeBetween('-1 day'),
             'alerted_telemetry_log_id' => null,

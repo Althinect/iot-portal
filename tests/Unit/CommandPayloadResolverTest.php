@@ -3,19 +3,19 @@
 declare(strict_types=1);
 
 use App\Domain\DeviceControl\Services\CommandPayloadResolver;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 uses(TestCase::class, RefreshDatabase::class);
 
 it('resolves command payload from control values and json paths', function (): void {
-    $topic = SchemaVersionTopic::factory()->subscribe()->create();
+    $channel = DeviceChannel::factory()->command()->create();
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'fan_speed',
         'json_path' => 'control.fan_speed',
         'type' => ParameterDataType::Integer,
@@ -23,22 +23,24 @@ it('resolves command payload from control values and json paths', function (): v
         'validation_rules' => ['min' => 0, 'max' => 100],
         'sequence' => 1,
         'is_active' => true,
+        'mutation_expression' => null,
     ]);
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'enabled',
         'json_path' => 'control.enabled',
         'type' => ParameterDataType::Boolean,
         'default_value' => false,
         'sequence' => 2,
         'is_active' => true,
+        'mutation_expression' => null,
     ]);
 
     /** @var CommandPayloadResolver $resolver */
     $resolver = app(CommandPayloadResolver::class);
 
-    $resolved = $resolver->resolveFromControls($topic, [
+    $resolved = $resolver->resolveFromControls($channel, [
         'fan_speed' => '80',
         'enabled' => 'true',
     ]);
@@ -53,10 +55,10 @@ it('resolves command payload from control values and json paths', function (): v
 });
 
 it('returns validation errors for invalid payload values', function (): void {
-    $topic = SchemaVersionTopic::factory()->subscribe()->create();
+    $channel = DeviceChannel::factory()->command()->create();
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'brightness_level',
         'json_path' => 'brightness_level',
         'type' => ParameterDataType::Integer,
@@ -65,12 +67,13 @@ it('returns validation errors for invalid payload values', function (): void {
         'validation_error_code' => 'BRIGHTNESS_RANGE',
         'sequence' => 1,
         'is_active' => true,
+        'mutation_expression' => null,
     ]);
 
     /** @var CommandPayloadResolver $resolver */
     $resolver = app(CommandPayloadResolver::class);
 
-    $errors = $resolver->validatePayload($topic, [
+    $errors = $resolver->validatePayload($channel, [
         'brightness_level' => 50,
     ]);
 
@@ -78,20 +81,21 @@ it('returns validation errors for invalid payload values', function (): void {
 });
 
 it('omits default button widget values unless they are explicitly triggered', function (): void {
-    $topic = SchemaVersionTopic::factory()->subscribe()->create();
+    $channel = DeviceChannel::factory()->command()->create();
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'power',
         'json_path' => 'power',
         'type' => ParameterDataType::Boolean,
         'default_value' => false,
         'sequence' => 1,
         'is_active' => true,
+        'mutation_expression' => null,
     ]);
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'send_now',
         'json_path' => 'send_now',
         'type' => ParameterDataType::Boolean,
@@ -103,17 +107,18 @@ it('omits default button widget values unless they are explicitly triggered', fu
         ],
         'sequence' => 2,
         'is_active' => true,
+        'mutation_expression' => null,
     ]);
 
     /** @var CommandPayloadResolver $resolver */
     $resolver = app(CommandPayloadResolver::class);
 
-    $defaultButton = $resolver->resolveFromControls($topic, [
+    $defaultButton = $resolver->resolveFromControls($channel, [
         'power' => true,
         'send_now' => false,
     ]);
 
-    $triggeredButton = $resolver->resolveFromControls($topic, [
+    $triggeredButton = $resolver->resolveFromControls($channel, [
         'power' => true,
         'send_now' => true,
     ]);

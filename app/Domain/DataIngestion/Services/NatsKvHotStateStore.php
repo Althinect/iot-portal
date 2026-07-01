@@ -8,7 +8,8 @@ use App\Domain\DataIngestion\Contracts\HotStateStore;
 use App\Domain\DataIngestion\Models\IngestionMessage;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Publishing\Nats\NatsDeviceStateStore;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceManagement\ValueObjects\Protocol\MqttProtocolConfig;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 
 class NatsKvHotStateStore implements HotStateStore
@@ -22,12 +23,12 @@ class NatsKvHotStateStore implements HotStateStore
      */
     public function store(
         Device $device,
-        SchemaVersionTopic $topic,
+        DeviceChannel $channel,
         array $finalValues,
         IngestionMessage $ingestionMessage,
         ?DeviceTelemetryLog $telemetryLog = null,
     ): void {
-        $mqttTopic = $topic->resolvedTopic($device);
+        $mqttTopic = $this->resolvedChannelTopic($device, $channel);
         $status = $ingestionMessage->status;
         $recordedAt = $telemetryLog?->recorded_at ?? $ingestionMessage->received_at ?? now();
         $host = config('ingestion.nats.host', '127.0.0.1');
@@ -46,5 +47,16 @@ class NatsKvHotStateStore implements HotStateStore
             host: is_string($host) && $host !== '' ? $host : '127.0.0.1',
             port: is_numeric($port) ? (int) $port : 4223,
         );
+    }
+
+    private function resolvedChannelTopic(Device $device, DeviceChannel $channel): string
+    {
+        $channel->loadMissing('version');
+
+        $profileConfig = $channel->version?->protocol_config;
+        $baseTopic = $profileConfig instanceof MqttProtocolConfig ? $profileConfig->getBaseTopic() : 'device';
+        $identifier = $device->external_id ?: $device->uuid;
+
+        return trim($baseTopic, '/').'/'.$identifier.'/'.trim($channel->address, '/');
     }
 }

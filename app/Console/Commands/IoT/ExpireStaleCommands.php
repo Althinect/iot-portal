@@ -48,7 +48,7 @@ class ExpireStaleCommands extends Command
                     ]);
 
                     $commandLog->refresh();
-                    $commandLog->loadMissing('device', 'topic');
+                    $commandLog->loadMissing('device', 'channel');
 
                     event(new CommandTimedOut($commandLog));
                     $timedOutCount++;

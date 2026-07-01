@@ -3,9 +3,8 @@
 declare(strict_types=1);
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
+use App\Domain\DeviceProfile\Models\DeviceProfile;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Shared\Models\User;
 use App\Filament\Admin\Resources\DeviceManagement\Devices\Pages\CreateDevice;
@@ -17,27 +16,26 @@ uses(RefreshDatabase::class);
 function createGenericDeviceFormContext(): array
 {
     $organization = Organization::factory()->create();
-    $deviceType = DeviceType::factory()->global()->create([
+    $profile = DeviceProfile::factory()->global()->create([
         'name' => 'Standard Aggregate Device',
         'key' => 'standard_aggregate_device',
     ]);
-    $deviceSchema = DeviceSchema::factory()->forDeviceType($deviceType)->create([
-        'name' => 'Standard Aggregate Contract',
-    ]);
-    $activeSchemaVersion = DeviceSchemaVersion::factory()->active()->create([
-        'device_schema_id' => $deviceSchema->id,
+    $activeProfileVersion = DeviceProfileVersion::factory()->forProfile($profile)->active()->mqtt()->create([
         'version' => 1,
     ]);
 
-    return compact('organization', 'deviceType', 'deviceSchema', 'activeSchemaVersion');
+    return compact('organization', 'profile', 'activeProfileVersion');
 }
 
 function createStenterStandardFormContext(): array
 {
     $organization = Organization::factory()->create();
-    $deviceType = DeviceType::factory()->global()->create([
+    $profile = DeviceProfile::factory()->global()->create([
         'name' => 'Stenter Line',
         'key' => 'stenter_line',
+    ]);
+    $activeProfileVersion = DeviceProfileVersion::factory()->forProfile($profile)->active()->mqtt()->create([
+        'version' => 1,
         'virtual_standard_profile' => [
             'label' => 'Stenter Standard',
             'description' => 'Managed stenter profile',
@@ -49,68 +47,58 @@ function createStenterStandardFormContext(): array
                 'status' => [
                     'label' => 'Status',
                     'required' => true,
-                    'allowed_device_type_keys' => ['status'],
+                    'allowed_device_profile_keys' => ['status'],
                 ],
                 'energy' => [
                     'label' => 'Energy',
                     'required' => true,
-                    'allowed_device_type_keys' => ['energy_meter'],
+                    'allowed_device_profile_keys' => ['energy_meter'],
                 ],
                 'length' => [
                     'label' => 'Length',
                     'required' => true,
-                    'allowed_device_type_keys' => ['fabric_length_counter'],
+                    'allowed_device_profile_keys' => ['fabric_length_counter'],
                 ],
             ],
         ],
     ]);
-    $deviceSchema = DeviceSchema::factory()->forDeviceType($deviceType)->create([
-        'name' => 'Stenter Standard Contract',
-    ]);
-    $activeSchemaVersion = DeviceSchemaVersion::factory()->active()->create([
-        'device_schema_id' => $deviceSchema->id,
-        'version' => 1,
-    ]);
 
-    return compact('organization', 'deviceType', 'deviceSchema', 'activeSchemaVersion');
+    return compact('organization', 'profile', 'activeProfileVersion');
 }
 
-function createSourceDevice(Organization $organization, string $deviceTypeKey, string $deviceTypeName, string $deviceName): Device
+function createSourceDevice(Organization $organization, string $profileKey, string $profileName, string $deviceName): Device
 {
-    $deviceType = DeviceType::query()
+    $profile = DeviceProfile::query()
         ->whereNull('organization_id')
-        ->where('key', $deviceTypeKey)
+        ->where('key', $profileKey)
         ->first();
 
-    if (! $deviceType instanceof DeviceType) {
-        $deviceType = DeviceType::factory()->global()->mqtt()->create([
-            'key' => $deviceTypeKey,
-            'name' => $deviceTypeName,
+    if (! $profile instanceof DeviceProfile) {
+        $profile = DeviceProfile::factory()->global()->create([
+            'key' => $profileKey,
+            'name' => $profileName,
         ]);
     }
 
-    $deviceSchema = DeviceSchema::query()->firstOrCreate([
-        'device_type_id' => $deviceType->id,
-        'name' => $deviceTypeName.' Contract',
-    ]);
-    $activeSchemaVersion = DeviceSchemaVersion::query()->firstOrCreate(
+    $activeProfileVersion = DeviceProfileVersion::query()->firstOrCreate(
         [
-            'device_schema_id' => $deviceSchema->id,
+            'device_profile_id' => $profile->id,
             'version' => 1,
         ],
         [
             'status' => 'active',
+            'protocol' => 'mqtt',
+            'protocol_config' => DeviceProfileVersion::factory()->mqtt()->make()->protocol_config,
         ],
     );
 
-    if ($activeSchemaVersion->status !== 'active') {
-        $activeSchemaVersion->update(['status' => 'active']);
+    if ($activeProfileVersion->status !== 'active') {
+        $activeProfileVersion->update(['status' => 'active']);
     }
 
     return Device::factory()->create([
         'organization_id' => $organization->id,
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $activeSchemaVersion->id,
+        'device_profile_version_id' => $activeProfileVersion->id,
         'name' => $deviceName,
     ]);
 }
@@ -125,7 +113,7 @@ it('can render the create device page', function (): void {
 });
 
 it('can create a virtual device and attach physical source devices by purpose', function (): void {
-    ['organization' => $organization, 'deviceType' => $deviceType, 'activeSchemaVersion' => $activeSchemaVersion] = createGenericDeviceFormContext();
+    ['organization' => $organization, 'activeProfileVersion' => $activeProfileVersion] = createGenericDeviceFormContext();
 
     $statusDevice = Device::factory()->create([
         'organization_id' => $organization->id,
@@ -140,8 +128,7 @@ it('can create a virtual device and attach physical source devices by purpose', 
         ->fillForm([
             'name' => 'Stenter 01 Standard',
             'organization_id' => $organization->id,
-            'device_type_id' => $deviceType->id,
-            'device_schema_version_id' => $activeSchemaVersion->id,
+            'device_profile_version_id' => $activeProfileVersion->id,
             'is_virtual' => true,
             'virtual_device_links' => [
                 [
@@ -181,7 +168,7 @@ it('can create a virtual device and attach physical source devices by purpose', 
 });
 
 it('rejects source devices from another organization when creating a virtual device', function (): void {
-    ['organization' => $organization, 'deviceType' => $deviceType, 'activeSchemaVersion' => $activeSchemaVersion] = createGenericDeviceFormContext();
+    ['organization' => $organization, 'activeProfileVersion' => $activeProfileVersion] = createGenericDeviceFormContext();
 
     $outsideDevice = Device::factory()->create();
 
@@ -189,8 +176,7 @@ it('rejects source devices from another organization when creating a virtual dev
         ->fillForm([
             'name' => 'Cross Org Standard',
             'organization_id' => $organization->id,
-            'device_type_id' => $deviceType->id,
-            'device_schema_version_id' => $activeSchemaVersion->id,
+            'device_profile_version_id' => $activeProfileVersion->id,
             'is_virtual' => true,
             'virtual_device_links' => [[
                 'purpose' => 'status',
@@ -202,7 +188,7 @@ it('rejects source devices from another organization when creating a virtual dev
 });
 
 it('can still create a physical device with a parent hub', function (): void {
-    ['organization' => $organization, 'deviceType' => $deviceType, 'activeSchemaVersion' => $activeSchemaVersion] = createGenericDeviceFormContext();
+    ['organization' => $organization, 'activeProfileVersion' => $activeProfileVersion] = createGenericDeviceFormContext();
 
     $hub = Device::factory()->create([
         'organization_id' => $organization->id,
@@ -214,8 +200,7 @@ it('can still create a physical device with a parent hub', function (): void {
         ->fillForm([
             'name' => 'Pressure Sensor',
             'organization_id' => $organization->id,
-            'device_type_id' => $deviceType->id,
-            'device_schema_version_id' => $activeSchemaVersion->id,
+            'device_profile_version_id' => $activeProfileVersion->id,
             'is_virtual' => false,
             'parent_device_id' => $hub->id,
         ])
@@ -231,7 +216,7 @@ it('can still create a physical device with a parent hub', function (): void {
 });
 
 it('stores managed stenter standard profile metadata on create', function (): void {
-    ['organization' => $organization, 'deviceType' => $deviceType, 'activeSchemaVersion' => $activeSchemaVersion] = createStenterStandardFormContext();
+    ['organization' => $organization, 'activeProfileVersion' => $activeProfileVersion] = createStenterStandardFormContext();
 
     $statusDevice = createSourceDevice($organization, 'status', 'Status', 'Status Sensor');
     $energyDevice = createSourceDevice($organization, 'energy_meter', 'Energy Meter', 'Energy Meter');
@@ -241,8 +226,7 @@ it('stores managed stenter standard profile metadata on create', function (): vo
         ->fillForm([
             'name' => 'Stenter 01 Standard',
             'organization_id' => $organization->id,
-            'device_type_id' => $deviceType->id,
-            'device_schema_version_id' => $activeSchemaVersion->id,
+            'device_profile_version_id' => $activeProfileVersion->id,
             'is_virtual' => true,
             'virtual_device_links' => [
                 [
@@ -273,7 +257,7 @@ it('stores managed stenter standard profile metadata on create', function (): vo
 });
 
 it('rejects missing required stenter sources when creating a standard profile device', function (): void {
-    ['organization' => $organization, 'deviceType' => $deviceType, 'activeSchemaVersion' => $activeSchemaVersion] = createStenterStandardFormContext();
+    ['organization' => $organization, 'activeProfileVersion' => $activeProfileVersion] = createStenterStandardFormContext();
 
     $statusDevice = createSourceDevice($organization, 'status', 'Status', 'Status Sensor');
     $energyDevice = createSourceDevice($organization, 'energy_meter', 'Energy Meter', 'Energy Meter');
@@ -282,8 +266,7 @@ it('rejects missing required stenter sources when creating a standard profile de
         ->fillForm([
             'name' => 'Incomplete Stenter Standard',
             'organization_id' => $organization->id,
-            'device_type_id' => $deviceType->id,
-            'device_schema_version_id' => $activeSchemaVersion->id,
+            'device_profile_version_id' => $activeProfileVersion->id,
             'is_virtual' => true,
             'virtual_device_links' => [
                 [
@@ -302,7 +285,7 @@ it('rejects missing required stenter sources when creating a standard profile de
 });
 
 it('rejects source devices that do not match the stenter profile source type rules', function (): void {
-    ['organization' => $organization, 'deviceType' => $deviceType, 'activeSchemaVersion' => $activeSchemaVersion] = createStenterStandardFormContext();
+    ['organization' => $organization, 'activeProfileVersion' => $activeProfileVersion] = createStenterStandardFormContext();
 
     $statusDevice = createSourceDevice($organization, 'status', 'Status', 'Status Sensor');
     $energyDevice = createSourceDevice($organization, 'energy_meter', 'Energy Meter', 'Energy Meter');
@@ -312,8 +295,7 @@ it('rejects source devices that do not match the stenter profile source type rul
         ->fillForm([
             'name' => 'Invalid Stenter Standard',
             'organization_id' => $organization->id,
-            'device_type_id' => $deviceType->id,
-            'device_schema_version_id' => $activeSchemaVersion->id,
+            'device_profile_version_id' => $activeProfileVersion->id,
             'is_virtual' => true,
             'virtual_device_links' => [
                 [

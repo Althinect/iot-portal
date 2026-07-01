@@ -6,33 +6,25 @@ namespace App\Domain\DeviceControl\Services;
 
 use App\Domain\DeviceControl\Enums\CommandStatus;
 use App\Domain\DeviceControl\Models\DeviceCommandLog;
-use App\Domain\DeviceControl\Models\DeviceDesiredTopicState;
+use App\Domain\DeviceControl\Models\DeviceDesiredChannelState;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Publishing\Nats\NatsDeviceStateStore;
 use App\Domain\DeviceManagement\Services\DevicePresenceService;
-use App\Domain\DeviceSchema\Enums\TopicLinkType;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ChannelLinkType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Services\ProfileChannelResolver;
 use App\Events\CommandCompleted;
 use App\Events\DeviceStateReceived;
 use Illuminate\Log\LogManager;
-use Illuminate\Support\Carbon;
 use Psr\Log\LoggerInterface;
 
 class DeviceFeedbackReconciler
 {
-    private const int REGISTRY_TTL_SECONDS = 30;
-
-    /**
-     * @var array<string, array{device: Device, topic: SchemaVersionTopic}>
-     */
-    private array $topicRegistry = [];
-
-    private ?Carbon $lastRegistryRefreshAt = null;
-
     public function __construct(
         private readonly NatsDeviceStateStore $stateStore,
         private readonly DevicePresenceService $presenceService,
         private readonly LogManager $logManager,
+        private readonly ProfileChannelResolver $channelResolver,
     ) {}
 
     /**
@@ -40,7 +32,7 @@ class DeviceFeedbackReconciler
      * @return array{
      *     device_uuid: string,
      *     device_external_id: string|null,
-     *     schema_version_topic_id: int,
+     *     device_channel_id: int,
      *     topic: string,
      *     purpose: string,
      *     command_log_id: int|null
@@ -61,7 +53,7 @@ class DeviceFeedbackReconciler
             'payload' => $payload,
         ]);
 
-        $resolved = $this->resolveRegistryTopic($mqttTopic);
+        $resolved = $this->channelResolver->resolve($mqttTopic);
 
         if ($resolved === null) {
             $this->log()->debug('No registry match for topic — ignoring', [
@@ -72,22 +64,26 @@ class DeviceFeedbackReconciler
         }
 
         $device = $resolved['device'];
-        $topic = $resolved['topic'];
+        $channel = DeviceChannel::query()->find($resolved['channel']->id);
+
+        if (! $channel instanceof DeviceChannel) {
+            return null;
+        }
 
         $this->log()->debug('Inbound message matched', [
             'mqtt_topic' => $mqttTopic,
             'device_uuid' => $device->uuid,
             'device_external_id' => $device->external_id,
-            'topic_id' => $topic->id,
-            'topic_suffix' => $topic->suffix,
-            'purpose' => $topic->resolvedPurpose()->value,
+            'device_channel_id' => $channel->id,
+            'channel_key' => $channel->key,
+            'purpose' => $channel->resolvedPurpose()->value,
         ]);
 
         $this->presenceService->markOnline($device);
 
         $this->stateStore->store($device->uuid, $mqttTopic, $payload, $host, $port);
 
-        $matchedCommandLog = $this->matchCommandLog($device, $topic, $payload);
+        $matchedCommandLog = $this->matchCommandLog($device, $channel, $payload);
 
         if ($matchedCommandLog instanceof DeviceCommandLog) {
             $this->log()->debug('Matched command log for feedback', [
@@ -96,7 +92,7 @@ class DeviceFeedbackReconciler
                 'current_status' => $matchedCommandLog->getRawOriginal('status'),
             ]);
 
-            $this->applyFeedbackToCommandLog($matchedCommandLog, $topic, $payload);
+            $this->applyFeedbackToCommandLog($matchedCommandLog, $channel, $payload);
         } else {
             $this->log()->debug('No pending command log matched', [
                 'device_uuid' => $device->uuid,
@@ -121,70 +117,22 @@ class DeviceFeedbackReconciler
         return [
             'device_uuid' => $device->uuid,
             'device_external_id' => $device->external_id,
-            'schema_version_topic_id' => (int) $topic->id,
+            'device_channel_id' => (int) $channel->id,
             'topic' => $mqttTopic,
-            'purpose' => $topic->resolvedPurpose()->value,
+            'purpose' => $channel->resolvedPurpose()->value,
             'command_log_id' => $matchedCommandLog?->id,
         ];
     }
 
     public function refreshRegistry(): void
     {
-        $this->topicRegistry = [];
-
-        $devices = Device::query()
-            ->with([
-                'deviceType',
-                'schemaVersion.topics.outgoingLinks',
-            ])
-            ->whereNotNull('device_schema_version_id')
-            ->get();
-
-        foreach ($devices as $device) {
-            $topics = $device->schemaVersion?->topics;
-
-            if ($topics === null) {
-                continue;
-            }
-
-            foreach ($topics as $topic) {
-                if (! $topic->isPublish()) {
-                    continue;
-                }
-
-                $this->topicRegistry[$topic->resolvedTopic($device)] = [
-                    'device' => $device,
-                    'topic' => $topic,
-                ];
-            }
-        }
-
-        $this->lastRegistryRefreshAt = now();
-
-        $this->log()->debug('Topic registry refreshed', [
-            'entries' => count($this->topicRegistry),
-        ]);
-    }
-
-    /**
-     * @return array{device: Device, topic: SchemaVersionTopic}|null
-     */
-    private function resolveRegistryTopic(string $mqttTopic): ?array
-    {
-        if (
-            $this->lastRegistryRefreshAt === null
-            || $this->lastRegistryRefreshAt->diffInSeconds(now()) > self::REGISTRY_TTL_SECONDS
-        ) {
-            $this->refreshRegistry();
-        }
-
-        return $this->topicRegistry[$mqttTopic] ?? null;
+        $this->channelResolver->refreshRegistry();
     }
 
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function matchCommandLog(Device $device, SchemaVersionTopic $incomingTopic, array $payload): ?DeviceCommandLog
+    private function matchCommandLog(Device $device, DeviceChannel $incomingChannel, array $payload): ?DeviceCommandLog
     {
         $correlationId = $this->extractCorrelationId($payload);
 
@@ -205,12 +153,12 @@ class DeviceFeedbackReconciler
             }
         }
 
-        $candidateTopicIds = $this->resolveCandidateCommandTopicIds($device, $incomingTopic);
+        $candidateChannelIds = $this->resolveCandidateCommandChannelIds($device, $incomingChannel);
 
         $candidates = DeviceCommandLog::query()
             ->when(
-                $candidateTopicIds !== [],
-                fn ($query) => $query->whereIn('schema_version_topic_id', $candidateTopicIds)
+                $candidateChannelIds !== [],
+                fn ($query) => $query->whereIn('device_channel_id', $candidateChannelIds)
             )
             ->where('device_id', $device->id)
             ->whereIn('status', [
@@ -253,16 +201,16 @@ class DeviceFeedbackReconciler
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function applyFeedbackToCommandLog(DeviceCommandLog $commandLog, SchemaVersionTopic $incomingTopic, array $payload): void
+    private function applyFeedbackToCommandLog(DeviceCommandLog $commandLog, DeviceChannel $incomingChannel, array $payload): void
     {
         $now = now();
 
         $updates = [
             'response_payload' => $payload,
-            'response_schema_version_topic_id' => $incomingTopic->id,
+            'response_device_channel_id' => $incomingChannel->id,
         ];
 
-        if ($incomingTopic->isPurposeAck()) {
+        if ($incomingChannel->isPurposeAck()) {
             $updates['status'] = CommandStatus::Acknowledged;
             $updates['acknowledged_at'] = $commandLog->acknowledged_at ?? $now;
 
@@ -281,8 +229,8 @@ class DeviceFeedbackReconciler
         $this->log()->debug('Updating command log from feedback', [
             'command_log_id' => $commandLog->id,
             'new_status' => $newStatus,
-            'incoming_topic_id' => $incomingTopic->id,
-            'incoming_purpose' => $incomingTopic->resolvedPurpose()->value,
+            'incoming_channel_id' => $incomingChannel->id,
+            'incoming_purpose' => $incomingChannel->resolvedPurpose()->value,
         ]);
 
         $commandLog->update($updates);
@@ -300,9 +248,9 @@ class DeviceFeedbackReconciler
 
             event(new CommandCompleted($commandLog));
 
-            $desiredQuery = DeviceDesiredTopicState::query()
+            $desiredQuery = DeviceDesiredChannelState::query()
                 ->where('device_id', $commandLog->device_id)
-                ->where('schema_version_topic_id', $commandLog->schema_version_topic_id);
+                ->where('device_channel_id', $commandLog->device_channel_id);
 
             if (is_string($commandLog->correlation_id) && $commandLog->correlation_id !== '') {
                 $desiredQuery->where('correlation_id', $commandLog->correlation_id);
@@ -317,64 +265,68 @@ class DeviceFeedbackReconciler
     /**
      * @return array<int, int>
      */
-    private function resolveCandidateCommandTopicIds(Device $device, SchemaVersionTopic $incomingTopic): array
+    private function resolveCandidateCommandChannelIds(Device $device, DeviceChannel $incomingChannel): array
     {
         $linkType = match (true) {
-            $incomingTopic->isPurposeState() => TopicLinkType::StateFeedback->value,
-            $incomingTopic->isPurposeAck() => TopicLinkType::AckFeedback->value,
+            $incomingChannel->isPurposeState() => ChannelLinkType::StateFeedback->value,
+            $incomingChannel->isPurposeAck() => ChannelLinkType::AckFeedback->value,
             default => null,
         };
 
-        $linkedTopicIds = $incomingTopic->incomingLinks()
+        $linkedChannelIds = $incomingChannel->incomingLinks()
             ->when($linkType !== null, fn ($query) => $query->where('link_type', $linkType))
-            ->pluck('from_schema_version_topic_id')
+            ->pluck('from_device_channel_id')
             ->all();
 
-        $normalizedLinkedTopicIds = [];
+        $normalizedLinkedChannelIds = [];
 
-        foreach ($linkedTopicIds as $linkedTopicId) {
-            if (! is_numeric($linkedTopicId)) {
+        foreach ($linkedChannelIds as $linkedChannelId) {
+            if (! is_numeric($linkedChannelId)) {
                 continue;
             }
 
-            $normalizedLinkedTopicIds[] = (int) $linkedTopicId;
+            $normalizedLinkedChannelIds[] = (int) $linkedChannelId;
         }
 
-        $normalizedLinkedTopicIds = array_values(array_unique($normalizedLinkedTopicIds));
+        $normalizedLinkedChannelIds = array_values(array_unique($normalizedLinkedChannelIds));
 
-        if ($normalizedLinkedTopicIds !== []) {
-            return $normalizedLinkedTopicIds;
+        if ($normalizedLinkedChannelIds !== []) {
+            return $normalizedLinkedChannelIds;
         }
 
-        $topics = $device->schemaVersion?->topics;
+        $device->loadMissing('profileVersion.channels');
 
-        if ($topics === null) {
+        $channels = $device->profileVersion?->channels;
+
+        if ($channels === null) {
             return [];
         }
 
-        $topicIds = [];
+        $channelIds = [];
 
-        foreach ($topics as $topic) {
-            if (! $topic->isPurposeCommand()) {
+        foreach ($channels as $channel) {
+            if (! $channel->isPurposeCommand()) {
                 continue;
             }
 
-            $topicIds[] = (int) $topic->id;
+            $channelIds[] = (int) $channel->id;
         }
 
-        return array_values(array_unique($topicIds));
+        return array_values(array_unique($channelIds));
     }
 
     private function shouldCompleteOnAck(DeviceCommandLog $commandLog): bool
     {
-        $commandLog->loadMissing('topic.stateFeedbackTopics');
-        $commandTopic = $commandLog->topic;
+        $commandLog->loadMissing('channel.outgoingLinks');
+        $commandChannel = $commandLog->channel;
 
-        if (! $commandTopic instanceof SchemaVersionTopic) {
+        if (! $commandChannel instanceof DeviceChannel) {
             return true;
         }
 
-        return $commandTopic->stateFeedbackTopics->isEmpty();
+        return $commandChannel->outgoingLinks()
+            ->where('link_type', ChannelLinkType::StateFeedback->value)
+            ->doesntExist();
     }
 
     /**

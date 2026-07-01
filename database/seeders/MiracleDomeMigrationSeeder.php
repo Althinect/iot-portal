@@ -6,19 +6,19 @@ namespace Database\Seeders;
 
 use App\Domain\DataIngestion\Models\DeviceSignalBinding;
 use App\Domain\DeviceManagement\Enums\MqttSecurityMode;
-use App\Domain\DeviceManagement\Enums\ProtocolType;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceManagement\ValueObjects\Protocol\MqttProtocolConfig;
-use App\Domain\DeviceSchema\Enums\MetricUnit;
-use App\Domain\DeviceSchema\Enums\ParameterCategory;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Enums\TopicPurpose;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ChannelDirection;
+use App\Domain\DeviceProfile\Enums\ChannelPurpose;
+use App\Domain\DeviceProfile\Enums\ChannelTransport;
+use App\Domain\DeviceProfile\Enums\MetricUnit;
+use App\Domain\DeviceProfile\Enums\ParameterCategory;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Enums\Protocol;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfile;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 use Illuminate\Database\Seeder;
 
@@ -203,13 +203,13 @@ class MiracleDomeMigrationSeeder extends Seeder
         $hubSchemaVersion = $this->upsertHubSchemaVersion();
         $energySchemaVersion = $this->upsertEnergySchemaVersion();
 
-        $energyTopic = $energySchemaVersion->topics()->where('key', 'telemetry')->first();
+        $energyTopic = $energySchemaVersion->channels()->where('key', 'telemetry')->first();
 
-        if (! $energyTopic instanceof SchemaVersionTopic) {
+        if (! $energyTopic instanceof DeviceChannel) {
             throw new \RuntimeException('Miracle Dome energy telemetry topic could not be resolved.');
         }
 
-        /** @var array<string, ParameterDefinition> $parametersByKey */
+        /** @var array<string, ProfileParameterDefinition> $parametersByKey */
         $parametersByKey = $energyTopic->parameters()
             ->orderBy('sequence')
             ->get()
@@ -226,8 +226,7 @@ class MiracleDomeMigrationSeeder extends Seeder
                     'external_id' => $hubConfig['imei'],
                 ],
                 [
-                    'device_type_id' => $hubSchemaVersion->schema->device_type_id,
-                    'device_schema_version_id' => $hubSchemaVersion->id,
+                    'device_profile_version_id' => $this->profileVersionForSchemaVersion($hubSchemaVersion)->id,
                     'parent_device_id' => null,
                     'name' => $hubConfig['name'],
                     'metadata' => [
@@ -270,21 +269,23 @@ class MiracleDomeMigrationSeeder extends Seeder
                 ],
             );
 
-            $expectedParameterIds = [];
+            $expectedParameterKeys = [];
 
             foreach (self::ENERGY_PARAMETERS as $parameterConfig) {
                 $parameter = $parametersByKey[$parameterConfig['key']] ?? null;
 
-                if (! $parameter instanceof ParameterDefinition) {
+                if (! $parameter instanceof ProfileParameterDefinition) {
                     continue;
                 }
 
-                $expectedParameterIds[] = $parameter->id;
+                $expectedParameterKeys[] = $parameter->key;
+                $channel = $this->profileChannelForParameter($device, $parameter);
 
                 DeviceSignalBinding::query()->updateOrCreate(
                     [
                         'device_id' => $device->id,
-                        'parameter_definition_id' => $parameter->id,
+                        'device_channel_id' => $channel->id,
+                        'parameter_key' => $parameter->key,
                     ],
                     [
                         'source_topic' => $this->sourceTopicFor(
@@ -307,12 +308,12 @@ class MiracleDomeMigrationSeeder extends Seeder
             DeviceSignalBinding::query()
                 ->where('device_id', $device->id)
                 ->where('source_adapter', 'imoni')
-                ->whereNotIn('parameter_definition_id', $expectedParameterIds)
+                ->whereNotIn('parameter_key', $expectedParameterKeys)
                 ->delete();
         }
     }
 
-    private function upsertHubSchemaVersion(): DeviceSchemaVersion
+    private function upsertHubSchemaVersion(): DeviceProfileVersion
     {
         return $this->upsertSchemaVersion(
             deviceTypeKey: self::HUB_DEVICE_TYPE_KEY,
@@ -333,7 +334,7 @@ class MiracleDomeMigrationSeeder extends Seeder
         );
     }
 
-    private function upsertEnergySchemaVersion(): DeviceSchemaVersion
+    private function upsertEnergySchemaVersion(): DeviceProfileVersion
     {
         $parameters = array_map(
             fn (array $parameter): array => [
@@ -385,37 +386,22 @@ class MiracleDomeMigrationSeeder extends Seeder
         int $version = 1,
         string $status = 'active',
         string $notes = 'Miracle Dome migration onboarding schema.',
-    ): DeviceSchemaVersion {
-        $deviceType = DeviceType::query()->updateOrCreate(
+    ): DeviceProfileVersion {
+        $deviceType = DeviceProfile::query()->updateOrCreate(
             [
                 'organization_id' => null,
                 'key' => $deviceTypeKey,
             ],
             [
                 'name' => $deviceTypeName,
-                'default_protocol' => ProtocolType::Mqtt,
-                'protocol_config' => (new MqttProtocolConfig(
-                    brokerHost: 'nats',
-                    brokerPort: 1883,
-                    username: null,
-                    password: null,
-                    useTls: false,
-                    baseTopic: $baseTopic,
-                    securityMode: MqttSecurityMode::UsernamePassword,
-                ))->toArray(),
             ],
         );
 
-        $schema = DeviceSchema::query()->firstOrCreate(
-            [
-                'device_type_id' => $deviceType->id,
-                'name' => $schemaName,
-            ],
-        );
+        $schema = $deviceType;
 
-        $schemaVersion = DeviceSchemaVersion::query()->firstOrCreate(
+        $schemaVersion = DeviceProfileVersion::query()->firstOrCreate(
             [
-                'device_schema_id' => $schema->id,
+                'device_profile_id' => $schema->id,
                 'version' => $version,
             ],
             [
@@ -431,16 +417,67 @@ class MiracleDomeMigrationSeeder extends Seeder
             ]);
         }
 
-        $topic = SchemaVersionTopic::query()->updateOrCreate(
+        $topic = DeviceChannel::query()->updateOrCreate(
             [
-                'device_schema_version_id' => $schemaVersion->id,
+                'device_profile_version_id' => $schemaVersion->id,
                 'key' => 'telemetry',
             ],
             [
                 'label' => $topicLabel,
-                'direction' => TopicDirection::Publish,
-                'purpose' => TopicPurpose::Telemetry,
-                'suffix' => 'telemetry',
+                'direction' => ChannelDirection::Publish,
+                'purpose' => ChannelPurpose::Telemetry,
+                'address' => 'telemetry',
+                'description' => 'Miracle Dome migration onboarding topic.',
+                'qos' => 1,
+                'retain' => false,
+                'sequence' => 0,
+            ],
+        );
+
+        $profile = DeviceProfile::query()->updateOrCreate(
+            [
+                'organization_id' => null,
+                'key' => $deviceTypeKey,
+            ],
+            [
+                'name' => $deviceTypeName,
+                'tags' => null,
+            ],
+        );
+
+        $profileVersion = DeviceProfileVersion::query()->updateOrCreate(
+            [
+                'device_profile_id' => $profile->id,
+                'version' => $version,
+            ],
+            [
+                'status' => $status,
+                'protocol' => Protocol::Mqtt,
+                'protocol_config' => (new MqttProtocolConfig(
+                    brokerHost: 'nats',
+                    brokerPort: 1883,
+                    username: null,
+                    password: null,
+                    useTls: false,
+                    baseTopic: $baseTopic,
+                    securityMode: MqttSecurityMode::UsernamePassword,
+                ))->toArray(),
+                'notes' => $notes,
+            ],
+        );
+
+        $channel = DeviceChannel::query()->updateOrCreate(
+            [
+                'device_profile_version_id' => $profileVersion->id,
+                'key' => 'telemetry',
+            ],
+            [
+                'label' => $topicLabel,
+                'direction' => ChannelDirection::Publish,
+                'purpose' => ChannelPurpose::Telemetry,
+                'transport' => ChannelTransport::Mqtt,
+                'address' => 'telemetry',
+                'http_method' => '',
                 'description' => 'Miracle Dome migration onboarding topic.',
                 'qos' => 1,
                 'retain' => false,
@@ -449,9 +486,30 @@ class MiracleDomeMigrationSeeder extends Seeder
         );
 
         foreach ($parameters as $parameter) {
-            ParameterDefinition::query()->updateOrCreate(
+            ProfileParameterDefinition::query()->updateOrCreate(
                 [
-                    'schema_version_topic_id' => $topic->id,
+                    'device_channel_id' => $topic->id,
+                    'key' => $parameter['key'],
+                ],
+                [
+                    'label' => $parameter['label'],
+                    'json_path' => $parameter['json_path'],
+                    'type' => $parameter['type'],
+                    'unit' => $parameter['unit'] ?? null,
+                    'required' => $parameter['required'] ?? false,
+                    'is_critical' => $parameter['is_critical'] ?? false,
+                    'category' => $parameter['category'] ?? ParameterCategory::Measurement,
+                    'validation_rules' => $parameter['validation_rules'] ?? null,
+                    'control_ui' => $parameter['control_ui'] ?? null,
+                    'mutation_expression' => $parameter['mutation_expression'] ?? null,
+                    'sequence' => $parameter['sequence'] ?? 0,
+                    'is_active' => true,
+                ],
+            );
+
+            ProfileParameterDefinition::query()->updateOrCreate(
+                [
+                    'device_channel_id' => $channel->id,
                     'key' => $parameter['key'],
                 ],
                 [
@@ -476,12 +534,51 @@ class MiracleDomeMigrationSeeder extends Seeder
             $parameters,
         );
 
-        ParameterDefinition::query()
-            ->where('schema_version_topic_id', $topic->id)
+        ProfileParameterDefinition::query()
+            ->where('device_channel_id', $topic->id)
             ->whereNotIn('key', $parameterKeys)
             ->delete();
 
-        return $schemaVersion->fresh(['schema']);
+        return $schemaVersion->fresh(['profile']);
+    }
+
+    private function profileChannelForParameter(Device $device, ProfileParameterDefinition $parameter): DeviceChannel
+    {
+        $parameter->loadMissing('channel');
+
+        $channel = DeviceChannel::query()
+            ->where('device_profile_version_id', $device->device_profile_version_id)
+            ->where('key', $parameter->channel?->key)
+            ->first();
+
+        if (! $channel instanceof DeviceChannel) {
+            throw new \RuntimeException("Mirrored channel [{$parameter->channel?->key}] was not found for device [{$device->id}].");
+        }
+
+        return $channel;
+    }
+
+    private function profileVersionForSchemaVersion(DeviceProfileVersion $schemaVersion): DeviceProfileVersion
+    {
+        $schemaVersion->loadMissing('profile');
+        $deviceType = $schemaVersion->profile;
+
+        if (! $deviceType instanceof DeviceProfile) {
+            throw new \RuntimeException('Unable to resolve mirrored device profile.');
+        }
+
+        $profileVersion = DeviceProfileVersion::query()
+            ->where('version', (int) $schemaVersion->version)
+            ->whereHas('profile', fn ($query) => $query
+                ->whereNull('organization_id')
+                ->where('key', $deviceType->key))
+            ->first();
+
+        if (! $profileVersion instanceof DeviceProfileVersion) {
+            throw new \RuntimeException("Mirrored profile version [{$deviceType->key}:{$schemaVersion->version}] was not found.");
+        }
+
+        return $profileVersion;
     }
 
     /**
@@ -490,7 +587,7 @@ class MiracleDomeMigrationSeeder extends Seeder
     private function upsertChildDevice(
         Organization $organization,
         Device $parentDevice,
-        DeviceSchemaVersion $schemaVersion,
+        DeviceProfileVersion $schemaVersion,
         string $externalId,
         string $name,
         array $metadata,
@@ -502,8 +599,7 @@ class MiracleDomeMigrationSeeder extends Seeder
                 'external_id' => $externalId,
             ],
             [
-                'device_type_id' => $schemaVersion->schema->device_type_id,
-                'device_schema_version_id' => $schemaVersion->id,
+                'device_profile_version_id' => $this->profileVersionForSchemaVersion($schemaVersion)->id,
                 'parent_device_id' => $parentDevice->id,
                 'name' => $name,
                 'metadata' => $metadata,

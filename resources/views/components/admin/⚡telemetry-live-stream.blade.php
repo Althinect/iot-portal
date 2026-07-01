@@ -2,7 +2,7 @@
 
 use App\Support\DeviceSelectOptions;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
+use App\Domain\DeviceProfile\Enums\ChannelDirection;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -190,7 +190,7 @@ new class extends Component implements HasForms {
 
         $selectedDevice = (string) $selectedDevice;
 
-        $deviceQuery = Device::query()->with(['schemaVersion.topics']);
+        $deviceQuery = Device::query()->with(['profileVersion.channels']);
 
         if (Str::isUuid($selectedDevice)) {
             $deviceQuery->where('uuid', $selectedDevice);
@@ -200,14 +200,14 @@ new class extends Component implements HasForms {
 
         $device = $deviceQuery->first();
 
-        if (!$device?->schemaVersion) {
+        if (!$device?->profileVersion) {
             return;
         }
 
-        /** @var Collection<int, \App\Domain\DeviceSchema\Models\SchemaVersionTopic> $topics */
-        $topics = $device->schemaVersion->topics->where('direction', TopicDirection::Publish)->sortBy('sequence');
+        /** @var Collection<int, \App\Domain\DeviceProfile\Models\DeviceChannel> $topics */
+        $topics = $device->profileVersion->channels->where('direction', ChannelDirection::Publish)->sortBy('sequence');
 
-        $this->topicOptions = $topics->mapWithKeys(fn($topic): array => [$topic->suffix => $topic->label])->all();
+        $this->topicOptions = $topics->mapWithKeys(fn($topic): array => [$topic->address => $topic->label])->all();
     }
 
     /**

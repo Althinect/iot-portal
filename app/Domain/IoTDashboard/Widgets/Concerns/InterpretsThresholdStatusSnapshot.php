@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\IoTDashboard\Widgets\Concerns;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\MetricUnit;
+use App\Domain\DeviceProfile\Enums\MetricUnit;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Number;

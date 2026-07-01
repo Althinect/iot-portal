@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\DerivedParameterDefinition;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\ProfileDerivedParameterDefinition;
 use Tests\TestCase;
 
 uses(TestCase::class);
 
 it('evaluates JsonLogic expressions using transformed inputs', function (): void {
-    $definition = new DerivedParameterDefinition([
+    $definition = new ProfileDerivedParameterDefinition([
         'key' => 'avg_voltage',
         'data_type' => ParameterDataType::Decimal,
         'expression' => [
@@ -31,8 +31,8 @@ it('evaluates JsonLogic expressions using transformed inputs', function (): void
     expect($result)->toBe(225.0);
 });
 
-it('validates that dependencies exist in the schema version', function (): void {
-    $definition = new DerivedParameterDefinition([
+it('validates that dependencies exist in the profile version', function (): void {
+    $definition = new ProfileDerivedParameterDefinition([
         'key' => 'heat_index',
         'data_type' => ParameterDataType::Decimal,
         'expression' => [
@@ -51,21 +51,21 @@ it('validates that dependencies exist in the schema version', function (): void 
 });
 
 it('detects circular dependencies between derived parameters', function (): void {
-    $first = new DerivedParameterDefinition([
+    $first = new ProfileDerivedParameterDefinition([
         'key' => 'A',
         'data_type' => ParameterDataType::Decimal,
         'dependencies' => ['B'],
         'expression' => ['var' => 'B'],
     ]);
 
-    $second = new DerivedParameterDefinition([
+    $second = new ProfileDerivedParameterDefinition([
         'key' => 'B',
         'data_type' => ParameterDataType::Decimal,
         'dependencies' => ['A'],
         'expression' => ['var' => 'A'],
     ]);
 
-    $result = DerivedParameterDefinition::detectCircularDependencies([$first, $second]);
+    $result = ProfileDerivedParameterDefinition::detectCircularDependencies([$first, $second]);
 
     expect($result['has_cycle'])->toBeTrue();
 });

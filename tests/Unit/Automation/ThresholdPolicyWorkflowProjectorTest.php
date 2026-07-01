@@ -8,13 +8,11 @@ use App\Domain\Automation\Models\AutomationTelemetryTrigger;
 use App\Domain\Automation\Models\AutomationThresholdPolicy;
 use App\Domain\Automation\Services\ThresholdPolicyWorkflowProjector;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
-use App\Domain\DeviceSchema\Enums\MetricUnit;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\MetricUnit;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Shared\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -24,21 +22,15 @@ uses(TestCase::class, RefreshDatabase::class);
 
 it('projects a managed threshold-policy workflow with a profile-backed alert node', function (): void {
     $organization = Organization::factory()->create();
-    $deviceType = DeviceType::factory()->forOrganization($organization->id)->mqtt()->create();
-    $schema = DeviceSchema::factory()->forDeviceType($deviceType)->create([
-        'name' => 'Cold Room Schema',
-    ]);
-    $schemaVersion = DeviceSchemaVersion::factory()->active()->create([
-        'device_schema_id' => $schema->id,
-    ]);
-    $topic = SchemaVersionTopic::factory()->publish()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
+    $channel = DeviceChannel::factory()->telemetry()->create([
+        'device_profile_version_id' => $profileVersion->id,
         'key' => 'telemetry',
         'label' => 'Telemetry',
-        'suffix' => 'telemetry',
+        'address' => 'telemetry',
     ]);
-    $parameter = ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $topic->id,
+    $parameter = ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $channel->id,
         'key' => 'temperature',
         'label' => 'Temperature',
         'json_path' => '$.temperature',
@@ -49,8 +41,7 @@ it('projects a managed threshold-policy workflow with a profile-backed alert nod
     ]);
     $device = Device::factory()->create([
         'organization_id' => $organization->id,
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
         'name' => 'CLD 03 - 02',
     ]);
     $user = User::factory()->create([
@@ -71,7 +62,8 @@ it('projects a managed threshold-policy workflow with a profile-backed alert nod
     $policy = AutomationThresholdPolicy::factory()->create([
         'organization_id' => $organization->id,
         'device_id' => $device->id,
-        'parameter_definition_id' => $parameter->id,
+        'device_channel_id' => $channel->id,
+        'parameter_key' => $parameter->key,
         'notification_profile_id' => $profile->id,
         'name' => 'CLD 03 - 02 Temperature Threshold',
         'minimum_value' => 2,
@@ -99,8 +91,8 @@ it('projects a managed threshold-policy workflow with a profile-backed alert nod
     expect($nodes->keys()->all())->toBe(['trigger-1', 'condition-1', 'alert-1'])
         ->and(data_get($nodes->get('trigger-1'), 'data.config.source'))->toMatchArray([
             'device_id' => $device->id,
-            'topic_id' => $topic->id,
-            'parameter_definition_id' => $parameter->id,
+            'device_channel_id' => $channel->id,
+            'parameter_key' => $parameter->key,
         ])
         ->and(data_get($nodes->get('condition-1'), 'data.config.mode'))->toBe('guided')
         ->and(data_get($nodes->get('condition-1'), 'data.config.guided'))->toMatchArray([
@@ -143,6 +135,7 @@ it('projects a managed threshold-policy workflow with a profile-backed alert nod
     expect(AutomationTelemetryTrigger::query()
         ->where('workflow_version_id', $workflow?->active_version_id)
         ->where('device_id', $device->id)
-        ->where('schema_version_topic_id', $topic->id)
+        ->where('device_channel_id', $channel->id)
+        ->where('parameter_key', $parameter->key)
         ->exists())->toBeTrue();
 });

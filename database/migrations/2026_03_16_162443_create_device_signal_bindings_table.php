@@ -16,7 +16,8 @@ return new class extends Migration
         Schema::create('device_signal_bindings', function (Blueprint $table) {
             $table->id();
             $table->foreignId('device_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('parameter_definition_id')->constrained('parameter_definitions')->cascadeOnDelete();
+            $table->foreignId('device_channel_id')->constrained('device_channels')->cascadeOnDelete();
+            $table->string('parameter_key');
             $table->string('source_topic');
             $table->string('source_json_path');
             $table->string('source_adapter', 100)->nullable();
@@ -26,7 +27,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['source_topic', 'is_active'], 'device_signal_bindings_source_topic_active_index');
-            $table->unique(['device_id', 'parameter_definition_id'], 'device_signal_bindings_device_parameter_unique');
+            $table->unique(['device_id', 'device_channel_id', 'parameter_key'], 'device_signal_bindings_device_channel_parameter_unique');
         });
     }
 

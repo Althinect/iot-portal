@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\Shared\Models\User;
+use App\Filament\Admin\Resources\DeviceManagement\Devices\DeviceResource;
 use App\Filament\Admin\Resources\DeviceManagement\Devices\Pages\ListDevices;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -17,6 +18,13 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     Carbon::setTestNow();
+});
+
+it('can render the device resource index route', function (): void {
+    Device::factory()->create();
+
+    $this->get(DeviceResource::getUrl('index'))
+        ->assertSuccessful();
 });
 
 it('shows the effective offline state for stale devices even before the sweep rewrites the stored status', function (): void {

@@ -14,7 +14,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('organization_id')->constrained()->cascadeOnDelete();
             $table->foreignId('device_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('parameter_definition_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('device_channel_id')->constrained('device_channels')->cascadeOnDelete();
+            $table->string('parameter_key');
             $table->string('name');
             $table->decimal('minimum_value', 10, 3)->nullable();
             $table->decimal('maximum_value', 10, 3)->nullable();
@@ -37,7 +38,7 @@ return new class extends Migration
 
             $table->index(['organization_id', 'is_active']);
             $table->index(['organization_id', 'device_id']);
-            $table->index(['device_id', 'parameter_definition_id', 'is_active'], 'threshold_policies_device_parameter_active_idx');
+            $table->index(['device_id', 'device_channel_id', 'parameter_key', 'is_active'], 'threshold_policies_device_channel_parameter_active_idx');
             $table->unique(['organization_id', 'legacy_alert_rule_id']);
         });
     }

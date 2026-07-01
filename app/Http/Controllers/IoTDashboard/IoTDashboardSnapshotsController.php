@@ -26,9 +26,9 @@ class IoTDashboardSnapshotsController extends Controller
         $dashboard->loadMissing([
             'widgets' => fn ($query) => $query
                 ->with([
-                    'topic:id,label,suffix',
-                    'device:id,uuid,name,external_id,device_type_id,organization_id,connection_state,last_seen_at,offline_deadline_at,presence_timeout_seconds',
-                    'device.deviceType:id,protocol_config',
+                    'topic:id,label,address',
+                    'device:id,uuid,name,external_id,device_profile_version_id,organization_id,connection_state,last_seen_at,offline_deadline_at,presence_timeout_seconds',
+                    'device.profileVersion:id,protocol_config',
                 ])
                 ->orderBy('sequence')
                 ->orderBy('id'),

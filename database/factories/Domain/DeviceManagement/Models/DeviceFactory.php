@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace Database\Factories\Domain\DeviceManagement\Models;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Domain\Shared\Models\Organization;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
@@ -27,8 +26,7 @@ class DeviceFactory extends Factory
     {
         return [
             'organization_id' => Organization::factory(),
-            'device_type_id' => DeviceType::factory(),
-            'device_schema_version_id' => DeviceSchemaVersion::factory(),
+            'device_profile_version_id' => DeviceProfileVersion::factory(),
             'parent_device_id' => null,
             'is_virtual' => false,
             'uuid' => (string) Str::uuid(),

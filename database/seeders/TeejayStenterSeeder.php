@@ -23,17 +23,17 @@ class TeejayStenterSeeder extends TeejayMigrationSeederSupport
             'status' => [
                 'label' => 'Status',
                 'required' => true,
-                'allowed_device_type_keys' => ['status'],
+                'allowed_device_profile_keys' => ['status'],
             ],
             'energy' => [
                 'label' => 'Energy',
                 'required' => true,
-                'allowed_device_type_keys' => ['energy_meter'],
+                'allowed_device_profile_keys' => ['energy_meter'],
             ],
             'length' => [
                 'label' => 'Length',
                 'required' => true,
-                'allowed_device_type_keys' => ['fabric_length_counter'],
+                'allowed_device_profile_keys' => ['fabric_length_counter'],
             ],
         ],
     ];

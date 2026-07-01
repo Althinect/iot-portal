@@ -8,7 +8,7 @@ use App\Domain\DataIngestion\Concerns\InteractsWithTelemetrySideEffectsQueue;
 use App\Domain\DataIngestion\Models\IngestionMessage;
 use App\Domain\DataIngestion\Services\TelemetryAnalyticsPublishService;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Events\TelemetryReceived;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
@@ -26,21 +26,21 @@ class QueueTelemetryAnalyticsPublishes implements ShouldQueue
     {
         $telemetryLog = $event->telemetryLog->loadMissing([
             'device:id,uuid,external_id,organization_id,is_active',
-            'topic:id,device_schema_version_id,key,suffix',
+            'channel:id,device_profile_version_id,key,address',
             'ingestionMessage:id,status',
         ]);
 
         if (
             ! in_array($telemetryLog->processing_state, ['processed', 'invalid'], true)
             || ! $telemetryLog->device instanceof Device
-            || ! $telemetryLog->topic instanceof SchemaVersionTopic
+            || ! $telemetryLog->channel instanceof DeviceChannel
             || ! $telemetryLog->ingestionMessage instanceof IngestionMessage
         ) {
             return;
         }
 
         $device = $telemetryLog->device;
-        $topic = $telemetryLog->topic;
+        $channel = $telemetryLog->channel;
         $ingestionMessage = $telemetryLog->ingestionMessage;
 
         if ($telemetryLog->processing_state === 'processed') {
@@ -51,7 +51,7 @@ class QueueTelemetryAnalyticsPublishes implements ShouldQueue
             }
 
             /** @var array<string, mixed> $finalValues */
-            $this->analyticsPublishService->publishTelemetry($device, $topic, $finalValues, $ingestionMessage);
+            $this->analyticsPublishService->publishTelemetry($device, $channel, $finalValues, $ingestionMessage);
 
             return;
         }
@@ -67,7 +67,7 @@ class QueueTelemetryAnalyticsPublishes implements ShouldQueue
         }
 
         /** @var array<string, mixed> $validationErrors */
-        $this->analyticsPublishService->publishInvalid($device, $topic, $validationErrors, $ingestionMessage);
+        $this->analyticsPublishService->publishInvalid($device, $channel, $validationErrors, $ingestionMessage);
     }
 
     public function viaConnection(): string

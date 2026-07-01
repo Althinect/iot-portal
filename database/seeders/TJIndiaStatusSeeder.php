@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\ParameterCategory;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ParameterCategory;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 
 class TJIndiaStatusSeeder extends TJIndiaMigrationSeederSupport
 {
@@ -60,7 +60,7 @@ class TJIndiaStatusSeeder extends TJIndiaMigrationSeederSupport
         foreach ($inventory as $deviceConfig) {
             $parentDevice = $hubs[$deviceConfig['hub_imei']] ?? null;
 
-            if (! $parentDevice instanceof Device || ! $schemaVersion instanceof DeviceSchemaVersion || ! is_string($deviceConfig['peripheral_type_hex'])) {
+            if (! $parentDevice instanceof Device || ! $schemaVersion instanceof DeviceProfileVersion || ! is_string($deviceConfig['peripheral_type_hex'])) {
                 continue;
             }
 
@@ -86,16 +86,16 @@ class TJIndiaStatusSeeder extends TJIndiaMigrationSeederSupport
                 ],
             );
 
-            $topic = $schemaVersion->topics()->where('key', 'telemetry')->first();
+            $topic = $schemaVersion->channels()->where('key', 'telemetry')->first();
 
-            if (! $topic instanceof SchemaVersionTopic) {
+            if (! $topic instanceof DeviceChannel) {
                 continue;
             }
 
-            /** @var ParameterDefinition|null $parameter */
+            /** @var ProfileParameterDefinition|null $parameter */
             $parameter = $topic->parameters()->where('key', 'status')->first();
 
-            if (! $parameter instanceof ParameterDefinition) {
+            if (! $parameter instanceof ProfileParameterDefinition) {
                 continue;
             }
 

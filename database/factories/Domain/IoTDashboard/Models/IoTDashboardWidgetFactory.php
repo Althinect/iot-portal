@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Database\Factories\Domain\IoTDashboard\Models;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
-use App\Domain\IoTDashboard\Widgets\BarChart\BarInterval;
 use App\Domain\IoTDashboard\Widgets\StateCard\StateCardStyle;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
@@ -27,10 +26,15 @@ class IoTDashboardWidgetFactory extends Factory
      */
     public function definition(): array
     {
+        $device = Device::factory()->create();
+        $channel = DeviceChannel::factory()
+            ->publish()
+            ->create(['device_profile_version_id' => $device->device_profile_version_id]);
+
         return [
             'iot_dashboard_id' => IoTDashboardFactory::new(),
-            'device_id' => Device::factory(),
-            'schema_version_topic_id' => SchemaVersionTopic::factory()->publish(),
+            'device_id' => $device->id,
+            'device_channel_id' => $channel->id,
             'type' => WidgetType::LineChart->value,
             'title' => Str::title($this->faker->words(3, true)),
             'config' => [
@@ -63,21 +67,6 @@ class IoTDashboardWidgetFactory extends Factory
     {
         return $this->state(fn (array $attributes): array => [
             'type' => WidgetType::BarChart->value,
-            'config' => [
-                'series' => [
-                    ['key' => 'total_energy_kwh', 'label' => 'Total Energy', 'color' => '#0ea5e9'],
-                ],
-                'transport' => [
-                    'use_websocket' => false,
-                    'use_polling' => true,
-                    'polling_interval_seconds' => 60,
-                ],
-                'window' => [
-                    'lookback_minutes' => 1440,
-                    'max_points' => 24,
-                ],
-                'bar_interval' => BarInterval::Hourly->value,
-            ],
         ]);
     }
 
@@ -86,33 +75,8 @@ class IoTDashboardWidgetFactory extends Factory
         return $this->state(fn (array $attributes): array => [
             'type' => WidgetType::StatusSummary->value,
             'config' => [
-                'rows' => [
-                    [
-                        'tiles' => [
-                            [
-                                'key' => 'V1',
-                                'label' => 'V1',
-                                'base_color' => '#22d3ee',
-                                'unit' => 'Volts',
-                                'threshold_ranges' => [],
-                                'source' => [
-                                    'type' => 'latest_parameter',
-                                    'parameter_key' => 'V1',
-                                ],
-                            ],
-                            [
-                                'key' => 'A1',
-                                'label' => 'A1',
-                                'base_color' => '#10b981',
-                                'unit' => 'A',
-                                'threshold_ranges' => [],
-                                'source' => [
-                                    'type' => 'latest_parameter',
-                                    'parameter_key' => 'A1',
-                                ],
-                            ],
-                        ],
-                    ],
+                'series' => [
+                    ['key' => 'status', 'label' => 'Status', 'color' => '#22c55e'],
                 ],
                 'transport' => [
                     'use_websocket' => true,
@@ -120,7 +84,7 @@ class IoTDashboardWidgetFactory extends Factory
                     'polling_interval_seconds' => 10,
                 ],
                 'window' => [
-                    'lookback_minutes' => 180,
+                    'lookback_minutes' => 1440,
                     'max_points' => 1,
                 ],
             ],

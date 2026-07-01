@@ -7,9 +7,10 @@ namespace App\Console\Commands\IoT;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Publishing\Nats\NatsDeviceStateStore;
 use App\Domain\DeviceManagement\Publishing\Nats\NatsPublisherFactory;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceManagement\ValueObjects\Protocol\MqttProtocolConfig;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Events\DeviceStateReceived;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Collection;
@@ -55,7 +56,7 @@ class ManualDevicePublishCommand extends Command
             /** @var Device|null $device */
             $device = Device::query()
                 ->where('uuid', $uuid)
-                ->with(['deviceType', 'schemaVersion.topics.parameters'])
+                ->with(['profileVersion.channels.parameters'])
                 ->first();
 
             if (! $device) {
@@ -65,46 +66,46 @@ class ManualDevicePublishCommand extends Command
             }
         }
 
-        $publishTopics = $device->schemaVersion?->topics
-            ?->filter(fn (SchemaVersionTopic $t): bool => $t->isPublish())
+        $publishChannels = $device->profileVersion?->channels
+            ?->filter(fn (DeviceChannel $channel): bool => $channel->isPublish())
             ->sortBy('sequence');
 
-        if (! $publishTopics || $publishTopics->isEmpty()) {
-            $this->error('No publish topics found for this device schema.');
+        if (! $publishChannels || $publishChannels->isEmpty()) {
+            $this->error('No publish channels found for this device profile.');
 
             return 1;
         }
 
         intro("Manual State Publish — {$device->name}");
 
-        $topicOptions = $publishTopics
-            ->mapWithKeys(fn (SchemaVersionTopic $t): array => [(string) $t->id => "{$t->label} ({$t->suffix})"])
+        $channelOptions = $publishChannels
+            ->mapWithKeys(fn (DeviceChannel $channel): array => [(string) $channel->id => "{$channel->label} ({$channel->address})"])
             ->all();
 
-        /** @var string $selectedTopicId */
-        $selectedTopicId = select(
-            label: 'Which publish topic?',
-            options: $topicOptions,
+        /** @var string $selectedChannelId */
+        $selectedChannelId = select(
+            label: 'Which publish channel?',
+            options: $channelOptions,
         );
 
-        /** @var SchemaVersionTopic|null $selectedTopic */
-        $selectedTopic = $publishTopics->firstWhere('id', (int) $selectedTopicId);
+        /** @var DeviceChannel|null $selectedChannel */
+        $selectedChannel = $publishChannels->firstWhere('id', (int) $selectedChannelId);
 
-        if (! $selectedTopic) {
-            $this->error('Selected topic not found.');
+        if (! $selectedChannel) {
+            $this->error('Selected channel not found.');
 
             return 1;
         }
 
-        $selectedTopic->loadMissing('parameters');
+        $selectedChannel->loadMissing('parameters');
 
-        /** @var Collection<int, ParameterDefinition> $parameters */
-        $parameters = $selectedTopic->parameters
+        /** @var Collection<int, ProfileParameterDefinition> $parameters */
+        $parameters = $selectedChannel->parameters
             ->where('is_active', true)
             ->sortBy('sequence');
 
         if ($parameters->isEmpty()) {
-            $this->warn('No active parameters for this topic. Publishing empty payload.');
+            $this->warn('No active parameters for this channel. Publishing empty payload.');
         }
 
         $parameterValues = $this->collectParameterValues($parameters);
@@ -115,9 +116,10 @@ class ManualDevicePublishCommand extends Command
             $payload = $parameter->placeValue($payload, $value);
         }
 
-        $baseTopic = $device->deviceType?->protocol_config?->getBaseTopic() ?? 'device';
+        $protocolConfig = $device->profileVersion?->protocol_config;
+        $baseTopic = $protocolConfig instanceof MqttProtocolConfig ? $protocolConfig->getBaseTopic() : 'device';
         $identifier = $device->external_id ?: $device->uuid;
-        $mqttTopic = trim($baseTopic, '/').'/'.$identifier.'/'.$selectedTopic->suffix;
+        $mqttTopic = trim($baseTopic, '/').'/'.$identifier.'/'.trim($selectedChannel->address, '/');
         $natsSubject = str_replace('/', '.', $mqttTopic);
 
         table(
@@ -225,14 +227,14 @@ class ManualDevicePublishCommand extends Command
 
         return Device::query()
             ->where('id', $deviceId)
-            ->with(['deviceType', 'schemaVersion.topics.parameters'])
+            ->with(['profileVersion.channels.parameters'])
             ->first();
     }
 
     /**
      * Prompt the user for each parameter value using Laravel Prompts form.
      *
-     * @param  Collection<int, ParameterDefinition>  $parameters
+     * @param  Collection<int, ProfileParameterDefinition>  $parameters
      * @return array<string, mixed>
      */
     private function collectParameterValues(Collection $parameters): array
@@ -267,7 +269,7 @@ class ManualDevicePublishCommand extends Command
         return $typed;
     }
 
-    private function formatDefaultForPrompt(ParameterDefinition $parameter): string
+    private function formatDefaultForPrompt(ProfileParameterDefinition $parameter): string
     {
         $default = $parameter->resolvedDefaultValue();
 
@@ -278,7 +280,7 @@ class ManualDevicePublishCommand extends Command
         return is_scalar($default) ? (string) $default : '';
     }
 
-    private function validateParameterInput(ParameterDefinition $parameter, string $value): ?string
+    private function validateParameterInput(ProfileParameterDefinition $parameter, string $value): ?string
     {
         return match ($parameter->type) {
             ParameterDataType::Integer => preg_match('/^-?\d+$/', $value) === 1 ? null : 'Must be an integer.',
@@ -287,7 +289,7 @@ class ManualDevicePublishCommand extends Command
         };
     }
 
-    private function castParameterValue(ParameterDefinition $parameter, mixed $raw): mixed
+    private function castParameterValue(ProfileParameterDefinition $parameter, mixed $raw): mixed
     {
         $stringValue = is_string($raw) ? $raw : (is_scalar($raw) ? (string) $raw : '');
 

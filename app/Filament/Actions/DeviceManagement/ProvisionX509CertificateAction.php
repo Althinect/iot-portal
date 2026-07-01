@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Filament\Actions\DeviceManagement;
 
-use App\Domain\DeviceManagement\Enums\ProtocolType;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Services\DeviceCertificateIssuer;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\DTO\ChannelDefinition;
+use App\Domain\DeviceProfile\Enums\Protocol;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Services\DeviceProfileContractResolver;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\TextInput;
@@ -57,23 +59,31 @@ final class ProvisionX509CertificateAction
                         Placeholder::make('topic_scope')
                             ->label('Topic Scope')
                             ->content(function (Device $record): string {
-                                $record->loadMissing('schemaVersion.topics');
+                                $record->loadMissing('profileVersion');
 
-                                $topics = $record->schemaVersion?->topics
-                                    ?->sortBy('sequence')
-                                    ->map(fn (SchemaVersionTopic $topic): string => $topic->resolvedTopic($record))
+                                if (! $record->profileVersion instanceof DeviceProfileVersion) {
+                                    return 'No profile version is assigned to this device.';
+                                }
+
+                                $contract = app(DeviceProfileContractResolver::class)->resolve($record->profileVersion);
+                                $identifier = is_string($record->external_id) && trim($record->external_id) !== ''
+                                    ? $record->external_id
+                                    : $record->uuid;
+                                $topics = $contract->channels()
+                                    ->sortBy('sequence')
+                                    ->map(fn (ChannelDefinition $channel): string => $channel->resolvedAddress($identifier, $contract->protocolConfig))
                                     ->values()
                                     ->all();
 
                                 if (! is_array($topics) || $topics === []) {
-                                    return 'No schema topics are configured for this device.';
+                                    return 'No channels are configured for this device.';
                                 }
 
                                 return implode("\n", $topics);
                             }),
                     ]),
             ])
-            ->visible(fn (Device $record): bool => $record->deviceType?->default_protocol === ProtocolType::Mqtt)
+            ->visible(fn (Device $record): bool => $record->profileVersion?->protocol === Protocol::Mqtt)
             ->action(function (array $data, Device $record): void {
                 /** @var DeviceCertificateIssuer $issuer */
                 $issuer = app(DeviceCertificateIssuer::class);

@@ -3,10 +3,8 @@
 declare(strict_types=1);
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Domain\Shared\Models\User;
 use App\Filament\Admin\Resources\DeviceManagement\Devices\Pages\ViewDevice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -40,16 +38,12 @@ it('can render nested metadata on the view device page', function (): void {
 });
 
 it('shows the firmware viewer action on the device view page', function (): void {
-    $deviceType = DeviceType::factory()->mqtt()->create();
-    $schema = DeviceSchema::factory()->forDeviceType($deviceType)->create();
-    $schemaVersion = DeviceSchemaVersion::factory()->create([
-        'device_schema_id' => $schema->id,
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create([
         'firmware_template' => 'const char* DEVICE_ID = "{{DEVICE_ID}}";',
     ]);
 
     $device = Device::factory()->create([
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
         'external_id' => 'device-101',
     ]);
 
@@ -60,16 +54,12 @@ it('shows the firmware viewer action on the device view page', function (): void
 });
 
 it('can open firmware modal and see rendered firmware', function (): void {
-    $deviceType = DeviceType::factory()->mqtt()->create();
-    $schema = DeviceSchema::factory()->forDeviceType($deviceType)->create();
-    $schemaVersion = DeviceSchemaVersion::factory()->create([
-        'device_schema_id' => $schema->id,
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create([
         'firmware_template' => 'const char* DEVICE_ID = "{{DEVICE_ID}}";',
     ]);
 
     $device = Device::factory()->create([
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
         'external_id' => 'device-xyz',
     ]);
 
@@ -84,19 +74,14 @@ it('can open firmware modal and see rendered firmware', function (): void {
 });
 
 it('shows control dashboard action when the device has command topics', function (): void {
-    $deviceType = DeviceType::factory()->mqtt()->create();
-    $schema = DeviceSchema::factory()->forDeviceType($deviceType)->create();
-    $schemaVersion = DeviceSchemaVersion::factory()->create([
-        'device_schema_id' => $schema->id,
-    ]);
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
 
-    SchemaVersionTopic::factory()->subscribe()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    DeviceChannel::factory()->command()->create([
+        'device_profile_version_id' => $profileVersion->id,
     ]);
 
     $device = Device::factory()->create([
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
     ]);
 
     livewire(ViewDevice::class, ['record' => $device->id])

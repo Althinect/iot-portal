@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Filament\Admin\Resources\DeviceManagement\Devices\Tables;
 
 use App\Domain\DeviceManagement\Models\Device;
+use App\Domain\DeviceProfile\Models\DeviceProfile;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Filament\Actions\DeviceManagement\ProvisionX509CertificateAction;
 use App\Filament\Actions\DeviceManagement\ReplicateDeviceActions;
 use App\Filament\Actions\DeviceManagement\RevokeX509CertificateAction;
@@ -12,7 +14,6 @@ use App\Filament\Actions\DeviceManagement\RotateX509CertificateAction;
 use App\Filament\Actions\DeviceManagement\SimulatePublishingActions;
 use App\Filament\Actions\DeviceManagement\ViewFirmwareAction;
 use App\Filament\Admin\Resources\DeviceManagement\Devices\DeviceResource;
-use App\Filament\Admin\Resources\DeviceManagement\DeviceTypes\DeviceTypeResource;
 use App\Filament\Admin\Resources\Shared\Organizations\OrganizationResource;
 use Filament\Actions;
 use Filament\Support\Icons\Heroicon;
@@ -44,13 +45,10 @@ class DevicesTable
                         ? OrganizationResource::getUrl('view', ['record' => $record->organization_id])
                         : null),
 
-                TextColumn::make('deviceType.name')
-                    ->label('Type')
+                TextColumn::make('profileVersion.profile.name')
+                    ->label('Profile')
                     ->searchable()
-                    ->sortable()
-                    ->url(fn (Device $record): ?string => $record->device_type_id
-                        ? DeviceTypeResource::getUrl('view', ['record' => $record->device_type_id])
-                        : null),
+                    ->sortable(),
 
                 TextColumn::make('device_kind')
                     ->label('Kind')
@@ -61,8 +59,8 @@ class DevicesTable
                         return $query->orderBy('is_virtual', $direction);
                     }),
 
-                TextColumn::make('schemaVersion.version')
-                    ->label('Schema')
+                TextColumn::make('profileVersion.version')
+                    ->label('Profile Version')
                     ->formatStateUsing(fn (mixed $state): string => is_scalar($state) ? "v{$state}" : '—')
                     ->sortable(),
 
@@ -130,10 +128,37 @@ class DevicesTable
                     ->searchable()
                     ->preload(),
 
-                SelectFilter::make('deviceType')
-                    ->relationship('deviceType', 'name')
+                SelectFilter::make('device_profile_id')
+                    ->label('Device Profile')
+                    ->options(fn (): array => self::profileOptions())
                     ->searchable()
-                    ->preload(),
+                    ->preload()
+                    ->query(function (Builder $query, array $data): Builder {
+                        $deviceProfileId = $data['value'] ?? null;
+
+                        if (! is_numeric($deviceProfileId)) {
+                            return $query;
+                        }
+
+                        return $query->whereHas('profileVersion', function (Builder $profileVersionQuery) use ($deviceProfileId): void {
+                            $profileVersionQuery->where('device_profile_id', (int) $deviceProfileId);
+                        });
+                    }),
+
+                SelectFilter::make('device_profile_version_id')
+                    ->label('Device Profile Version')
+                    ->options(fn (mixed $livewire): array => self::profileVersionOptions($livewire))
+                    ->searchable()
+                    ->preload()
+                    ->query(function (Builder $query, array $data): Builder {
+                        $deviceProfileVersionId = $data['value'] ?? null;
+
+                        if (! is_numeric($deviceProfileVersionId)) {
+                            return $query;
+                        }
+
+                        return $query->where('device_profile_version_id', (int) $deviceProfileVersionId);
+                    }),
 
                 SelectFilter::make('is_virtual')
                     ->label('Kind')
@@ -206,5 +231,37 @@ class DevicesTable
             ])
             ->defaultSort('created_at', 'desc')
             ->poll('30s');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function profileOptions(): array
+    {
+        return DeviceProfile::query()
+            ->orderBy('name')
+            ->pluck('name', 'id')
+            ->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function profileVersionOptions(mixed $livewire): array
+    {
+        $deviceProfileId = data_get($livewire, 'tableFilters.device_profile_id.value');
+
+        if (! is_numeric($deviceProfileId)) {
+            return [];
+        }
+
+        return DeviceProfileVersion::query()
+            ->where('device_profile_id', (int) $deviceProfileId)
+            ->orderBy('version')
+            ->get()
+            ->mapWithKeys(fn (DeviceProfileVersion $profileVersion): array => [
+                $profileVersion->id => 'v'.$profileVersion->version,
+            ])
+            ->all();
     }
 }

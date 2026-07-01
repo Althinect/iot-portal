@@ -32,8 +32,9 @@ class AlertsTable
                     ->searchable()
                     ->sortable()
                     ->toggleable(),
-                TextColumn::make('parameterDefinition.label')
+                TextColumn::make('parameter_key')
                     ->label('Parameter')
+                    ->description(fn (Alert $record): ?string => $record->deviceChannel?->label)
                     ->searchable()
                     ->sortable()
                     ->toggleable(),

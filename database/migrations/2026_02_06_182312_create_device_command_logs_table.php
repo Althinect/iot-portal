@@ -14,10 +14,10 @@ return new class extends Migration
         Schema::create('device_command_logs', function (Blueprint $table) {
             $table->id();
             $table->foreignId('device_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('schema_version_topic_id')->constrained('schema_version_topics')->restrictOnDelete();
-            $table->foreignId('response_schema_version_topic_id')
+            $table->foreignId('device_channel_id')->constrained('device_channels')->restrictOnDelete();
+            $table->foreignId('response_device_channel_id')
                 ->nullable()
-                ->constrained('schema_version_topics')
+                ->constrained('device_channels')
                 ->nullOnDelete();
             $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
             $table->jsonb('command_payload');

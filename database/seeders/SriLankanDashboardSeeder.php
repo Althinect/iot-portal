@@ -6,9 +6,8 @@ namespace Database\Seeders;
 
 use App\Domain\Automation\Models\AutomationThresholdPolicy;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
@@ -106,8 +105,8 @@ class SriLankanDashboardSeeder extends Seeder
      *         maximum_value: float
      *     },
      *     device: Device,
-     *     topic: SchemaVersionTopic,
-     *     parameter: ParameterDefinition
+     *     topic: DeviceChannel,
+     *     parameter: ProfileParameterDefinition
      * }>  $configuredScopes
      * @return array<int, AutomationThresholdPolicy>
      */
@@ -121,7 +120,8 @@ class SriLankanDashboardSeeder extends Seeder
                 ->firstOrNew([
                     'organization_id' => $organization->id,
                     'device_id' => $scope['device']->id,
-                    'parameter_definition_id' => $scope['parameter']->id,
+                    'device_channel_id' => $scope['topic']->id,
+                    'parameter_key' => $scope['parameter']->key,
                     'legacy_alert_rule_id' => null,
                 ]);
 
@@ -157,8 +157,8 @@ class SriLankanDashboardSeeder extends Seeder
      *         maximum_value: float
      *     },
      *     device: Device,
-     *     topic: SchemaVersionTopic,
-     *     parameter: ParameterDefinition
+     *     topic: DeviceChannel,
+     *     parameter: ProfileParameterDefinition
      * }>  $configuredScopes
      * @param  array<int, AutomationThresholdPolicy>  $policies
      */
@@ -183,7 +183,8 @@ class SriLankanDashboardSeeder extends Seeder
                 ],
                 [
                     'device_id' => $scope['device']->id,
-                    'schema_version_topic_id' => $scope['topic']->id,
+                    'device_channel_id' => $scope['topic']->id,
+                    'device_channel_id' => $scope['topic']->id,
                     'type' => WidgetType::ThresholdStatusCard->value,
                     'config' => [
                         'policy_id' => (int) $policy->id,
@@ -231,8 +232,8 @@ class SriLankanDashboardSeeder extends Seeder
      *         maximum_value: float
      *     },
      *     device: Device,
-     *     topic: SchemaVersionTopic,
-     *     parameter: ParameterDefinition
+     *     topic: DeviceChannel,
+     *     parameter: ProfileParameterDefinition
      * }>  $configuredScopes
      */
     private function syncDeviceHistoryCharts(IoTDashboard $dashboard, array $configuredScopes): void
@@ -250,7 +251,8 @@ class SriLankanDashboardSeeder extends Seeder
                 ],
                 [
                     'device_id' => $scope['device']->id,
-                    'schema_version_topic_id' => $scope['topic']->id,
+                    'device_channel_id' => $scope['topic']->id,
+                    'device_channel_id' => $scope['topic']->id,
                     'type' => WidgetType::LineChart->value,
                     'config' => [
                         'series' => [[
@@ -298,16 +300,15 @@ class SriLankanDashboardSeeder extends Seeder
      *         maximum_value: float
      *     },
      *     device: Device,
-     *     topic: SchemaVersionTopic,
-     *     parameter: ParameterDefinition
+     *     topic: DeviceChannel,
+     *     parameter: ProfileParameterDefinition
      * }>
      */
     private function resolveConfiguredCardScopes(Organization $organization): array
     {
         $devices = Device::query()
             ->with([
-                'schemaVersion.topics' => fn ($query) => $query
-                    ->where('direction', TopicDirection::Publish->value)
+                'profileVersion.channels' => fn ($query) => $query
                     ->where('key', 'telemetry')
                     ->with([
                         'parameters' => fn ($query) => $query
@@ -335,7 +336,7 @@ class SriLankanDashboardSeeder extends Seeder
                 $card['parameter_key'],
             );
 
-            if (! $topic instanceof SchemaVersionTopic || ! $parameter instanceof ParameterDefinition) {
+            if (! $topic instanceof DeviceChannel || ! $parameter instanceof ProfileParameterDefinition) {
                 continue;
             }
 
@@ -351,19 +352,19 @@ class SriLankanDashboardSeeder extends Seeder
     }
 
     /**
-     * @return array{topic: SchemaVersionTopic|null, parameter: ParameterDefinition|null}
+     * @return array{topic: DeviceChannel|null, parameter: ProfileParameterDefinition|null}
      */
     private function resolveDeviceParameterScope(Device $device, string $parameterKey): array
     {
-        foreach ($device->schemaVersion?->topics ?? [] as $topic) {
-            if (! $topic instanceof SchemaVersionTopic) {
+        foreach ($device->profileVersion?->channels ?? [] as $topic) {
+            if (! $topic instanceof DeviceChannel) {
                 continue;
             }
 
             $parameter = $topic->parameters
-                ->first(fn (ParameterDefinition $parameter): bool => $parameter->key === $parameterKey);
+                ->first(fn (ProfileParameterDefinition $parameter): bool => $parameter->key === $parameterKey);
 
-            if ($parameter instanceof ParameterDefinition) {
+            if ($parameter instanceof ProfileParameterDefinition) {
                 return [
                     'topic' => $topic,
                     'parameter' => $parameter,

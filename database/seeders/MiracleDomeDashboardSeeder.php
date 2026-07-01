@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\MetricUnit;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\MetricUnit;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
@@ -81,9 +81,9 @@ class MiracleDomeDashboardSeeder extends Seeder
 
         foreach (array_values(self::DEVICE_WIDGETS) as $index => $configuration) {
             $device = $this->resolveDevice($dashboard->organization_id, $configuration['external_id']);
-            $topic = $device?->schemaVersion?->topics()->where('key', 'telemetry')->first();
+            $channel = $device?->profileVersion?->channels()->where('key', 'telemetry')->first();
 
-            if (! $device instanceof Device || ! $topic instanceof SchemaVersionTopic) {
+            if (! $device instanceof Device || ! $channel instanceof DeviceChannel) {
                 continue;
             }
 
@@ -97,7 +97,8 @@ class MiracleDomeDashboardSeeder extends Seeder
                 ],
                 [
                     'device_id' => $device->id,
-                    'schema_version_topic_id' => $topic->id,
+                    'device_channel_id' => $channel->id,
+                    'device_channel_id' => $channel->id,
                     'type' => WidgetType::StatusSummary->value,
                     'config' => [
                         'rows' => [
@@ -218,7 +219,8 @@ class MiracleDomeDashboardSeeder extends Seeder
                 ],
                 [
                     'device_id' => $device->id,
-                    'schema_version_topic_id' => $topic->id,
+                    'device_channel_id' => $channel->id,
+                    'device_channel_id' => $channel->id,
                     'type' => WidgetType::LineChart->value,
                     'config' => [
                         'series' => [
@@ -261,9 +263,9 @@ class MiracleDomeDashboardSeeder extends Seeder
 
         foreach (array_values(self::DEVICE_WIDGETS) as $index => $configuration) {
             $device = $this->resolveDevice($dashboard->organization_id, $configuration['external_id']);
-            $topic = $device?->schemaVersion?->topics()->where('key', 'telemetry')->first();
+            $channel = $device?->profileVersion?->channels()->where('key', 'telemetry')->first();
 
-            if (! $device instanceof Device || ! $topic instanceof SchemaVersionTopic) {
+            if (! $device instanceof Device || ! $channel instanceof DeviceChannel) {
                 continue;
             }
 
@@ -277,7 +279,8 @@ class MiracleDomeDashboardSeeder extends Seeder
                 ],
                 [
                     'device_id' => $device->id,
-                    'schema_version_topic_id' => $topic->id,
+                    'device_channel_id' => $channel->id,
+                    'device_channel_id' => $channel->id,
                     'type' => WidgetType::BarChart->value,
                     'config' => [
                         'series' => [

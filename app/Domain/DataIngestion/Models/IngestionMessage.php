@@ -6,8 +6,8 @@ namespace App\Domain\DataIngestion\Models;
 
 use App\Domain\DataIngestion\Enums\IngestionStatus;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use Database\Factories\Domain\DataIngestion\Models\IngestionMessageFactory;
@@ -66,20 +66,16 @@ class IngestionMessage extends Model
         return $this->belongsTo(Device::class);
     }
 
-    /**
-     * @return BelongsTo<DeviceSchemaVersion, $this>
-     */
-    public function schemaVersion(): BelongsTo
+    /** @return BelongsTo<DeviceProfileVersion, $this> */
+    public function profileVersion(): BelongsTo
     {
-        return $this->belongsTo(DeviceSchemaVersion::class, 'device_schema_version_id');
+        return $this->belongsTo(DeviceProfileVersion::class, 'device_profile_version_id');
     }
 
-    /**
-     * @return BelongsTo<SchemaVersionTopic, $this>
-     */
-    public function topic(): BelongsTo
+    /** @return BelongsTo<DeviceChannel, $this> */
+    public function channel(): BelongsTo
     {
-        return $this->belongsTo(SchemaVersionTopic::class, 'schema_version_topic_id');
+        return $this->belongsTo(DeviceChannel::class, 'device_channel_id');
     }
 
     /**

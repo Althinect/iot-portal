@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domain\DeviceControl\Services;
 
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 
 class ControlSchemaBuilder
 {
@@ -26,29 +26,29 @@ class ControlSchemaBuilder
      *     button_value: mixed
      * }>
      */
-    public function buildForTopic(SchemaVersionTopic $topic): array
+    public function buildForChannel(DeviceChannel $channel): array
     {
-        $topic->loadMissing('parameters');
+        $channel->loadMissing('parameters');
 
-        return $topic->parameters
+        return $channel->parameters
             ->where('is_active', true)
             ->sortBy('sequence')
             ->values()
-            ->map(fn (ParameterDefinition $parameter): array => $this->buildControlDefinition($parameter))
+            ->map(fn (ProfileParameterDefinition $parameter): array => $this->buildControlDefinition($parameter))
             ->all();
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function defaultControlValues(SchemaVersionTopic $topic): array
+    public function defaultControlValues(DeviceChannel $channel): array
     {
-        $topic->loadMissing('parameters');
+        $channel->loadMissing('parameters');
 
-        return $topic->parameters
+        return $channel->parameters
             ->where('is_active', true)
             ->sortBy('sequence')
-            ->mapWithKeys(function (ParameterDefinition $parameter): array {
+            ->mapWithKeys(function (ProfileParameterDefinition $parameter): array {
                 return [
                     $parameter->key => $parameter->resolvedDefaultValue(),
                 ];
@@ -73,7 +73,7 @@ class ControlSchemaBuilder
      *     button_value: mixed
      * }
      */
-    private function buildControlDefinition(ParameterDefinition $parameter): array
+    private function buildControlDefinition(ProfileParameterDefinition $parameter): array
     {
         $range = $parameter->resolvedNumericRange();
 

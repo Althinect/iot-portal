@@ -7,12 +7,10 @@ use App\Domain\Automation\Models\AutomationWorkflow;
 use App\Domain\Automation\Models\AutomationWorkflowVersion;
 use App\Domain\Automation\Services\WorkflowQueryExecutor;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -26,26 +24,21 @@ function createWorkflowQueryFixture(): array
 {
     $organization = Organization::factory()->create();
 
-    $deviceType = DeviceType::factory()->forOrganization($organization->id)->create();
-    $schema = DeviceSchema::factory()->forDeviceType($deviceType)->create();
-    $schemaVersion = DeviceSchemaVersion::factory()->active()->create([
-        'device_schema_id' => $schema->id,
-    ]);
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create();
 
     $device = Device::factory()->create([
         'organization_id' => $organization->id,
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
     ]);
 
-    $publishTopic = SchemaVersionTopic::factory()->publish()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    $publishChannel = DeviceChannel::factory()->telemetry()->create([
+        'device_profile_version_id' => $profileVersion->id,
         'key' => 'telemetry',
-        'suffix' => 'telemetry',
+        'address' => 'telemetry',
     ]);
 
-    $energyParameter = ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $publishTopic->id,
+    $energyParameter = ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $publishChannel->id,
         'key' => 'total_energy',
         'label' => 'Total Energy',
         'json_path' => 'energy.total',
@@ -71,7 +64,7 @@ function createWorkflowQueryFixture(): array
     return [
         'organization' => $organization,
         'device' => $device,
-        'publishTopic' => $publishTopic,
+        'publishChannel' => $publishChannel,
         'energyParameter' => $energyParameter,
         'run' => $run,
     ];
@@ -98,7 +91,7 @@ it('computes a numeric value from source ctes in the configured telemetry window
 
     DeviceTelemetryLog::factory()
         ->forDevice($fixture['device'])
-        ->forTopic($fixture['publishTopic'])
+        ->forChannel($fixture['publishChannel'])
         ->create([
             'transformed_values' => ['total_energy' => 0.45],
             'raw_payload' => ['energy' => ['total' => 0.45]],
@@ -108,7 +101,7 @@ it('computes a numeric value from source ctes in the configured telemetry window
 
     DeviceTelemetryLog::factory()
         ->forDevice($fixture['device'])
-        ->forTopic($fixture['publishTopic'])
+        ->forChannel($fixture['publishChannel'])
         ->create([
             'transformed_values' => ['total_energy' => 0.67],
             'raw_payload' => ['energy' => ['total' => 0.67]],
@@ -118,7 +111,7 @@ it('computes a numeric value from source ctes in the configured telemetry window
 
     DeviceTelemetryLog::factory()
         ->forDevice($fixture['device'])
-        ->forTopic($fixture['publishTopic'])
+        ->forChannel($fixture['publishChannel'])
         ->create([
             'transformed_values' => ['total_energy' => 5.0],
             'raw_payload' => ['energy' => ['total' => 5.0]],
@@ -138,8 +131,8 @@ it('computes a numeric value from source ctes in the configured telemetry window
                 [
                     'alias' => 'source_1',
                     'device_id' => $fixture['device']->id,
-                    'topic_id' => $fixture['publishTopic']->id,
-                    'parameter_definition_id' => $fixture['energyParameter']->id,
+                    'device_channel_id' => $fixture['publishChannel']->id,
+                    'parameter_key' => $fixture['energyParameter']->key,
                 ],
             ],
             'sql' => 'SELECT COALESCE(SUM(source_1.value), 0) AS value FROM source_1',
@@ -172,7 +165,7 @@ it('accepts dollar-prefixed json paths for source parameters', function (): void
 
     DeviceTelemetryLog::factory()
         ->forDevice($fixture['device'])
-        ->forTopic($fixture['publishTopic'])
+        ->forChannel($fixture['publishChannel'])
         ->create([
             'transformed_values' => [],
             'raw_payload' => ['energy' => ['total' => 0.45]],
@@ -182,7 +175,7 @@ it('accepts dollar-prefixed json paths for source parameters', function (): void
 
     DeviceTelemetryLog::factory()
         ->forDevice($fixture['device'])
-        ->forTopic($fixture['publishTopic'])
+        ->forChannel($fixture['publishChannel'])
         ->create([
             'transformed_values' => [],
             'raw_payload' => ['energy' => ['total' => 0.67]],
@@ -202,8 +195,8 @@ it('accepts dollar-prefixed json paths for source parameters', function (): void
                 [
                     'alias' => 'source_1',
                     'device_id' => $fixture['device']->id,
-                    'topic_id' => $fixture['publishTopic']->id,
-                    'parameter_definition_id' => $fixture['energyParameter']->id,
+                    'device_channel_id' => $fixture['publishChannel']->id,
+                    'parameter_key' => $fixture['energyParameter']->key,
                 ],
             ],
             'sql' => 'SELECT COALESCE(SUM(source_1.value), 0) AS value FROM source_1',

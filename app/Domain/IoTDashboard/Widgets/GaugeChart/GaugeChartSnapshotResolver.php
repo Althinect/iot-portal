@@ -44,7 +44,7 @@ class GaugeChartSnapshotResolver implements WidgetSnapshotResolver
                     ? []
                     : $this->telemetryQuery->numericSeries(
                         deviceId: $deviceId,
-                        schemaVersionTopicId: (int) $widget->schema_version_topic_id,
+                        deviceChannelId: (int) $widget->device_channel_id,
                         parameterKey: $seriesConfiguration['key'],
                         fromAt: $fromAt,
                         untilAt: $untilAt,

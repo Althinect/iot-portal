@@ -4,15 +4,14 @@ declare(strict_types=1);
 
 use App\Domain\DeviceControl\Enums\CommandStatus;
 use App\Domain\DeviceControl\Models\DeviceCommandLog;
-use App\Domain\DeviceControl\Models\DeviceDesiredTopicState;
+use App\Domain\DeviceControl\Models\DeviceDesiredChannelState;
 use App\Domain\DeviceControl\Services\DeviceCommandDispatcher;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceManagement\Publishing\Mqtt\MqttCommandPublisher;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Events\CommandDispatched;
 use App\Events\CommandSent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -22,19 +21,28 @@ uses(RefreshDatabase::class);
 
 function createDeviceWithSubscribeTopic(): array
 {
-    $schemaVersion = DeviceSchemaVersion::factory()->create();
+    $profileVersion = DeviceProfileVersion::factory()->active()->mqtt()->create([
+        'protocol_config' => [
+            'broker_host' => 'localhost',
+            'broker_port' => 1883,
+            'username' => null,
+            'password' => null,
+            'use_tls' => false,
+            'base_topic' => 'devices',
+        ],
+    ]);
 
-    $subscribeTopic = SchemaVersionTopic::factory()->subscribe()->create([
-        'device_schema_version_id' => $schemaVersion->id,
+    $commandChannel = DeviceChannel::factory()->command()->create([
+        'device_profile_version_id' => $profileVersion->id,
         'key' => 'control',
         'label' => 'Control',
-        'suffix' => 'control',
+        'address' => 'control',
         'qos' => 2,
         'retain' => false,
     ]);
 
-    ParameterDefinition::factory()->create([
-        'schema_version_topic_id' => $subscribeTopic->id,
+    ProfileParameterDefinition::factory()->subscribe()->create([
+        'device_channel_id' => $commandChannel->id,
         'key' => 'power',
         'json_path' => 'power',
         'type' => ParameterDataType::String,
@@ -46,24 +54,12 @@ function createDeviceWithSubscribeTopic(): array
         'is_active' => true,
     ]);
 
-    $deviceType = DeviceType::factory()->mqtt()->create([
-        'protocol_config' => [
-            'broker_host' => 'localhost',
-            'broker_port' => 1883,
-            'username' => null,
-            'password' => null,
-            'use_tls' => false,
-            'base_topic' => 'devices',
-        ],
-    ]);
-
     $device = Device::factory()->create([
-        'device_type_id' => $deviceType->id,
-        'device_schema_version_id' => $schemaVersion->id,
+        'device_profile_version_id' => $profileVersion->id,
         'external_id' => 'pump-42',
     ]);
 
-    return [$device, $subscribeTopic];
+    return [$device, $commandChannel];
 }
 
 function bindFakeMqttPublisher(): object
@@ -92,7 +88,7 @@ function bindFakeMqttPublisher(): object
 it('creates a command log with pending status and broadcasts CommandDispatched', function (): void {
     Event::fake([CommandDispatched::class, CommandSent::class]);
 
-    [$device, $topic] = createDeviceWithSubscribeTopic();
+    [$device, $channel] = createDeviceWithSubscribeTopic();
     $fakePublisher = bindFakeMqttPublisher();
 
     /** @var DeviceCommandDispatcher $dispatcher */
@@ -100,14 +96,14 @@ it('creates a command log with pending status and broadcasts CommandDispatched',
 
     $commandLog = $dispatcher->dispatch(
         device: $device,
-        topic: $topic,
+        channel: $channel,
         payload: ['power' => 'on'],
         userId: null,
     );
 
     expect($commandLog)->toBeInstanceOf(DeviceCommandLog::class)
         ->and($commandLog->device_id)->toBe($device->id)
-        ->and($commandLog->schema_version_topic_id)->toBe($topic->id)
+        ->and($commandLog->device_channel_id)->toBe($channel->id)
         ->and($commandLog->command_payload)->toBe(['power' => 'on']);
 
     Event::assertDispatched(CommandDispatched::class);
@@ -116,7 +112,7 @@ it('creates a command log with pending status and broadcasts CommandDispatched',
 it('publishes to correct MQTT topic and updates status to sent', function (): void {
     Event::fake([CommandDispatched::class, CommandSent::class]);
 
-    [$device, $topic] = createDeviceWithSubscribeTopic();
+    [$device, $channel] = createDeviceWithSubscribeTopic();
     $fakePublisher = bindFakeMqttPublisher();
 
     /** @var DeviceCommandDispatcher $dispatcher */
@@ -124,7 +120,7 @@ it('publishes to correct MQTT topic and updates status to sent', function (): vo
 
     $commandLog = $dispatcher->dispatch(
         device: $device,
-        topic: $topic,
+        channel: $channel,
         payload: ['power' => 'on'],
     );
 
@@ -149,7 +145,7 @@ it('publishes to correct MQTT topic and updates status to sent', function (): vo
 it('marks command as failed when MQTT publish throws', function (): void {
     Event::fake([CommandDispatched::class, CommandSent::class]);
 
-    [$device, $topic] = createDeviceWithSubscribeTopic();
+    [$device, $channel] = createDeviceWithSubscribeTopic();
 
     $failingPublisher = new class implements MqttCommandPublisher
     {
@@ -170,7 +166,7 @@ it('marks command as failed when MQTT publish throws', function (): void {
 
     $commandLog = $dispatcher->dispatch(
         device: $device,
-        topic: $topic,
+        channel: $channel,
         payload: ['power' => 'on'],
     );
 
@@ -185,7 +181,7 @@ it('marks command as failed when MQTT publish throws', function (): void {
 it('retries transient MQTT publish failures once and sends successfully', function (): void {
     Event::fake([CommandDispatched::class, CommandSent::class]);
 
-    [$device, $topic] = createDeviceWithSubscribeTopic();
+    [$device, $channel] = createDeviceWithSubscribeTopic();
 
     $retryingPublisher = new class implements MqttCommandPublisher
     {
@@ -208,7 +204,7 @@ it('retries transient MQTT publish failures once and sends successfully', functi
 
     $commandLog = $dispatcher->dispatch(
         device: $device,
-        topic: $topic,
+        channel: $channel,
         payload: ['power' => 'on'],
     );
 
@@ -222,7 +218,7 @@ it('retries transient MQTT publish failures once and sends successfully', functi
 it('stores the command log in the database', function (): void {
     Event::fake([CommandDispatched::class, CommandSent::class]);
 
-    [$device, $topic] = createDeviceWithSubscribeTopic();
+    [$device, $channel] = createDeviceWithSubscribeTopic();
     bindFakeMqttPublisher();
 
     /** @var DeviceCommandDispatcher $dispatcher */
@@ -230,21 +226,21 @@ it('stores the command log in the database', function (): void {
 
     $dispatcher->dispatch(
         device: $device,
-        topic: $topic,
+        channel: $channel,
         payload: ['power' => 'on', 'mode' => 'auto'],
     );
 
     $this->assertDatabaseHas('device_command_logs', [
         'device_id' => $device->id,
-        'schema_version_topic_id' => $topic->id,
+        'device_channel_id' => $channel->id,
         'status' => CommandStatus::Sent->value,
     ]);
 });
 
-it('upserts desired topic state when dispatching commands', function (): void {
+it('upserts desired channel state when dispatching commands', function (): void {
     Event::fake([CommandDispatched::class, CommandSent::class]);
 
-    [$device, $topic] = createDeviceWithSubscribeTopic();
+    [$device, $channel] = createDeviceWithSubscribeTopic();
     bindFakeMqttPublisher();
 
     /** @var DeviceCommandDispatcher $dispatcher */
@@ -252,19 +248,19 @@ it('upserts desired topic state when dispatching commands', function (): void {
 
     $first = $dispatcher->dispatch(
         device: $device,
-        topic: $topic,
+        channel: $channel,
         payload: ['power' => 'on'],
     );
 
     $second = $dispatcher->dispatch(
         device: $device,
-        topic: $topic,
+        channel: $channel,
         payload: ['power' => 'off'],
     );
 
-    $state = DeviceDesiredTopicState::query()
+    $state = DeviceDesiredChannelState::query()
         ->where('device_id', $device->id)
-        ->where('schema_version_topic_id', $topic->id)
+        ->where('device_channel_id', $channel->id)
         ->first();
 
     expect($state)->not->toBeNull()
@@ -280,7 +276,7 @@ it('uses configured MQTT host and port when dispatch host and port are not provi
         'iot.mqtt.port' => 1884,
     ]);
 
-    [$device, $topic] = createDeviceWithSubscribeTopic();
+    [$device, $channel] = createDeviceWithSubscribeTopic();
 
     $fakePublisher = new class implements MqttCommandPublisher
     {
@@ -305,7 +301,7 @@ it('uses configured MQTT host and port when dispatch host and port are not provi
 
     $dispatcher->dispatch(
         device: $device,
-        topic: $topic,
+        channel: $channel,
         payload: ['power' => 'on'],
     );
 

@@ -8,10 +8,9 @@ use App\Domain\Alerts\Models\Alert;
 use App\Domain\Alerts\Models\ThresholdPolicy;
 use App\Domain\Alerts\Services\AlertIncidentManager;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
-use App\Domain\DeviceSchema\Services\JsonLogicEvaluator;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
+use App\Domain\DeviceProfile\Services\JsonLogicEvaluator;
 use App\Domain\IoTDashboard\Application\DashboardHistoryRange;
 use App\Domain\IoTDashboard\Contracts\WidgetConfig;
 use App\Domain\IoTDashboard\Contracts\WidgetSnapshotResolver;
@@ -95,7 +94,7 @@ class ThresholdStatusGridSnapshotResolver implements WidgetSnapshotResolver
         return ThresholdPolicy::query()
             ->with([
                 'device',
-                'parameterDefinition.topic',
+                'deviceChannel',
                 'notificationProfile',
             ])
             ->where('organization_id', $organizationId)
@@ -117,15 +116,15 @@ class ThresholdStatusGridSnapshotResolver implements WidgetSnapshotResolver
     {
         return $policies
             ->map(function (ThresholdPolicy $policy): ?array {
-                $parameter = $policy->parameterDefinition;
+                $topicId = is_numeric($policy->device_channel_id) ? (int) $policy->device_channel_id : 0;
 
-                if (! $parameter instanceof ParameterDefinition) {
+                if ($topicId < 1 || ! is_string($policy->parameter_key) || trim($policy->parameter_key) === '') {
                     return null;
                 }
 
                 return [
                     'device_id' => (int) $policy->device_id,
-                    'topic_id' => (int) $parameter->schema_version_topic_id,
+                    'topic_id' => $topicId,
                 ];
             })
             ->filter()
@@ -154,10 +153,10 @@ class ThresholdStatusGridSnapshotResolver implements WidgetSnapshotResolver
         Collection $openAlerts,
         string $displayMode,
     ): array {
-        $parameter = $policy->parameterDefinition;
+        $parameter = $policy->profileParameterDefinition();
         $device = $policy->device;
-        $topicId = $parameter instanceof ParameterDefinition
-            ? (int) $parameter->schema_version_topic_id
+        $topicId = $parameter instanceof ProfileParameterDefinition
+            ? (int) $policy->device_channel_id
             : null;
         $deviceId = (int) $policy->device_id;
         $resolvedLatestLog = $topicId !== null
@@ -247,14 +246,13 @@ class ThresholdStatusGridSnapshotResolver implements WidgetSnapshotResolver
         );
 
         $matchingPolicies = ThresholdPolicy::query()
-            ->with('parameterDefinition')
             ->where('organization_id', $organizationId)
             ->whereIn('device_id', $resolvedCards->pluck('device.id')->unique()->all())
             ->get()
-            ->filter(fn (ThresholdPolicy $policy): bool => $policy->parameterDefinition instanceof ParameterDefinition)
+            ->filter(fn (ThresholdPolicy $policy): bool => is_string($policy->parameter_key) && trim($policy->parameter_key) !== '')
             ->keyBy(fn (ThresholdPolicy $policy): string => $this->deviceParameterKey(
                 (int) $policy->device_id,
-                (string) $policy->parameterDefinition?->key,
+                (string) $policy->parameter_key,
             ));
         $openAlerts = $this->alertIncidentManager->openAlertsForThresholdPolicies($this->extractThresholdPolicyIds($matchingPolicies));
 
@@ -282,8 +280,8 @@ class ThresholdStatusGridSnapshotResolver implements WidgetSnapshotResolver
      *         maximum_value: float|null
      *     },
      *     device: Device,
-     *     topic: SchemaVersionTopic,
-     *     parameter: ParameterDefinition
+     *     topic: DeviceChannel,
+     *     parameter: ProfileParameterDefinition
      * }>
      */
     private function resolveConfiguredCardScopes(int $organizationId, ThresholdStatusGridConfig $config): Collection
@@ -296,8 +294,7 @@ class ThresholdStatusGridSnapshotResolver implements WidgetSnapshotResolver
 
         $devices = Device::query()
             ->with([
-                'schemaVersion.topics' => fn ($query) => $query
-                    ->where('direction', TopicDirection::Publish->value)
+                'profileVersion.channels' => fn ($query) => $query
                     ->with([
                         'parameters' => fn ($query) => $query
                             ->where('is_active', true)
@@ -320,14 +317,14 @@ class ThresholdStatusGridSnapshotResolver implements WidgetSnapshotResolver
 
                 $parameter = $this->resolveConfiguredParameter($device, $card['parameter_key']);
 
-                if (! $parameter instanceof ParameterDefinition || ! $parameter->topic instanceof SchemaVersionTopic) {
+                if (! $parameter instanceof ProfileParameterDefinition || ! $parameter->channel instanceof DeviceChannel) {
                     return null;
                 }
 
                 return [
                     'card' => $card,
                     'device' => $device,
-                    'topic' => $parameter->topic,
+                    'topic' => $parameter->channel,
                     'parameter' => $parameter,
                 ];
             })
@@ -335,11 +332,11 @@ class ThresholdStatusGridSnapshotResolver implements WidgetSnapshotResolver
             ->values();
     }
 
-    private function resolveConfiguredParameter(Device $device, string $parameterKey): ?ParameterDefinition
+    private function resolveConfiguredParameter(Device $device, string $parameterKey): ?ProfileParameterDefinition
     {
-        return $device->schemaVersion?->topics
-            ?->flatMap(fn (SchemaVersionTopic $topic) => $topic->parameters)
-            ->first(fn (ParameterDefinition $parameter): bool => $parameter->key === $parameterKey);
+        return $device->profileVersion?->channels
+            ?->flatMap(fn (DeviceChannel $channel) => $channel->parameters)
+            ->first(fn (ProfileParameterDefinition $parameter): bool => $parameter->key === $parameterKey);
     }
 
     /**
@@ -352,8 +349,8 @@ class ThresholdStatusGridSnapshotResolver implements WidgetSnapshotResolver
      *         maximum_value: float|null
      *     },
      *     device: Device,
-     *     topic: SchemaVersionTopic,
-     *     parameter: ParameterDefinition
+     *     topic: DeviceChannel,
+     *     parameter: ProfileParameterDefinition
      * }  $scope
      * @param  Collection<string, DeviceTelemetryLog>  $latestLogs
      * @param  Collection<string, DeviceTelemetryLog>  $latestAvailableLogs

@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace App\Domain\Reporting\Services;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\ParameterCategory;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
+use App\Domain\DeviceProfile\Enums\ParameterCategory;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Reporting\Enums\ReportGrouping;
 use App\Domain\Reporting\Enums\ReportRunStatus;
 use App\Domain\Reporting\Enums\ReportType;
@@ -28,7 +27,7 @@ class ReportGenerationService
 
     public function generate(ReportRun $reportRun): ReportRun
     {
-        $reportRun->loadMissing(['device:id,name,uuid,device_schema_version_id', 'organization:id,name']);
+        $reportRun->loadMissing(['device:id,name,uuid,device_profile_version_id', 'organization:id,name']);
 
         $resolvedTimezone = $this->shiftWindowResolver->resolveTimezone($reportRun->timezone);
         $resolvedRange = $this->shiftWindowResolver->normalizeRange(
@@ -1026,19 +1025,19 @@ class ReportGenerationService
         ?ParameterCategory $category,
         bool $numericOnly,
     ): array {
-        $schemaVersionId = $reportRun->device?->device_schema_version_id;
+        $profileVersionId = $reportRun->device?->device_profile_version_id;
 
-        if (! is_numeric($schemaVersionId)) {
+        if (! is_numeric($profileVersionId)) {
             return [];
         }
 
-        $query = ParameterDefinition::query()
-            ->with('topic:id,suffix,direction,device_schema_version_id')
+        $query = ProfileParameterDefinition::query()
+            ->with('channel:id,key,direction,device_profile_version_id')
             ->where('is_active', true)
-            ->whereHas('topic', function (Builder $topicQuery) use ($schemaVersionId): void {
-                $topicQuery
-                    ->where('device_schema_version_id', (int) $schemaVersionId)
-                    ->where('direction', TopicDirection::Publish->value);
+            ->whereHas('channel', function (Builder $channelQuery) use ($profileVersionId): void {
+                $channelQuery
+                    ->where('device_profile_version_id', (int) $profileVersionId)
+                    ->where('direction', 'publish');
             })
             ->orderBy('sequence');
 
@@ -1056,7 +1055,7 @@ class ReportGenerationService
 
         $map = [];
 
-        foreach ($query->get(['key', 'label', 'schema_version_topic_id']) as $parameterDefinition) {
+        foreach ($query->get(['key', 'label', 'device_channel_id']) as $parameterDefinition) {
             if (trim($parameterDefinition->key) === '') {
                 continue;
             }

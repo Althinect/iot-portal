@@ -14,8 +14,7 @@ return new class extends Migration
         Schema::create('devices', function (Blueprint $table) {
             $table->id();
             $table->foreignId('organization_id')->constrained();
-            $table->foreignId('device_type_id')->constrained('device_types');
-            $table->foreignId('device_schema_version_id')->constrained('device_schema_versions');
+            $table->foreignId('device_profile_version_id')->constrained('device_profile_versions')->restrictOnDelete();
             $table->uuid('uuid')->unique();
             $table->string('name');
             $table->string('external_id')->nullable();
@@ -25,6 +24,7 @@ return new class extends Migration
             $table->timestamp('last_seen_at')->nullable();
             $table->timestamps();
             $table->softDeletes();
+            $table->index('device_profile_version_id', 'devices_profile_version_index');
         });
     }
 

@@ -5,14 +5,17 @@ declare(strict_types=1);
 namespace App\Filament\Portal\Resources\DeviceManagement\Devices;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\DTO\ChannelDefinition;
+use App\Domain\DeviceProfile\DTO\DeviceProfileContract;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Services\DeviceProfileContractResolver;
 use App\Filament\Actions\DeviceManagement\SimulatePublishingActions;
 use App\Filament\Admin\Resources\DeviceManagement\Devices\RelationManagers\TelemetryLogsRelationManager;
 use BackedEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
@@ -75,26 +78,13 @@ class DeviceResource extends Resource
 
                 Section::make('Configuration')
                     ->schema([
-                        Select::make('device_type_id')
-                            ->label('Device Type')
-                            ->relationship('deviceType', 'name')
+                        Select::make('device_profile_version_id')
+                            ->label('Device Profile Version')
+                            ->options(fn (Get $get): array => self::profileVersionOptions($get))
                             ->required()
                             ->searchable()
                             ->preload()
                             ->live(),
-
-                        Select::make('device_schema_version_id')
-                            ->label('Schema Version')
-                            ->options(fn (Get $get) => DeviceSchemaVersion::query()
-                                ->whereHas('schema', fn ($query) => $query->where('device_type_id', $get('device_type_id')))
-                                ->where('status', 'active')
-                                ->pluck('version', 'id')
-                                ->map(fn (mixed $version): string => 'Version '.(is_scalar($version) ? (string) $version : ''))
-                                ->toArray())
-                            ->required()
-                            ->searchable()
-                            ->preload()
-                            ->disabled(fn (Get $get) => ! $get('device_type_id')),
                     ])
                     ->columnSpan(1),
 
@@ -168,11 +158,11 @@ class DeviceResource extends Resource
                         TextEntry::make('external_id')
                             ->label('External ID'),
 
-                        TextEntry::make('deviceType.name')
-                            ->label('Device Type'),
+                        TextEntry::make('profileVersion.profile.name')
+                            ->label('Profile'),
 
-                        TextEntry::make('schemaVersion.version')
-                            ->label('Schema Version')
+                        TextEntry::make('profileVersion.version')
+                            ->label('Profile Version')
                             ->formatStateUsing(fn ($state) => "Version {$state}"),
                     ])
                     ->columns(2)
@@ -223,36 +213,35 @@ class DeviceResource extends Resource
                     ->columnSpanFull(),
 
                 Section::make('Command Payload Samples')
-                    ->description('Example JSON payloads this device expects on command (subscribe) topics, using schema defaults.')
+                    ->description('Example JSON payloads this device expects on command channels, using profile defaults.')
                     ->schema([
                         KeyValueEntry::make('command_payload_samples')
                             ->valueLabel('JSON')
                             ->columnSpanFull()
                             ->state(function (Device $record): array {
-                                $record->loadMissing('schemaVersion.topics.parameters');
+                                $contract = self::contractFor($record);
 
-                                $topics = $record->schemaVersion?->topics
-                                    ?->filter(fn (SchemaVersionTopic $topic): bool => $topic->isSubscribe())
-                                    ->sortBy('sequence');
-
-                                if (! $topics || $topics->isEmpty()) {
+                                if ($contract === null) {
                                     return [];
                                 }
 
-                                return $topics->mapWithKeys(function (SchemaVersionTopic $topic): array {
-                                    $template = $topic->buildCommandPayloadTemplate();
+                                return $contract->commandChannels()
+                                    ->sortBy('sequence')
+                                    ->mapWithKeys(function (ChannelDefinition $channel): array {
+                                        $template = $channel->buildCommandPayloadTemplate();
 
-                                    return [
-                                        $topic->key => json_encode($template, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}',
-                                    ];
-                                })->all();
+                                        return [
+                                            $channel->key => json_encode($template, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}',
+                                        ];
+                                    })
+                                    ->all();
                             })
-                            ->visible(fn (Device $record): bool => $record->getAttribute('device_schema_version_id') !== null),
+                            ->visible(fn (Device $record): bool => $record->getAttribute('device_profile_version_id') !== null),
                     ])
                     ->columnSpanFull(),
 
-                Section::make('MQTT Publish Payload Samples')
-                    ->description('Example topics + JSON payload structure the device should publish (Device → Platform). Copy and paste into your MQTT client.')
+                Section::make('Publish Payload Samples')
+                    ->description('Example transport addresses and JSON payload structure the device should publish.')
                     ->schema([
                         TextEntry::make('mqtt_publish_payload_samples')
                             ->label('Publish Samples')
@@ -260,30 +249,30 @@ class DeviceResource extends Resource
                             ->placeholder('—')
                             ->extraAttributes(['class' => 'font-mono whitespace-pre-wrap'])
                             ->state(function (Device $record): string {
-                                $record->loadMissing('schemaVersion.topics.parameters', 'deviceType');
+                                $contract = self::contractFor($record);
 
-                                $topics = $record->schemaVersion?->topics
-                                    ?->filter(fn (SchemaVersionTopic $topic): bool => $topic->isPublish())
-                                    ->sortBy('sequence');
-
-                                if (! $topics || $topics->isEmpty()) {
+                                if ($contract === null) {
                                     return '';
                                 }
 
-                                $samples = $topics->map(function (SchemaVersionTopic $topic) use ($record): string {
-                                    $resolvedTopic = $topic->resolvedTopic($record);
-                                    $template = $topic->buildPublishPayloadTemplate();
-                                    $json = json_encode($template, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}';
+                                $identifier = self::deviceIdentifier($record);
+                                $samples = $contract->publishChannels()
+                                    ->sortBy('sequence')
+                                    ->map(function (ChannelDefinition $channel) use ($contract, $identifier): string {
+                                        $resolvedAddress = $channel->resolvedAddress($identifier, $contract->protocolConfig);
+                                        $template = $channel->buildPublishPayloadTemplate();
+                                        $json = json_encode($template, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}';
 
-                                    $qos = $topic->qos ?? 0;
-                                    $retain = $topic->retain ? 'true' : 'false';
+                                        $qos = $channel->qos;
+                                        $retain = $channel->retain ? 'true' : 'false';
 
-                                    return "Topic: {$resolvedTopic}\nQoS: {$qos}\nRetain: {$retain}\nPayload:\n{$json}";
-                                })->all();
+                                        return "Address: {$resolvedAddress}\nQoS: {$qos}\nRetain: {$retain}\nPayload:\n{$json}";
+                                    })
+                                    ->all();
 
                                 return implode("\n\n", $samples);
                             })
-                            ->visible(fn (Device $record): bool => $record->getAttribute('device_schema_version_id') !== null),
+                            ->visible(fn (Device $record): bool => $record->getAttribute('device_profile_version_id') !== null),
                     ])
                     ->columnSpanFull(),
             ]);
@@ -309,6 +298,58 @@ class DeviceResource extends Resource
             ->all();
     }
 
+    /**
+     * @return array<string, array<int, string>>
+     */
+    private static function profileVersionOptions(Get $get): array
+    {
+        $query = DeviceProfileVersion::query()
+            ->with('profile')
+            ->where('status', 'active')
+            ->whereHas('profile', function (Builder $profileQuery): void {
+                $tenant = Filament::getTenant();
+
+                if ($tenant !== null && is_numeric($tenant->getKey())) {
+                    $profileQuery
+                        ->whereNull('organization_id')
+                        ->orWhere('organization_id', (int) $tenant->getKey());
+
+                    return;
+                }
+
+                $profileQuery->whereNull('organization_id');
+            })
+            ->orderByDesc('version');
+
+        return $query
+            ->get(['id', 'device_profile_id', 'version', 'protocol'])
+            ->groupBy(fn (DeviceProfileVersion $version): string => $version->profile?->name ?? 'Profile')
+            ->map(fn ($versions): array => $versions
+                ->mapWithKeys(fn (DeviceProfileVersion $version): array => [
+                    (int) $version->id => "v{$version->version} · {$version->protocol->getLabel()}",
+                ])
+                ->all())
+            ->all();
+    }
+
+    private static function contractFor(Device $record): ?DeviceProfileContract
+    {
+        $record->loadMissing('profileVersion');
+
+        if (! $record->profileVersion instanceof DeviceProfileVersion) {
+            return null;
+        }
+
+        return app(DeviceProfileContractResolver::class)->resolve($record->profileVersion);
+    }
+
+    private static function deviceIdentifier(Device $record): string
+    {
+        $externalId = $record->getAttribute('external_id');
+
+        return is_string($externalId) && trim($externalId) !== '' ? $externalId : (string) $record->uuid;
+    }
+
     public static function table(Table $table): Table
     {
         return $table
@@ -318,8 +359,8 @@ class DeviceResource extends Resource
                     ->sortable()
                     ->weight('medium'),
 
-                TextColumn::make('deviceType.name')
-                    ->label('Type')
+                TextColumn::make('profileVersion.profile.name')
+                    ->label('Profile')
                     ->searchable()
                     ->sortable(),
 
@@ -350,8 +391,9 @@ class DeviceResource extends Resource
                     ->placeholder('Never'),
             ])
             ->filters([
-                SelectFilter::make('deviceType')
-                    ->relationship('deviceType', 'name')
+                SelectFilter::make('device_profile_version_id')
+                    ->label('Profile Version')
+                    ->relationship('profileVersion', 'version')
                     ->searchable()
                     ->preload(),
                 SelectFilter::make('effective_connection_state')

@@ -16,7 +16,8 @@ return new class extends Migration
             $table->foreignId('organization_id')->constrained()->cascadeOnDelete();
             $table->foreignId('threshold_policy_id')->constrained('threshold_policies')->cascadeOnDelete();
             $table->foreignId('device_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('parameter_definition_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('device_channel_id')->constrained('device_channels')->cascadeOnDelete();
+            $table->string('parameter_key');
             $table->timestampTz('alerted_at');
             $table->uuid('alerted_telemetry_log_id')->nullable();
             $table->timestampTz('normalized_at')->nullable();
@@ -26,7 +27,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['threshold_policy_id', 'normalized_at']);
-            $table->index(['device_id', 'parameter_definition_id', 'normalized_at']);
+            $table->index(['device_id', 'device_channel_id', 'parameter_key', 'normalized_at'], 'alerts_device_channel_parameter_normalized_idx');
             $table->index('alerted_telemetry_log_id');
             $table->index('normalized_telemetry_log_id');
         });

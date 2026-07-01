@@ -28,7 +28,7 @@ class IoTDashboardInfolist
                             ->state(fn ($record): int => $record->widgets()->count()),
                         TextEntry::make('refresh_interval_seconds')
                             ->label('Refresh interval')
-                            ->suffix(' seconds'),
+                            ->address(' seconds'),
                         TextEntry::make('default_history_preset')
                             ->label('Default history range')
                             ->formatStateUsing(function (mixed $state): string {

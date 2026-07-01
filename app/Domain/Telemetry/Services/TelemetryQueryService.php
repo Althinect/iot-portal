@@ -22,8 +22,9 @@ class TelemetryQueryService
             ->map(fn (array $pair): array => [
                 'device_id' => (int) ($pair['device_id'] ?? 0),
                 'topic_id' => (int) ($pair['topic_id'] ?? 0),
+                'channel_ids' => $this->channelIdsForInput((int) ($pair['topic_id'] ?? 0)),
             ])
-            ->filter(fn (array $pair): bool => $pair['device_id'] > 0 && $pair['topic_id'] > 0)
+            ->filter(fn (array $pair): bool => $pair['device_id'] > 0 && $pair['channel_ids'] !== [])
             ->unique(fn (array $pair): string => $this->pairKey($pair['device_id'], $pair['topic_id']))
             ->values();
 
@@ -35,10 +36,10 @@ class TelemetryQueryService
 
         if (DB::getDriverName() === 'pgsql') {
             $query->selectRaw(
-                'DISTINCT ON (device_id, schema_version_topic_id) id, device_id, schema_version_topic_id, recorded_at, transformed_values',
+                'DISTINCT ON (device_id, device_channel_id) id, device_id, device_channel_id, recorded_at, transformed_values',
             );
         } else {
-            $query->select(['id', 'device_id', 'schema_version_topic_id', 'recorded_at', 'transformed_values']);
+            $query->select(['id', 'device_id', 'device_channel_id', 'recorded_at', 'transformed_values']);
         }
 
         $query->where(function (Builder $query) use ($normalizedPairs): void {
@@ -46,7 +47,7 @@ class TelemetryQueryService
                 $query->orWhere(function (Builder $query) use ($pair): void {
                     $query
                         ->where('device_id', $pair['device_id'])
-                        ->where('schema_version_topic_id', $pair['topic_id']);
+                        ->whereIn('device_channel_id', $pair['channel_ids']);
                 });
             }
         });
@@ -58,13 +59,13 @@ class TelemetryQueryService
         if (DB::getDriverName() === 'pgsql') {
             return $query
                 ->orderBy('device_id')
-                ->orderBy('schema_version_topic_id')
+                ->orderBy('device_channel_id')
                 ->orderByDesc('recorded_at')
                 ->orderByDesc('id')
                 ->get()
                 ->keyBy(fn (DeviceTelemetryLog $log): string => $this->pairKey(
                     (int) $log->device_id,
-                    (int) $log->schema_version_topic_id,
+                    (int) $log->device_channel_id,
                 ));
         }
 
@@ -74,7 +75,7 @@ class TelemetryQueryService
             ->get()
             ->groupBy(fn (DeviceTelemetryLog $log): string => $this->pairKey(
                 (int) $log->device_id,
-                (int) $log->schema_version_topic_id,
+                (int) $log->device_channel_id,
             ))
             ->map(function (Collection $logs): DeviceTelemetryLog {
                 $latestLog = $logs->first();
@@ -87,15 +88,17 @@ class TelemetryQueryService
             });
     }
 
-    public function latestLog(int $deviceId, int $schemaVersionTopicId, ?int $lookbackMinutes = null): ?DeviceTelemetryLog
+    public function latestLog(int $deviceId, int $deviceChannelId, ?int $lookbackMinutes = null): ?DeviceTelemetryLog
     {
-        if ($deviceId < 1 || $schemaVersionTopicId < 1) {
+        $channelIds = $this->channelIdsForInput($deviceChannelId);
+
+        if ($deviceId < 1 || $channelIds === []) {
             return null;
         }
 
         $query = DeviceTelemetryLog::query()
             ->where('device_id', $deviceId)
-            ->where('schema_version_topic_id', $schemaVersionTopicId);
+            ->whereIn('device_channel_id', $channelIds);
 
         if ($lookbackMinutes !== null) {
             $query->where('recorded_at', '>=', now()->subMinutes(max(1, $lookbackMinutes)));
@@ -104,7 +107,7 @@ class TelemetryQueryService
         return $query
             ->orderByDesc('recorded_at')
             ->orderByDesc('id')
-            ->first(['id', 'device_id', 'schema_version_topic_id', 'recorded_at', 'transformed_values']);
+            ->first(['id', 'device_id', 'device_channel_id', 'recorded_at', 'transformed_values']);
     }
 
     /**
@@ -112,20 +115,20 @@ class TelemetryQueryService
      */
     public function numericSeries(
         int $deviceId,
-        int $schemaVersionTopicId,
+        int $deviceChannelId,
         string $parameterKey,
         CarbonInterface $fromAt,
         CarbonInterface $untilAt,
         int $maxPoints,
     ): array {
-        if ($deviceId < 1 || $schemaVersionTopicId < 1 || trim($parameterKey) === '' || $maxPoints < 1) {
+        if ($deviceId < 1 || $this->channelIdsForInput($deviceChannelId) === [] || trim($parameterKey) === '' || $maxPoints < 1) {
             return [];
         }
 
         if ($this->canUsePostgresJsonExtraction($parameterKey)) {
             return $this->numericSeriesUsingPostgres(
                 deviceId: $deviceId,
-                schemaVersionTopicId: $schemaVersionTopicId,
+                deviceChannelId: $deviceChannelId,
                 parameterKey: $parameterKey,
                 fromAt: $fromAt,
                 untilAt: $untilAt,
@@ -135,7 +138,7 @@ class TelemetryQueryService
 
         return $this->numericSeriesUsingModels(
             deviceId: $deviceId,
-            schemaVersionTopicId: $schemaVersionTopicId,
+            deviceChannelId: $deviceChannelId,
             parameterKey: $parameterKey,
             fromAt: $fromAt,
             untilAt: $untilAt,
@@ -145,25 +148,25 @@ class TelemetryQueryService
 
     public function counterDelta(
         int $deviceId,
-        int $schemaVersionTopicId,
+        int $deviceChannelId,
         string $parameterKey,
         CarbonInterface $startAt,
         CarbonInterface $endAt,
         int $precision = 1,
     ): ?float {
-        if ($deviceId < 1 || $schemaVersionTopicId < 1 || trim($parameterKey) === '' || $endAt->lessThanOrEqualTo($startAt)) {
+        if ($deviceId < 1 || $this->channelIdsForInput($deviceChannelId) === [] || trim($parameterKey) === '' || $endAt->lessThanOrEqualTo($startAt)) {
             return null;
         }
 
-        $endLog = $this->latestLogBefore($deviceId, $schemaVersionTopicId, $endAt);
+        $endLog = $this->latestLogBefore($deviceId, $deviceChannelId, $endAt);
         $endValue = $this->numericValue($endLog?->transformed_values, $parameterKey);
 
         if ($endValue === null) {
             return null;
         }
 
-        $baselineLog = $this->latestLogBefore($deviceId, $schemaVersionTopicId, $startAt)
-            ?? $this->firstLogBetween($deviceId, $schemaVersionTopicId, $startAt, $endAt);
+        $baselineLog = $this->latestLogBefore($deviceId, $deviceChannelId, $startAt)
+            ?? $this->firstLogBetween($deviceId, $deviceChannelId, $startAt, $endAt);
         $baselineValue = $this->numericValue($baselineLog?->transformed_values, $parameterKey);
 
         if ($baselineValue === null) {
@@ -173,16 +176,16 @@ class TelemetryQueryService
         return round(max(0, $endValue - $baselineValue), $precision);
     }
 
-    public function pairKey(int $deviceId, int $schemaVersionTopicId): string
+    public function pairKey(int $deviceId, int $deviceChannelId): string
     {
-        return $deviceId.':'.$schemaVersionTopicId;
+        return $deviceId.':'.$deviceChannelId;
     }
 
-    private function latestLogBefore(int $deviceId, int $schemaVersionTopicId, CarbonInterface $at): ?DeviceTelemetryLog
+    private function latestLogBefore(int $deviceId, int $deviceChannelId, CarbonInterface $at): ?DeviceTelemetryLog
     {
         return DeviceTelemetryLog::query()
             ->where('device_id', $deviceId)
-            ->where('schema_version_topic_id', $schemaVersionTopicId)
+            ->whereIn('device_channel_id', $this->channelIdsForInput($deviceChannelId))
             ->where('recorded_at', '<=', $at)
             ->orderByDesc('recorded_at')
             ->orderByDesc('id')
@@ -191,13 +194,13 @@ class TelemetryQueryService
 
     private function firstLogBetween(
         int $deviceId,
-        int $schemaVersionTopicId,
+        int $deviceChannelId,
         CarbonInterface $startAt,
         CarbonInterface $endAt,
     ): ?DeviceTelemetryLog {
         return DeviceTelemetryLog::query()
             ->where('device_id', $deviceId)
-            ->where('schema_version_topic_id', $schemaVersionTopicId)
+            ->whereIn('device_channel_id', $this->channelIdsForInput($deviceChannelId))
             ->where('recorded_at', '>=', $startAt)
             ->where('recorded_at', '<=', $endAt)
             ->orderBy('recorded_at')
@@ -210,7 +213,7 @@ class TelemetryQueryService
      */
     private function numericSeriesUsingPostgres(
         int $deviceId,
-        int $schemaVersionTopicId,
+        int $deviceChannelId,
         string $parameterKey,
         CarbonInterface $fromAt,
         CarbonInterface $untilAt,
@@ -221,7 +224,7 @@ class TelemetryQueryService
 
         return DeviceTelemetryLog::query()
             ->where('device_id', $deviceId)
-            ->where('schema_version_topic_id', $schemaVersionTopicId)
+            ->whereIn('device_channel_id', $this->channelIdsForInput($deviceChannelId))
             ->where('recorded_at', '>=', $fromAt)
             ->where('recorded_at', '<=', $untilAt)
             ->whereRaw("{$rawValueExpression} ~ ?", [$numericPattern])
@@ -260,7 +263,7 @@ class TelemetryQueryService
      */
     private function numericSeriesUsingModels(
         int $deviceId,
-        int $schemaVersionTopicId,
+        int $deviceChannelId,
         string $parameterKey,
         CarbonInterface $fromAt,
         CarbonInterface $untilAt,
@@ -268,7 +271,7 @@ class TelemetryQueryService
     ): array {
         return DeviceTelemetryLog::query()
             ->where('device_id', $deviceId)
-            ->where('schema_version_topic_id', $schemaVersionTopicId)
+            ->whereIn('device_channel_id', $this->channelIdsForInput($deviceChannelId))
             ->where('recorded_at', '>=', $fromAt)
             ->where('recorded_at', '<=', $untilAt)
             ->orderByDesc('recorded_at')
@@ -317,5 +320,17 @@ class TelemetryQueryService
     private function postgresTextLiteral(string $value): string
     {
         return str_replace("'", "''", $value);
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function channelIdsForInput(int $deviceChannelId): array
+    {
+        if ($deviceChannelId < 1) {
+            return [];
+        }
+
+        return [$deviceChannelId];
     }
 }

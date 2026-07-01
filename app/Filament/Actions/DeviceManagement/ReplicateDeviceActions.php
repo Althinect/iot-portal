@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Actions\DeviceManagement;
 
-use App\Domain\DeviceManagement\Models\DeviceType;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Domain\Shared\Models\Organization;
 use Filament\Actions\ReplicateAction;
 use Filament\Forms\Components\Select;
@@ -52,24 +51,12 @@ final class ReplicateDeviceActions
                     ->preload()
                     ->live()
                     ->afterStateUpdated(function (Set $set): void {
-                        $set('device_type_id', null);
-                        $set('device_schema_version_id', null);
+                        $set('device_profile_version_id', null);
                     }),
 
-                Select::make('device_type_id')
-                    ->label('Device Type')
-                    ->options(fn (Get $get): array => self::deviceTypeOptions($get))
-                    ->required()
-                    ->searchable()
-                    ->preload()
-                    ->live()
-                    ->afterStateUpdated(function (Set $set, Get $get): void {
-                        $set('device_schema_version_id', self::defaultActiveSchemaVersionId($get('device_type_id')));
-                    }),
-
-                Select::make('device_schema_version_id')
-                    ->label('Schema Version')
-                    ->options(fn (Get $get): array => self::schemaVersionOptions($get))
+                Select::make('device_profile_version_id')
+                    ->label('Profile Version')
+                    ->options(fn (Get $get): array => self::profileVersionOptions($get))
                     ->required()
                     ->searchable()
                     ->preload(),
@@ -82,79 +69,34 @@ final class ReplicateDeviceActions
     /**
      * @return array<int, string>
      */
-    private static function deviceTypeOptions(Get $get): array
+    private static function profileVersionOptions(Get $get): array
     {
         $organizationId = $get('organization_id');
 
-        $query = DeviceType::query()->orderBy('name');
-
-        if (is_numeric($organizationId)) {
-            $query->where(function ($scope) use ($organizationId): void {
-                $scope
-                    ->whereNull('organization_id')
-                    ->orWhere('organization_id', (int) $organizationId);
-            });
-        } else {
-            $query->whereNull('organization_id');
-        }
-
-        return $query
-            ->get(['id', 'name', 'organization_id'])
-            ->mapWithKeys(function (DeviceType $deviceType): array {
-                $scopeSuffix = $deviceType->organization_id === null ? ' (Global)' : '';
+        return DeviceProfileVersion::query()
+            ->with('profile')
+            ->when(is_numeric($organizationId), function ($query) use ($organizationId): void {
+                $query->whereHas('profile', function ($profileQuery) use ($organizationId): void {
+                    $profileQuery
+                        ->whereNull('organization_id')
+                        ->orWhere('organization_id', (int) $organizationId);
+                });
+            })
+            ->when(! is_numeric($organizationId), function ($query): void {
+                $query->whereHas('profile', fn ($profileQuery) => $profileQuery->whereNull('organization_id'));
+            })
+            ->where('status', 'active')
+            ->orderByDesc('version')
+            ->get(['id', 'device_profile_id', 'version'])
+            ->mapWithKeys(function (DeviceProfileVersion $profileVersion): array {
+                $profileName = data_get($profileVersion, 'profile.name', 'Profile');
+                $profileName = is_string($profileName) && trim($profileName) !== '' ? $profileName : 'Profile';
+                $version = (string) $profileVersion->version;
 
                 return [
-                    (int) $deviceType->id => "{$deviceType->name}{$scopeSuffix}",
+                    (int) $profileVersion->id => "{$profileName} · v{$version}",
                 ];
             })
             ->all();
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private static function schemaVersionOptions(Get $get): array
-    {
-        $deviceTypeId = $get('device_type_id');
-
-        if (! is_numeric($deviceTypeId)) {
-            return [];
-        }
-
-        return DeviceSchemaVersion::query()
-            ->with('schema')
-            ->whereHas('schema', fn ($query) => $query->where('device_type_id', (int) $deviceTypeId))
-            ->where('status', 'active')
-            ->orderByDesc('version')
-            ->get(['id', 'device_schema_id', 'version'])
-            ->mapWithKeys(function (DeviceSchemaVersion $schemaVersion): array {
-                $schemaName = data_get($schemaVersion, 'schema.name', 'Schema');
-                $schemaName = is_string($schemaName) && trim($schemaName) !== '' ? $schemaName : 'Schema';
-                $version = (string) $schemaVersion->version;
-
-                return [
-                    (int) $schemaVersion->id => "{$schemaName} · v{$version}",
-                ];
-            })
-            ->all();
-    }
-
-    private static function defaultActiveSchemaVersionId(mixed $deviceTypeId): ?int
-    {
-        if (! is_numeric($deviceTypeId)) {
-            return null;
-        }
-
-        $schemaVersion = DeviceSchemaVersion::query()
-            ->whereHas('schema', fn ($query) => $query->where('device_type_id', (int) $deviceTypeId))
-            ->where('status', 'active')
-            ->orderByDesc('version')
-            ->first(['id']);
-
-        if ($schemaVersion === null) {
-            return null;
-        }
-
-        return (int) $schemaVersion->id;
     }
 }

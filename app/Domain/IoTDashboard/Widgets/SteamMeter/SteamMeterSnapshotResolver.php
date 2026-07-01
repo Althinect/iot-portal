@@ -71,7 +71,7 @@ class SteamMeterSnapshotResolver implements WidgetSnapshotResolver
     }
 
     /**
-     * @param  array{device_id: int, schema_version_topic_id: int, parameter_key: string}  $source
+     * @param  array{device_id: int, device_channel_id: int, parameter_key: string}  $source
      */
     private function latestValue(array $source, int $lookbackMinutes): int|float|null
     {
@@ -79,13 +79,13 @@ class SteamMeterSnapshotResolver implements WidgetSnapshotResolver
     }
 
     /**
-     * @param  array{device_id: int, schema_version_topic_id: int, parameter_key: string}  $source
+     * @param  array{device_id: int, device_channel_id: int, parameter_key: string}  $source
      */
     private function latestLog(array $source, int $lookbackMinutes): ?DeviceTelemetryLog
     {
         return $this->telemetryQuery->latestLog(
             deviceId: $source['device_id'],
-            schemaVersionTopicId: $source['schema_version_topic_id'],
+            deviceChannelId: $source['device_channel_id'],
             lookbackMinutes: $lookbackMinutes,
         );
     }
@@ -98,13 +98,13 @@ class SteamMeterSnapshotResolver implements WidgetSnapshotResolver
     }
 
     /**
-     * @param  array{device_id: int, schema_version_topic_id: int, parameter_key: string}  $source
+     * @param  array{device_id: int, device_channel_id: int, parameter_key: string}  $source
      */
     private function counterDelta(array $source, CarbonImmutable $startAt, CarbonImmutable $endAt): ?float
     {
         return $this->telemetryQuery->counterDelta(
             deviceId: $source['device_id'],
-            schemaVersionTopicId: $source['schema_version_topic_id'],
+            deviceChannelId: $source['device_channel_id'],
             parameterKey: $source['parameter_key'],
             startAt: $startAt,
             endAt: $endAt,

@@ -39,13 +39,13 @@ it('seeds the sri lankan organization with the communicating hub hierarchy and l
     expect($organization)->not->toBeNull();
 
     $devices = Device::query()
-        ->with(['deviceType', 'schemaVersion.schema', 'parentDevice'])
+        ->with(['profileVersion.profile', 'parentDevice'])
         ->where('organization_id', $organization?->id)
         ->get();
 
     $rootDevices = $devices->whereNull('parent_device_id');
-    $hubs = $rootDevices->where('deviceType.key', 'legacy_hub');
-    $rootEgravityDevices = $rootDevices->where('deviceType.key', 'legacy_egravity_sensor');
+    $hubs = $rootDevices->where('profileVersion.profile.key', 'legacy_hub');
+    $rootEgravityDevices = $rootDevices->where('profileVersion.profile.key', 'legacy_egravity_sensor');
     $children = $devices->whereNotNull('parent_device_id');
     $offlineAlertCount = $devices
         ->filter(fn (Device $device): bool => (bool) ($device->metadata['legacy_offline_alert_enabled'] ?? false))
@@ -55,17 +55,17 @@ it('seeds the sri lankan organization with the communicating hub hierarchy and l
     $climateDevice = $devices->firstWhere('external_id', 'ea2b48f3-911f-4c90-88b7-29ac47799ed7');
     $climateBindings = DeviceSignalBinding::query()
         ->where('device_id', $climateDevice?->id)
-        ->orderBy('parameter_definition_id')
+        ->orderBy('parameter_key')
         ->get();
     $egravityDevice = $devices->firstWhere('external_id', '00841B48');
     $egravityBindings = DeviceSignalBinding::query()
         ->where('device_id', $egravityDevice?->id)
-        ->orderBy('parameter_definition_id')
+        ->orderBy('parameter_key')
         ->get();
     $temperatureOnlyEgravityDevice = $devices->firstWhere('external_id', '009C56ED');
     $temperatureOnlyEgravityBindings = DeviceSignalBinding::query()
         ->where('device_id', $temperatureOnlyEgravityDevice?->id)
-        ->orderBy('parameter_definition_id')
+        ->orderBy('parameter_key')
         ->get();
     $monitoredRoomNames = $devices->pluck('name')->intersect([
         'CLD 02',
@@ -86,13 +86,13 @@ it('seeds the sri lankan organization with the communicating hub hierarchy and l
         ->and($offlineAlertCount)->toBe(11)
         ->and($hub?->external_id)->toBe('869244041754767')
         ->and($hub?->metadata['legacy_virtual_device_id'] ?? null)->toBe('0565b9ec-2912-4ae8-b632-92bc3206f188')
-        ->and($children->where('deviceType.key', 'legacy_climate_sensor'))->toHaveCount(14)
+        ->and($children->where('profileVersion.profile.key', 'legacy_climate_sensor'))->toHaveCount(14)
         ->and($rootEgravityDevices->pluck('external_id')->sort()->values()->all())->toBe([
             '00841B48',
             '009C56ED',
         ])
-        ->and($climateDevice?->deviceType?->key)->toBe('legacy_climate_sensor')
-        ->and($climateDevice?->schemaVersion?->schema?->name)->toBe('Legacy Climate Sensor Contract')
+        ->and($climateDevice?->profileVersion?->profile?->key)->toBe('legacy_climate_sensor')
+        ->and($climateDevice?->profileVersion?->profile?->name)->toBe('Legacy Climate Sensor')
         ->and($climateDevice?->name)->toBe('CLD 02')
         ->and($climateDevice?->metadata['legacy_device_name'] ?? null)->toBe('ACLD 02')
         ->and($climateBindings)->toHaveCount(2)
@@ -103,7 +103,7 @@ it('seeds the sri lankan organization with the communicating hub hierarchy and l
             '$.io_17_value',
             '$.io_18_value',
         )
-        ->and($egravityDevice?->deviceType?->key)->toBe('legacy_egravity_sensor')
+        ->and($egravityDevice?->profileVersion?->profile?->key)->toBe('legacy_egravity_sensor')
         ->and($egravityBindings)->toHaveCount(4)
         ->and($egravityBindings->pluck('source_topic')->unique()->all())->toBe([
             'migration/source/egravity/00841B48/telemetry',
@@ -111,7 +111,7 @@ it('seeds the sri lankan organization with the communicating hub hierarchy and l
         ->and($egravityDevice?->metadata['legacy_metadata']['manufacturer'] ?? null)->toBe('Egravity')
         ->and($egravityDevice?->name)->toBe('CLD 08-04')
         ->and($egravityDevice?->metadata['legacy_device_name'] ?? null)->toBe('CLD08 - 04')
-        ->and($temperatureOnlyEgravityDevice?->deviceType?->key)->toBe('legacy_egravity_sensor')
+        ->and($temperatureOnlyEgravityDevice?->profileVersion?->profile?->key)->toBe('legacy_egravity_sensor')
         ->and($temperatureOnlyEgravityDevice?->name)->toBe('CLD 03')
         ->and($temperatureOnlyEgravityDevice?->metadata['legacy_device_name'] ?? null)->toBe('CLD03 - 02')
         ->and($temperatureOnlyEgravityBindings)->toHaveCount(2)
@@ -154,8 +154,7 @@ it('removes retired sri lankan migrated devices on rerun without touching manual
 
     $retiredChild = Device::factory()->create([
         'organization_id' => $organization->id,
-        'device_type_id' => $retiredHub->device_type_id,
-        'device_schema_version_id' => $retiredHub->device_schema_version_id,
+        'device_profile_version_id' => $retiredHub->device_profile_version_id,
         'parent_device_id' => $retiredHub->id,
         'external_id' => '13faaec8-a503-4491-b18f-70a3f7436878',
         'name' => 'CLD 03 - 01',
@@ -246,7 +245,7 @@ it('marks a sri lankan hub online and ingests hub-level imoni telemetry into mul
     Event::assertDispatched(TelemetryReceived::class, 2);
 });
 
-it('expands sri lankan egravity telemetry into the retained dashboard device schema', function (): void {
+it('expands sri lankan egravity telemetry into the retained dashboard device profile', function (): void {
     Event::fake([TelemetryReceived::class]);
 
     seed(SriLankanMigrationSeeder::class);

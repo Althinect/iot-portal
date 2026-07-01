@@ -81,8 +81,8 @@ class WidgetLayoutService
         $options = [];
 
         foreach (range(1, self::GRID_COLUMNS) as $column) {
-            $suffix = $column === 1 ? 'column' : 'columns';
-            $options[(string) $column] = "{$column} {$suffix}";
+            $address = $column === 1 ? 'column' : 'columns';
+            $options[(string) $column] = "{$column} {$address}";
         }
 
         return $options;

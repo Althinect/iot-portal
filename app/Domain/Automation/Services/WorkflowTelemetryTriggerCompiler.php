@@ -9,9 +9,8 @@ use App\Domain\Automation\Models\AutomationTelemetryTrigger;
 use App\Domain\Automation\Models\AutomationWorkflow;
 use App\Domain\Automation\Models\AutomationWorkflowVersion;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use Illuminate\Support\Arr;
 
 class WorkflowTelemetryTriggerCompiler
@@ -43,7 +42,7 @@ class WorkflowTelemetryTriggerCompiler
                 continue;
             }
 
-            $dedupeKey = "{$compiledRow['device_id']}:{$compiledRow['schema_version_topic_id']}";
+            $dedupeKey = "{$compiledRow['device_id']}:{$compiledRow['device_channel_id']}:{$compiledRow['parameter_key']}";
             $compiledRows[$dedupeKey] = $compiledRow;
         }
 
@@ -54,7 +53,7 @@ class WorkflowTelemetryTriggerCompiler
 
     /**
      * @param  array<string, mixed>  $node
-     * @return array{device_id: int, topic_id: int, parameter_definition_id: int}|null
+     * @return array{device_id: int, device_channel_id: int, parameter_key: string}|null
      */
     private function extractTriggerSource(array $node): ?array
     {
@@ -73,28 +72,29 @@ class WorkflowTelemetryTriggerCompiler
         }
 
         $deviceId = $this->resolvePositiveInt($source['device_id'] ?? null);
-        $topicId = $this->resolvePositiveInt($source['topic_id'] ?? null);
-        $parameterDefinitionId = $this->resolvePositiveInt($source['parameter_definition_id'] ?? null);
+        $deviceChannelId = $this->resolvePositiveInt($source['device_channel_id'] ?? $source['channel_id'] ?? null);
+        $parameterKey = $this->resolveNonEmptyString($source['parameter_key'] ?? null);
 
-        if ($deviceId === null || $topicId === null || $parameterDefinitionId === null) {
+        if ($deviceId === null || $deviceChannelId === null || $parameterKey === null) {
             return null;
         }
 
         return [
             'device_id' => $deviceId,
-            'topic_id' => $topicId,
-            'parameter_definition_id' => $parameterDefinitionId,
+            'device_channel_id' => $deviceChannelId,
+            'parameter_key' => $parameterKey,
         ];
     }
 
     /**
-     * @param  array{device_id: int, topic_id: int, parameter_definition_id: int}  $source
+     * @param  array{device_id: int, device_channel_id: int, parameter_key: string}  $source
      * @return array{
      *     organization_id: int,
      *     workflow_version_id: int,
      *     device_id: int,
-     *     device_type_id: int|null,
-     *     schema_version_topic_id: int,
+     *     device_channel_id: int,
+     *     channel_key: string,
+     *     parameter_key: string,
      *     filter_expression: null
      * }|null
      */
@@ -104,31 +104,26 @@ class WorkflowTelemetryTriggerCompiler
             ->where('organization_id', $organizationId)
             ->find($source['device_id']);
 
-        $schemaVersionId = $device instanceof Device
-            ? $this->resolvePositiveInt($device->getAttribute('device_schema_version_id'))
-            : null;
-
-        if (! $device instanceof Device || $schemaVersionId === null) {
+        if (! $device instanceof Device) {
             return null;
         }
 
-        $topic = SchemaVersionTopic::query()
-            ->whereKey($source['topic_id'])
-            ->where('device_schema_version_id', $schemaVersionId)
-            ->where('direction', TopicDirection::Publish->value)
+        $channel = DeviceChannel::query()
+            ->whereKey($source['device_channel_id'])
+            ->where('device_profile_version_id', $device->device_profile_version_id)
             ->first();
 
-        if (! $topic instanceof SchemaVersionTopic) {
+        if (! $channel instanceof DeviceChannel || ! $channel->isPublish()) {
             return null;
         }
 
-        $parameter = ParameterDefinition::query()
-            ->whereKey($source['parameter_definition_id'])
-            ->where('schema_version_topic_id', $topic->id)
+        $parameter = ProfileParameterDefinition::query()
+            ->where('device_channel_id', $channel->id)
+            ->where('key', $source['parameter_key'])
             ->where('is_active', true)
             ->first();
 
-        if (! $parameter instanceof ParameterDefinition) {
+        if (! $parameter instanceof ProfileParameterDefinition) {
             return null;
         }
 
@@ -136,8 +131,9 @@ class WorkflowTelemetryTriggerCompiler
             'organization_id' => $organizationId,
             'workflow_version_id' => $workflowVersionId,
             'device_id' => $device->id,
-            'device_type_id' => $device->device_type_id,
-            'schema_version_topic_id' => $topic->id,
+            'device_channel_id' => $channel->id,
+            'channel_key' => $channel->key,
+            'parameter_key' => $parameter->key,
             'filter_expression' => null,
         ];
     }
@@ -155,5 +151,16 @@ class WorkflowTelemetryTriggerCompiler
         $resolved = (int) $value;
 
         return $resolved > 0 ? $resolved : null;
+    }
+
+    private function resolveNonEmptyString(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $resolved = trim($value);
+
+        return $resolved !== '' ? $resolved : null;
     }
 }

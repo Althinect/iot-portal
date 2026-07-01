@@ -74,7 +74,8 @@ class TelemetryReceived implements ShouldBroadcast
             'id' => $this->telemetryLog->id,
             'organization_id' => is_numeric($device?->organization_id) ? (int) $device->organization_id : null,
             'device_uuid' => $device?->uuid,
-            'schema_version_topic_id' => $this->telemetryLog->schema_version_topic_id,
+            'device_channel_id' => $this->telemetryLog->device_channel_id,
+            'channel_key' => $this->telemetryLog->channel?->key,
             'transformed_values' => $this->telemetryLog->transformed_values,
             'recorded_at' => $recordedAtValue,
         ];

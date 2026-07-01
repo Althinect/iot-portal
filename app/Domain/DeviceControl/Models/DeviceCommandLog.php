@@ -6,7 +6,7 @@ namespace App\Domain\DeviceControl\Models;
 
 use App\Domain\DeviceControl\Enums\CommandStatus;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\Shared\Models\User;
 use Database\Factories\Domain\DeviceControl\Models\DeviceCommandLogFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -45,19 +45,19 @@ class DeviceCommandLog extends Model
     }
 
     /**
-     * @return BelongsTo<SchemaVersionTopic, $this>
+     * @return BelongsTo<DeviceChannel, $this>
      */
-    public function topic(): BelongsTo
+    public function channel(): BelongsTo
     {
-        return $this->belongsTo(SchemaVersionTopic::class, 'schema_version_topic_id');
+        return $this->belongsTo(DeviceChannel::class, 'device_channel_id');
     }
 
     /**
-     * @return BelongsTo<SchemaVersionTopic, $this>
+     * @return BelongsTo<DeviceChannel, $this>
      */
-    public function responseTopic(): BelongsTo
+    public function responseChannel(): BelongsTo
     {
-        return $this->belongsTo(SchemaVersionTopic::class, 'response_schema_version_topic_id');
+        return $this->belongsTo(DeviceChannel::class, 'response_device_channel_id');
     }
 
     /**

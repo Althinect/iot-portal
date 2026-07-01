@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\MetricUnit;
-use App\Domain\DeviceSchema\Enums\ParameterCategory;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\MetricUnit;
+use App\Domain\DeviceProfile\Enums\ParameterCategory;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 
 class CommercialBankMigrationSeeder extends LegacyImoniMigrationSeederSupport
@@ -434,7 +434,7 @@ class CommercialBankMigrationSeeder extends LegacyImoniMigrationSeederSupport
         return self::HUBS;
     }
 
-    private function upsertClimateSchemaVersion(): DeviceSchemaVersion
+    private function upsertClimateSchemaVersion(): DeviceProfileVersion
     {
         return $this->upsertSchemaVersion(
             deviceTypeKey: self::CLIMATE_DEVICE_TYPE_KEY,
@@ -471,26 +471,26 @@ class CommercialBankMigrationSeeder extends LegacyImoniMigrationSeederSupport
         );
     }
 
-    private function upsertImoniLiteSchemaVersion(): DeviceSchemaVersion
+    private function upsertImoniLiteSchemaVersion(): DeviceProfileVersion
     {
         return $this->upsertSchemaVersion(
             deviceTypeKey: self::IMONI_LITE_DEVICE_TYPE_KEY,
             deviceTypeName: self::IMONI_LITE_DEVICE_TYPE_NAME,
             baseTopic: self::IMONI_LITE_BASE_TOPIC,
             schemaName: self::IMONI_LITE_SCHEMA_NAME,
-            parameters: $this->imoniLiteParameterDefinitions(),
+            parameters: $this->imoniLiteProfileParameterDefinitions(),
             notes: 'Commercial Bank legacy iMoni Lite digital inputs recovered from the old iot-demo inventory.',
         );
     }
 
-    private function upsertEnergySchemaVersion(): DeviceSchemaVersion
+    private function upsertEnergySchemaVersion(): DeviceProfileVersion
     {
         return $this->upsertSchemaVersion(
             deviceTypeKey: self::ENERGY_DEVICE_TYPE_KEY,
             deviceTypeName: self::ENERGY_DEVICE_TYPE_NAME,
             baseTopic: self::ENERGY_BASE_TOPIC,
             schemaName: self::ENERGY_SCHEMA_NAME,
-            parameters: $this->energyParameterDefinitions(),
+            parameters: $this->energyProfileParameterDefinitions(),
             version: self::ENERGY_SCHEMA_VERSION,
             status: 'draft',
             notes: 'Commercial Bank legacy AC Energy Mate contract recovered from the old iot-demo inventory.',
@@ -500,7 +500,7 @@ class CommercialBankMigrationSeeder extends LegacyImoniMigrationSeederSupport
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function imoniLiteParameterDefinitions(): array
+    private function imoniLiteProfileParameterDefinitions(): array
     {
         return array_map(
             static fn (int $inputNumber, int $index): array => [
@@ -522,7 +522,7 @@ class CommercialBankMigrationSeeder extends LegacyImoniMigrationSeederSupport
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function energyParameterDefinitions(): array
+    private function energyProfileParameterDefinitions(): array
     {
         $defaultMutations = $this->defaultEnergyMutationExpressions();
 
@@ -652,7 +652,7 @@ class CommercialBankMigrationSeeder extends LegacyImoniMigrationSeederSupport
         array $hubs,
         array $hubConfigsByImei,
         string $migrationDeviceType,
-        DeviceSchemaVersion $schemaVersion,
+        DeviceProfileVersion $schemaVersion,
         array $devices,
     ): void {
         $parametersByKey = $this->parametersByKey($schemaVersion);
@@ -686,17 +686,17 @@ class CommercialBankMigrationSeeder extends LegacyImoniMigrationSeederSupport
     }
 
     /**
-     * @return array<string, ParameterDefinition>
+     * @return array<string, ProfileParameterDefinition>
      */
-    private function parametersByKey(DeviceSchemaVersion $schemaVersion): array
+    private function parametersByKey(DeviceProfileVersion $schemaVersion): array
     {
-        $topic = $schemaVersion->topics()->where('key', 'telemetry')->first();
+        $topic = $schemaVersion->channels()->where('key', 'telemetry')->first();
 
-        if (! $topic instanceof SchemaVersionTopic) {
+        if (! $topic instanceof DeviceChannel) {
             return [];
         }
 
-        /** @var array<string, ParameterDefinition> $parametersByKey */
+        /** @var array<string, ProfileParameterDefinition> $parametersByKey */
         $parametersByKey = $topic->parameters()
             ->orderBy('sequence')
             ->get()

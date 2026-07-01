@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Domain\DeviceControl\Services;
 
-use App\Domain\DeviceSchema\Enums\ControlWidgetType;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ControlWidgetType;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 
 class CommandPayloadResolver
 {
@@ -15,14 +15,14 @@ class CommandPayloadResolver
      * @param  array<string, mixed>  $controlValues
      * @return array{payload: array<string, mixed>, errors: array<string, string>}
      */
-    public function resolveFromControls(SchemaVersionTopic $topic, array $controlValues): array
+    public function resolveFromControls(DeviceChannel $channel, array $controlValues): array
     {
-        $topic->loadMissing('parameters');
+        $channel->loadMissing('parameters');
 
         $payload = [];
         $errors = [];
 
-        foreach ($topic->parameters->where('is_active', true)->sortBy('sequence') as $parameter) {
+        foreach ($channel->parameters->where('is_active', true)->sortBy('sequence') as $parameter) {
             $widgetType = $parameter->resolvedWidgetType();
             $defaultValue = $parameter->resolvedDefaultValue();
             $hasControlValue = array_key_exists($parameter->key, $controlValues);
@@ -65,13 +65,13 @@ class CommandPayloadResolver
      * @param  array<string, mixed>  $payload
      * @return array<string, string>
      */
-    public function validatePayload(SchemaVersionTopic $topic, array $payload): array
+    public function validatePayload(DeviceChannel $channel, array $payload): array
     {
-        $topic->loadMissing('parameters');
+        $channel->loadMissing('parameters');
 
         $errors = [];
 
-        foreach ($topic->parameters->where('is_active', true)->sortBy('sequence') as $parameter) {
+        foreach ($channel->parameters->where('is_active', true)->sortBy('sequence') as $parameter) {
             $value = $parameter->extractValue($payload);
             $castValue = $this->castForType($parameter, $value);
             $validation = $parameter->validateValue($castValue);
@@ -84,7 +84,7 @@ class CommandPayloadResolver
         return $errors;
     }
 
-    private function castForType(ParameterDefinition $parameter, mixed $value): mixed
+    private function castForType(ProfileParameterDefinition $parameter, mixed $value): mixed
     {
         if ($value === null) {
             return null;

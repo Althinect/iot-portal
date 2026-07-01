@@ -36,9 +36,15 @@ class DeviceTelemetryLogsTable
                     ->label('Device Name')
                     ->searchable(),
             ] : []),
-            TextColumn::make('schemaVersion.version')
-                ->label('Schema Version')
+
+            TextColumn::make('profileVersion.version')
+                ->label('Profile Version')
                 ->sortable(),
+
+            TextColumn::make('channel.label')
+                ->label('Channel')
+                ->placeholder('-')
+                ->toggleable(),
 
             TextColumn::make('validation_status')
                 ->badge()
@@ -94,6 +100,8 @@ class DeviceTelemetryLogsTable
             ->recordActions([
                 $useValuesModal ? self::makeValuesViewAction() : ViewAction::make(),
             ])
+            ->defaultPaginationPageOption(25)
+            ->paginationPageOptions([10, 25, 50])
             ->defaultSort('recorded_at', 'desc');
     }
 
@@ -106,8 +114,10 @@ class DeviceTelemetryLogsTable
             ->schema([
                 Section::make('Telemetry')
                     ->schema([
-                        TextEntry::make('schemaVersion.version')
-                            ->label('Schema Version'),
+                        TextEntry::make('profileVersion.version')
+                            ->label('Profile Version'),
+                        TextEntry::make('channel.label')
+                            ->label('Channel'),
                         TextEntry::make('validation_status')
                             ->label('Validation Status')
                             ->badge()
@@ -121,21 +131,19 @@ class DeviceTelemetryLogsTable
                             ->dateTime(),
                     ])
                     ->columns(3),
+
                 Section::make('Values')
                     ->schema([
                         CodeEntry::make('transformed_values')
                             ->label('Values')
                             ->grammar(Grammar::Json)
                             ->copyable()
-                            ->copyableState(fn (DeviceTelemetryLog $record): string => self::formatPayload(
-                                $record->getAttribute('transformed_values') ?? self::resolveDisplayValues($record),
-                            ) ?? '{}')
-                            ->state(fn (DeviceTelemetryLog $record): ?string => self::formatPayload(
-                                $record->getAttribute('transformed_values') ?? self::resolveDisplayValues($record),
-                            ))
+                            ->copyableState(fn (DeviceTelemetryLog $record): string => self::formatPayload(self::resolveDisplayValues($record)) ?? '{}')
+                            ->state(fn (DeviceTelemetryLog $record): ?string => self::formatPayload(self::resolveDisplayValues($record)))
                             ->columnSpanFull()
                             ->placeholder('No values recorded.'),
                     ]),
+
                 Section::make('Raw Payload')
                     ->schema([
                         CodeEntry::make('raw_payload')

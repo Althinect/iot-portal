@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Filament\Actions\DeviceManagement;
 
-use App\Domain\DeviceManagement\Enums\ProtocolType;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Services\DeviceCertificateIssuer;
+use App\Domain\DeviceProfile\Enums\Protocol;
 use Filament\Actions\Action;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
@@ -30,7 +30,7 @@ final class RevokeX509CertificateAction
                     ->maxLength(255),
             ])
             ->visible(function (Device $record): bool {
-                if ($record->deviceType?->default_protocol !== ProtocolType::Mqtt) {
+                if ($record->profileVersion?->protocol !== Protocol::Mqtt) {
                     return false;
                 }
 

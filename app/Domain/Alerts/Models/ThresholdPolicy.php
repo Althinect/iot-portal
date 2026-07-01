@@ -9,9 +9,9 @@ use App\Domain\Automation\Models\AutomationWorkflow;
 use App\Domain\Automation\Services\GuidedConditionService;
 use App\Domain\Automation\Services\ThresholdPolicyWorkflowProjector;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\MetricUnit;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\MetricUnit;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 use Database\Factories\Domain\Automation\Models\AutomationThresholdPolicyFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -66,10 +66,10 @@ class ThresholdPolicy extends Model
         return $this->belongsTo(Device::class);
     }
 
-    /** @return BelongsTo<ParameterDefinition, $this> */
-    public function parameterDefinition(): BelongsTo
+    /** @return BelongsTo<DeviceChannel, $this> */
+    public function deviceChannel(): BelongsTo
     {
-        return $this->belongsTo(ParameterDefinition::class);
+        return $this->belongsTo(DeviceChannel::class);
     }
 
     /** @return BelongsTo<NotificationProfile, $this> */
@@ -90,11 +90,19 @@ class ThresholdPolicy extends Model
         return $this->hasMany(Alert::class, 'threshold_policy_id');
     }
 
-    public function schemaVersionTopic(): ?SchemaVersionTopic
+    public function profileParameterDefinition(): ?ProfileParameterDefinition
     {
-        $this->loadMissing('parameterDefinition.topic');
+        $this->loadMissing('deviceChannel');
 
-        return $this->parameterDefinition?->topic;
+        if (! $this->deviceChannel instanceof DeviceChannel || ! is_string($this->parameter_key)) {
+            return null;
+        }
+
+        return ProfileParameterDefinition::query()
+            ->where('device_channel_id', $this->deviceChannel->id)
+            ->where('key', $this->parameter_key)
+            ->where('is_active', true)
+            ->first();
     }
 
     protected static function booted(): void
@@ -208,7 +216,7 @@ class ThresholdPolicy extends Model
         $guidedCondition = $this->guidedConditionPayload();
 
         if (is_array($guidedCondition) && $guidedCondition !== []) {
-            return app(GuidedConditionService::class)->label($guidedCondition, $unit ?? $this->parameterDefinition?->unit);
+            return app(GuidedConditionService::class)->label($guidedCondition, $unit ?? $this->profileParameterDefinition()?->unit);
         }
 
         $name = $this->getAttribute('name');
@@ -226,7 +234,7 @@ class ThresholdPolicy extends Model
             return $this->conditionLabel($unit);
         }
 
-        $resolvedUnit = $unit ?? $this->parameterDefinition?->unit;
+        $resolvedUnit = $unit ?? $this->profileParameterDefinition()?->unit;
         $minimumValue = $this->minimumValue();
         $maximumValue = $this->maximumValue();
 

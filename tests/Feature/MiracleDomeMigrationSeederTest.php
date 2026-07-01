@@ -9,7 +9,7 @@ use App\Domain\DataIngestion\Services\DeviceSignalBindingResolver;
 use App\Domain\DataIngestion\Services\TelemetryIngestionService;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Services\DevicePresenceMessageHandler;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 use App\Events\TelemetryReceived;
 use Database\Seeders\MiracleDomeMigrationSeeder;
@@ -65,27 +65,28 @@ it('seeds miracle dome hubs and physical energy meters with normalized source bi
         ->where('external_id', '869244041759402-21')
         ->first();
 
-    $telemetryTopic = $serverRoomMeter?->schemaVersion?->topics()->where('key', 'telemetry')->first();
-    $parameterKeys = $telemetryTopic?->parameters()->orderBy('sequence')->pluck('key')->all();
+    $telemetryChannel = $serverRoomMeter?->profileVersion?->channels()->where('key', 'telemetry')->first();
+    $parameterKeys = $telemetryChannel?->parameters()->orderBy('sequence')->pluck('key')->all();
 
-    /** @var ParameterDefinition|null $voltageParameter */
-    $voltageParameter = $telemetryTopic?->parameters()->where('key', 'PhaseAVoltage')->first();
-    /** @var ParameterDefinition|null $energyParameter */
-    $energyParameter = $telemetryTopic?->parameters()->where('key', 'TotalEnergy')->first();
-    /** @var ParameterDefinition|null $powerFactorParameter */
-    $powerFactorParameter = $telemetryTopic?->parameters()->where('key', 'totalPowerFactor')->first();
+    /** @var ProfileParameterDefinition|null $voltageParameter */
+    $voltageParameter = $telemetryChannel?->parameters()->where('key', 'PhaseAVoltage')->first();
+    /** @var ProfileParameterDefinition|null $energyParameter */
+    $energyParameter = $telemetryChannel?->parameters()->where('key', 'TotalEnergy')->first();
+    /** @var ProfileParameterDefinition|null $powerFactorParameter */
+    $powerFactorParameter = $telemetryChannel?->parameters()->where('key', 'totalPowerFactor')->first();
 
     $binding = DeviceSignalBinding::query()
         ->where('device_id', $serverRoomMeter?->id)
-        ->where('parameter_definition_id', $energyParameter?->id)
+        ->where('device_channel_id', $telemetryChannel?->id)
+        ->where('parameter_key', $energyParameter?->key)
         ->first();
 
     expect($serverRoomMeter)->not->toBeNull()
-        ->and($serverRoomMeter?->deviceType?->key)->toBe('energy_meter')
-        ->and($serverRoomMeter?->schemaVersion?->schema?->name)->toBe('Energy Meter Contract')
-        ->and($serverRoomMeter?->schemaVersion?->version)->toBe(1)
+        ->and($serverRoomMeter?->profileVersion?->profile?->key)->toBe('energy_meter')
+        ->and($serverRoomMeter?->profileVersion?->profile?->name)->toBe('Energy Meter')
+        ->and($serverRoomMeter?->profileVersion?->version)->toBe(1)
         ->and($serverRoomMeter?->metadata['schema_variant'] ?? null)->toBe('ac_energy_mate_calibrated')
-        ->and($telemetryTopic?->resolvedTopic($serverRoomMeter))->toBe('energy/869244041759402-21/telemetry')
+        ->and($serverRoomMeter?->profileVersion?->protocol_config?->getBaseTopic().'/'.$serverRoomMeter?->external_id.'/'.$telemetryChannel?->address)->toBe('energy/869244041759402-21/telemetry')
         ->and($parameterKeys)->toBe([
             'TotalEnergy',
             'PhaseAVoltage',

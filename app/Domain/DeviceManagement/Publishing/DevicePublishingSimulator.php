@@ -8,9 +8,10 @@ use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Publishing\Nats\NatsPublisher;
 use App\Domain\DeviceManagement\Publishing\Nats\NatsPublisherFactory;
 use App\Domain\DeviceManagement\Services\DevicePresenceService;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceManagement\ValueObjects\Protocol\MqttProtocolConfig;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Events\TelemetryIncoming;
 use Illuminate\Support\Collection;
 
@@ -24,22 +25,22 @@ final readonly class DevicePublishingSimulator
     /**
      * Simulate device -> platform publishing.
      *
-     * @param  (callable(int $iteration, string $mqttTopic, array<string, mixed> $payload, SchemaVersionTopic $topic): void)|null  $onBeforePublish
-     * @param  (callable(int $iteration, string $mqttTopic, \Throwable $exception, SchemaVersionTopic $topic): void)|null  $onPublishFailed
+     * @param  (callable(int $iteration, string $mqttTopic, array<string, mixed> $payload, DeviceChannel $channel): void)|null  $onBeforePublish
+     * @param  (callable(int $iteration, string $mqttTopic, \Throwable $exception, DeviceChannel $channel): void)|null  $onPublishFailed
      */
     public function simulate(
         Device $device,
         int $count = 10,
         int $intervalSeconds = 1,
-        ?int $schemaVersionTopicId = null,
+        ?int $deviceChannelId = null,
         ?string $host = null,
         ?int $port = null,
         ?callable $onBeforePublish = null,
         ?callable $onPublishFailed = null,
     ): void {
-        $topics = $this->resolvePublishTopics($device, $schemaVersionTopicId);
+        $channels = $this->resolvePublishChannels($device, $deviceChannelId);
 
-        if ($topics->isEmpty()) {
+        if ($channels->isEmpty()) {
             return;
         }
 
@@ -51,7 +52,7 @@ final readonly class DevicePublishingSimulator
                 device: $device,
                 publisher: $publisher,
                 iteration: $i,
-                schemaVersionTopicId: $schemaVersionTopicId,
+                deviceChannelId: $deviceChannelId,
                 counterState: $counterState,
                 onBeforePublish: $onBeforePublish,
                 onPublishFailed: $onPublishFailed,
@@ -73,27 +74,27 @@ final readonly class DevicePublishingSimulator
 
     /**
      * @param  array<string, float>  $counterState
-     * @param  (callable(int $iteration, string $mqttTopic, array<string, mixed> $payload, SchemaVersionTopic $topic): void)|null  $onBeforePublish
-     * @param  (callable(int $iteration, string $mqttTopic, \Throwable $exception, SchemaVersionTopic $topic): void)|null  $onPublishFailed
+     * @param  (callable(int $iteration, string $mqttTopic, array<string, mixed> $payload, DeviceChannel $channel): void)|null  $onBeforePublish
+     * @param  (callable(int $iteration, string $mqttTopic, \Throwable $exception, DeviceChannel $channel): void)|null  $onPublishFailed
      */
     public function publishTopics(
         Device $device,
         NatsPublisher $publisher,
         int $iteration = 1,
-        ?int $schemaVersionTopicId = null,
+        ?int $deviceChannelId = null,
         array &$counterState = [],
         ?callable $onBeforePublish = null,
         ?callable $onPublishFailed = null,
     ): int {
         $publishedMessages = 0;
-        $topics = $this->resolvePublishTopics($device, $schemaVersionTopicId);
+        $channels = $this->resolvePublishChannels($device, $deviceChannelId);
 
-        foreach ($topics as $topic) {
-            $payload = $this->generateRandomPayload($topic, $counterState);
-            $mqttTopic = $this->resolveTopicWithExternalId($device, $topic);
+        foreach ($channels as $channel) {
+            $payload = $this->generateRandomPayload($channel, $counterState);
+            $mqttTopic = $this->resolveTopicWithExternalId($device, $channel);
 
             if ($onBeforePublish !== null) {
-                $onBeforePublish($iteration, $mqttTopic, $payload, $topic);
+                $onBeforePublish($iteration, $mqttTopic, $payload, $channel);
             }
 
             $natsSubject = str_replace('/', '.', $mqttTopic);
@@ -116,7 +117,7 @@ final readonly class DevicePublishingSimulator
                 report($exception);
 
                 if ($onPublishFailed !== null) {
-                    $onPublishFailed($iteration, $mqttTopic, $exception, $topic);
+                    $onPublishFailed($iteration, $mqttTopic, $exception, $channel);
                 }
             }
         }
@@ -125,17 +126,17 @@ final readonly class DevicePublishingSimulator
     }
 
     /**
-     * @return Collection<int, SchemaVersionTopic>
+     * @return Collection<int, DeviceChannel>
      */
-    public function resolvePublishTopics(Device $device, ?int $schemaVersionTopicId = null): Collection
+    public function resolvePublishChannels(Device $device, ?int $deviceChannelId = null): Collection
     {
-        $device->loadMissing('deviceType', 'schemaVersion.topics.parameters');
+        $device->loadMissing('profileVersion.channels.parameters');
 
-        return $device->schemaVersion?->topics
-            ?->filter(fn (SchemaVersionTopic $topic): bool => $topic->isPublish())
+        return $device->profileVersion?->channels
+            ?->filter(fn (DeviceChannel $channel): bool => $channel->isPublish())
             ->when(
-                $schemaVersionTopicId !== null,
-                fn (Collection $topics): Collection => $topics->where('id', $schemaVersionTopicId),
+                $deviceChannelId !== null,
+                fn (Collection $channels): Collection => $channels->where('id', $deviceChannelId),
             )
             ->sortBy('sequence')
             ->values()
@@ -146,16 +147,16 @@ final readonly class DevicePublishingSimulator
      * @param  array<string, float>  $counterState
      * @return array<string, mixed>
      */
-    private function generateRandomPayload(SchemaVersionTopic $topic, array &$counterState): array
+    private function generateRandomPayload(DeviceChannel $channel, array &$counterState): array
     {
-        $topic->loadMissing('parameters');
+        $channel->loadMissing('parameters');
 
         $payload = [];
 
-        $topic->parameters
+        $channel->parameters
             ->where('is_active', true)
             ->sortBy('sequence')
-            ->each(function (ParameterDefinition $parameter) use (&$payload, &$counterState): void {
+            ->each(function (ProfileParameterDefinition $parameter) use (&$payload, &$counterState): void {
                 $value = $this->generateRandomValue($parameter, $counterState);
                 $payload = $parameter->placeValue($payload, $value);
             });
@@ -166,7 +167,7 @@ final readonly class DevicePublishingSimulator
     /**
      * @param  array<string, float>  $counterState
      */
-    private function generateRandomValue(ParameterDefinition $parameter, array &$counterState): mixed
+    private function generateRandomValue(ProfileParameterDefinition $parameter, array &$counterState): mixed
     {
         $rules = $parameter->resolvedValidationRules();
         $type = $parameter->type;
@@ -220,9 +221,9 @@ final readonly class DevicePublishingSimulator
         };
     }
 
-    private function resolveCounterStateKey(ParameterDefinition $parameter): string
+    private function resolveCounterStateKey(ProfileParameterDefinition $parameter): string
     {
-        return $parameter->schema_version_topic_id.':'.$parameter->key;
+        return $parameter->device_channel_id.':'.$parameter->key;
     }
 
     /**
@@ -310,12 +311,13 @@ final readonly class DevicePublishingSimulator
         return $min + (lcg_value() * ($max - $min));
     }
 
-    private function resolveTopicWithExternalId(Device $device, SchemaVersionTopic $topic): string
+    private function resolveTopicWithExternalId(Device $device, DeviceChannel $channel): string
     {
-        $baseTopic = $device->deviceType?->protocol_config?->getBaseTopic() ?? 'device';
+        $protocolConfig = $device->profileVersion?->protocol_config;
+        $baseTopic = $protocolConfig instanceof MqttProtocolConfig ? $protocolConfig->getBaseTopic() : 'device';
         $identifier = $device->external_id ?: $device->uuid;
 
-        return trim($baseTopic, '/').'/'.$identifier.'/'.$topic->suffix;
+        return trim($baseTopic, '/').'/'.$identifier.'/'.$channel->address;
     }
 
     private function resolveHost(?string $host): string

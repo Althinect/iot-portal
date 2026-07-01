@@ -6,20 +6,21 @@ namespace Database\Seeders;
 
 use App\Domain\DataIngestion\Models\DeviceSignalBinding;
 use App\Domain\DeviceManagement\Enums\MqttSecurityMode;
-use App\Domain\DeviceManagement\Enums\ProtocolType;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
 use App\Domain\DeviceManagement\ValueObjects\Protocol\MqttProtocolConfig;
-use App\Domain\DeviceSchema\Enums\ParameterCategory;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Enums\TopicPurpose;
-use App\Domain\DeviceSchema\Models\DerivedParameterDefinition;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
-use App\Domain\DeviceSchema\Models\DeviceSchemaVersion;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ChannelDirection;
+use App\Domain\DeviceProfile\Enums\ChannelPurpose;
+use App\Domain\DeviceProfile\Enums\ChannelTransport;
+use App\Domain\DeviceProfile\Enums\ParameterCategory;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Enums\Protocol;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfile;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileDerivedParameterDefinition;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
+use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
@@ -64,7 +65,7 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
         return $organization;
     }
 
-    protected function upsertHubSchemaVersion(): DeviceSchemaVersion
+    protected function upsertHubSchemaVersion(): DeviceProfileVersion
     {
         return $this->upsertSchemaVersion(
             deviceTypeKey: self::HUB_DEVICE_TYPE_KEY,
@@ -84,7 +85,7 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
             topicKey: 'heartbeat',
             topicLabel: 'Heartbeat',
             topicSuffix: 'heartbeat',
-            purpose: TopicPurpose::State,
+            purpose: ChannelPurpose::State,
             notes: $this->organizationName().' legacy iMoni hub presence contract.',
         );
     }
@@ -104,8 +105,7 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
                     'external_id' => $hubConfig['external_id'],
                 ],
                 [
-                    'device_type_id' => $schemaVersion->schema->device_type_id,
-                    'device_schema_version_id' => $schemaVersion->id,
+                    'device_profile_version_id' => $this->profileVersionForSchemaVersion($schemaVersion)->id,
                     'parent_device_id' => null,
                     'name' => $hubConfig['name'],
                     'metadata' => [
@@ -152,21 +152,62 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
         string $topicKey = 'telemetry',
         string $topicLabel = 'Telemetry',
         string $topicSuffix = 'telemetry',
-        TopicPurpose $purpose = TopicPurpose::Telemetry,
+        ChannelPurpose $purpose = ChannelPurpose::Telemetry,
         int $version = 1,
         string $status = 'active',
         string $notes = 'Legacy iMoni migration schema.',
         array $derivedParameters = [],
         ?array $virtualStandardProfile = null,
-    ): DeviceSchemaVersion {
-        $deviceType = DeviceType::query()->updateOrCreate(
+    ): DeviceProfileVersion {
+        $deviceType = DeviceProfile::query()->updateOrCreate(
             [
                 'organization_id' => null,
                 'key' => $deviceTypeKey,
             ],
             [
                 'name' => $deviceTypeName,
-                'default_protocol' => ProtocolType::Mqtt,
+            ],
+        );
+
+        $schema = $deviceType;
+
+        $schemaVersion = DeviceProfileVersion::query()->firstOrCreate(
+            [
+                'device_profile_id' => $schema->id,
+                'version' => $version,
+            ],
+            [
+                'status' => $status,
+                'virtual_standard_profile' => $virtualStandardProfile,
+                'notes' => $notes,
+            ],
+        );
+
+        $schemaVersion->fill([
+            'status' => $status,
+            'virtual_standard_profile' => $virtualStandardProfile,
+            'notes' => $notes,
+        ])->save();
+
+        $profile = DeviceProfile::query()->updateOrCreate(
+            [
+                'organization_id' => null,
+                'key' => $deviceTypeKey,
+            ],
+            [
+                'name' => $deviceTypeName,
+                'tags' => null,
+            ],
+        );
+
+        $profileVersion = DeviceProfileVersion::query()->updateOrCreate(
+            [
+                'device_profile_id' => $profile->id,
+                'version' => $version,
+            ],
+            [
+                'status' => $status,
+                'protocol' => Protocol::Mqtt,
                 'protocol_config' => (new MqttProtocolConfig(
                     brokerHost: 'nats',
                     brokerPort: 1883,
@@ -177,42 +218,37 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
                     securityMode: MqttSecurityMode::UsernamePassword,
                 ))->toArray(),
                 'virtual_standard_profile' => $virtualStandardProfile,
-            ],
-        );
-
-        $schema = DeviceSchema::query()->firstOrCreate(
-            [
-                'device_type_id' => $deviceType->id,
-                'name' => $schemaName,
-            ],
-        );
-
-        $schemaVersion = DeviceSchemaVersion::query()->firstOrCreate(
-            [
-                'device_schema_id' => $schema->id,
-                'version' => $version,
-            ],
-            [
-                'status' => $status,
                 'notes' => $notes,
             ],
         );
 
-        $schemaVersion->fill([
-            'status' => $status,
-            'notes' => $notes,
-        ])->save();
-
-        $topic = SchemaVersionTopic::query()->updateOrCreate(
+        $topic = DeviceChannel::query()->updateOrCreate(
             [
-                'device_schema_version_id' => $schemaVersion->id,
+                'device_profile_version_id' => $profileVersion->id,
                 'key' => $topicKey,
             ],
             [
                 'label' => $topicLabel,
-                'direction' => TopicDirection::Publish,
+                'direction' => ChannelDirection::Publish,
                 'purpose' => $purpose,
-                'suffix' => $topicSuffix,
+                'address' => $topicSuffix,
+                'qos' => 1,
+                'retain' => false,
+                'sequence' => 0,
+            ],
+        );
+
+        $channel = DeviceChannel::query()->updateOrCreate(
+            [
+                'device_profile_version_id' => $profileVersion->id,
+                'key' => $topicKey,
+            ],
+            [
+                'label' => $topicLabel,
+                'direction' => ChannelDirection::Publish,
+                'purpose' => $purpose === ChannelPurpose::State ? ChannelPurpose::State : ChannelPurpose::Telemetry,
+                'transport' => ChannelTransport::Mqtt,
+                'address' => $topicSuffix,
                 'qos' => 1,
                 'retain' => false,
                 'sequence' => 0,
@@ -220,9 +256,30 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
         );
 
         foreach ($parameters as $parameter) {
-            ParameterDefinition::query()->updateOrCreate(
+            ProfileParameterDefinition::query()->updateOrCreate(
                 [
-                    'schema_version_topic_id' => $topic->id,
+                    'device_channel_id' => $topic->id,
+                    'key' => $parameter['key'],
+                ],
+                [
+                    'label' => $parameter['label'],
+                    'json_path' => $parameter['json_path'],
+                    'type' => $parameter['type'],
+                    'unit' => $parameter['unit'] ?? null,
+                    'required' => $parameter['required'] ?? false,
+                    'is_critical' => $parameter['is_critical'] ?? false,
+                    'category' => $parameter['category'] ?? ParameterCategory::Measurement,
+                    'validation_rules' => $parameter['validation_rules'] ?? null,
+                    'control_ui' => $parameter['control_ui'] ?? null,
+                    'mutation_expression' => $parameter['mutation_expression'] ?? null,
+                    'sequence' => $parameter['sequence'] ?? 0,
+                    'is_active' => true,
+                ],
+            );
+
+            ProfileParameterDefinition::query()->updateOrCreate(
+                [
+                    'device_channel_id' => $channel->id,
                     'key' => $parameter['key'],
                 ],
                 [
@@ -247,8 +304,16 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
             $parameters,
         ));
 
-        ParameterDefinition::query()
-            ->where('schema_version_topic_id', $topic->id)
+        ProfileParameterDefinition::query()
+            ->where('device_channel_id', $topic->id)
+            ->when(
+                $parameterKeys !== [],
+                fn ($query) => $query->whereNotIn('key', $parameterKeys),
+            )
+            ->delete();
+
+        ProfileParameterDefinition::query()
+            ->where('device_channel_id', $channel->id)
             ->when(
                 $parameterKeys !== [],
                 fn ($query) => $query->whereNotIn('key', $parameterKeys),
@@ -256,9 +321,24 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
             ->delete();
 
         foreach ($derivedParameters as $derivedParameter) {
-            DerivedParameterDefinition::query()->updateOrCreate(
+            ProfileDerivedParameterDefinition::query()->updateOrCreate(
                 [
-                    'device_schema_version_id' => $schemaVersion->id,
+                    'device_profile_version_id' => $profileVersion->id,
+                    'key' => $derivedParameter['key'],
+                ],
+                [
+                    'label' => $derivedParameter['label'],
+                    'data_type' => $derivedParameter['data_type'],
+                    'unit' => $derivedParameter['unit'] ?? null,
+                    'expression' => $derivedParameter['expression'],
+                    'dependencies' => $derivedParameter['dependencies'] ?? null,
+                    'json_path' => $derivedParameter['json_path'] ?? null,
+                ],
+            );
+
+            ProfileDerivedParameterDefinition::query()->updateOrCreate(
+                [
+                    'device_profile_version_id' => $profileVersion->id,
                     'key' => $derivedParameter['key'],
                 ],
                 [
@@ -277,8 +357,8 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
             $derivedParameters,
         ));
 
-        $derivedParameterCleanupQuery = DerivedParameterDefinition::query()
-            ->where('device_schema_version_id', $schemaVersion->id);
+        $derivedParameterCleanupQuery = ProfileDerivedParameterDefinition::query()
+            ->where('device_profile_version_id', $schemaVersion->id);
 
         if ($derivedKeys !== []) {
             $derivedParameterCleanupQuery->whereNotIn('key', $derivedKeys);
@@ -286,8 +366,17 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
 
         $derivedParameterCleanupQuery->delete();
 
-        /** @var DeviceSchemaVersion $freshSchemaVersion */
-        $freshSchemaVersion = $schemaVersion->fresh(['schema']);
+        $profileDerivedParameterCleanupQuery = ProfileDerivedParameterDefinition::query()
+            ->where('device_profile_version_id', $profileVersion->id);
+
+        if ($derivedKeys !== []) {
+            $profileDerivedParameterCleanupQuery->whereNotIn('key', $derivedKeys);
+        }
+
+        $profileDerivedParameterCleanupQuery->delete();
+
+        /** @var DeviceProfileVersion $freshSchemaVersion */
+        $freshSchemaVersion = $schemaVersion->fresh(['profile']);
 
         return $freshSchemaVersion;
     }
@@ -298,11 +387,13 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
     protected function upsertChildDevice(
         Organization $organization,
         Device $parentDevice,
-        DeviceSchemaVersion $schemaVersion,
+        DeviceProfileVersion $schemaVersion,
         string $externalId,
         string $name,
         array $metadata,
     ): Device {
+        $profileVersion = $this->profileVersionForSchemaVersion($schemaVersion);
+
         /** @var Device $device */
         $device = Device::withTrashed()->updateOrCreate(
             [
@@ -310,10 +401,9 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
                 'external_id' => $externalId,
             ],
             [
-                'device_type_id' => $schemaVersion->schema->device_type_id,
-                'device_schema_version_id' => $schemaVersion->id,
+                'device_profile_version_id' => $profileVersion->id,
                 'parent_device_id' => $parentDevice->id,
-                'name' => $name,
+                'name' => $this->displayNameForProfile($name, $profileVersion),
                 'metadata' => $metadata,
                 'is_active' => true,
                 'connection_state' => 'offline',
@@ -330,11 +420,13 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
      */
     protected function upsertStandaloneDevice(
         Organization $organization,
-        DeviceSchemaVersion $schemaVersion,
+        DeviceProfileVersion $schemaVersion,
         string $externalId,
         string $name,
         array $metadata,
     ): Device {
+        $profileVersion = $this->profileVersionForSchemaVersion($schemaVersion);
+
         /** @var Device $device */
         $device = Device::withTrashed()->updateOrCreate(
             [
@@ -342,10 +434,9 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
                 'external_id' => $externalId,
             ],
             [
-                'device_type_id' => $schemaVersion->schema->device_type_id,
-                'device_schema_version_id' => $schemaVersion->id,
+                'device_profile_version_id' => $profileVersion->id,
                 'parent_device_id' => null,
-                'name' => $name,
+                'name' => $this->displayNameForProfile($name, $profileVersion),
                 'metadata' => $metadata,
                 'is_active' => true,
                 'connection_state' => 'offline',
@@ -357,9 +448,55 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
         return $device;
     }
 
+    protected function displayNameForProfile(string $name, DeviceProfileVersion $profileVersion): string
+    {
+        return $name;
+    }
+
+    protected function energyProfileDisplayName(string $name, DeviceProfileVersion $profileVersion): string
+    {
+        $profileVersion->loadMissing('profile');
+
+        if ($profileVersion->profile?->key !== 'energy_meter') {
+            return $name;
+        }
+
+        $trimmedName = trim($name);
+
+        if ($trimmedName === '' || preg_match('/\benergy$/i', $trimmedName) === 1) {
+            return $name;
+        }
+
+        return "{$trimmedName} Energy";
+    }
+
     protected function sourceTopicFor(string $hubImei, string $peripheralTypeHex): string
     {
         return 'migration/source/imoni/'.$hubImei.'/'.strtoupper($peripheralTypeHex).'/telemetry';
+    }
+
+    protected function profileVersionForSchemaVersion(DeviceProfileVersion $schemaVersion): DeviceProfileVersion
+    {
+        $schemaVersion->loadMissing('profile');
+
+        $deviceType = $schemaVersion->profile;
+
+        if (! $deviceType instanceof DeviceProfile) {
+            throw new \RuntimeException('Unable to resolve mirrored profile version for schema version.');
+        }
+
+        $profileVersion = DeviceProfileVersion::query()
+            ->where('version', (int) $schemaVersion->version)
+            ->whereHas('profile', fn ($query) => $query
+                ->whereNull('organization_id')
+                ->where('key', $deviceType->key))
+            ->first();
+
+        if (! $profileVersion instanceof DeviceProfileVersion) {
+            throw new \RuntimeException("Mirrored profile version [{$deviceType->key}:{$schemaVersion->version}] was not found.");
+        }
+
+        return $profileVersion;
     }
 
     protected function normalizedSourcePath(string $legacyPath): ?string
@@ -384,35 +521,40 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
 
     protected function mutationExpressionForParameter(array $deviceConfig, string $parameterKey): ?array
     {
+        $mutationExpression = null;
         $conditionalCalibrations = $deviceConfig['conditional_calibrations'] ?? [];
 
         if (is_array($conditionalCalibrations)) {
             $expression = $conditionalCalibrations[$parameterKey] ?? null;
 
             if (is_string($expression) && trim($expression) !== '') {
-                return $this->normalizeMutationExpressionVariables(
+                $mutationExpression = $this->normalizeMutationExpressionVariables(
                     json_decode($expression, true, 512, JSON_THROW_ON_ERROR),
                 );
             }
         }
 
+        if ($mutationExpression !== null) {
+            return $this->applySpecialMutationDecoder($deviceConfig, $parameterKey, $mutationExpression);
+        }
+
         $calibrations = $deviceConfig['calibrations'] ?? [];
 
         if (! is_array($calibrations)) {
-            return null;
+            return $this->applySpecialMutationDecoder($deviceConfig, $parameterKey, null);
         }
 
         $calibration = $calibrations[$parameterKey] ?? null;
 
         if (! is_string($calibration) || trim($calibration) === '') {
-            return null;
+            return $this->applySpecialMutationDecoder($deviceConfig, $parameterKey, null);
         }
 
         $normalized = str_replace(' ', '', $calibration);
         $matches = [];
 
         if (preg_match('/^[A-Za-z0-9_]+\/([0-9.]+)$/', $normalized, $matches) === 1) {
-            return [
+            $mutationExpression = [
                 '/' => [
                     ['var' => 'val'],
                     (float) $matches[1],
@@ -421,7 +563,7 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
         }
 
         if (preg_match('/^[A-Za-z0-9_]+\*([0-9.]+)$/', $normalized, $matches) === 1) {
-            return [
+            $mutationExpression = [
                 '*' => [
                     ['var' => 'val'],
                     (float) $matches[1],
@@ -429,7 +571,75 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
             ];
         }
 
-        return null;
+        return $this->applySpecialMutationDecoder($deviceConfig, $parameterKey, $mutationExpression);
+    }
+
+    protected function applySpecialMutationDecoder(array $deviceConfig, string $parameterKey, ?array $mutationExpression): ?array
+    {
+        $decoderExpression = $this->specialMutationDecoderExpression($deviceConfig, $parameterKey);
+
+        if ($decoderExpression === null) {
+            return $mutationExpression;
+        }
+
+        if ($mutationExpression === null) {
+            return $decoderExpression;
+        }
+
+        return $this->replaceMutationValueVariable($mutationExpression, $decoderExpression);
+    }
+
+    protected function specialMutationDecoderExpression(array $deviceConfig, string $parameterKey): ?array
+    {
+        $hubImei = $deviceConfig['hub_imei'] ?? null;
+        $peripheralTypeHex = $deviceConfig['peripheral_type_hex'] ?? null;
+        $parameterMap = $deviceConfig['parameter_map'] ?? [];
+
+        if (! is_string($hubImei) || ! is_string($peripheralTypeHex) || ! is_array($parameterMap)) {
+            return null;
+        }
+
+        $legacyPath = $parameterMap[$parameterKey] ?? null;
+
+        if (! is_string($legacyPath)) {
+            return null;
+        }
+
+        $normalizedPath = $this->normalizedSourcePath($legacyPath);
+
+        if ($normalizedPath !== '$.io_1_value') {
+            return null;
+        }
+
+        $activePeripheralTypes = $this->specialDecodeProfiles()['twosComplement'][$hubImei] ?? null;
+
+        if (! is_array($activePeripheralTypes) || ! in_array(strtoupper($peripheralTypeHex), $activePeripheralTypes, true)) {
+            return null;
+        }
+
+        return [
+            'decode_twos_complement' => [
+                ['var' => 'val'],
+                32,
+            ],
+        ];
+    }
+
+    protected function replaceMutationValueVariable(mixed $expression, array $replacement): mixed
+    {
+        if (! is_array($expression)) {
+            return $expression;
+        }
+
+        if (array_key_exists('var', $expression) && $expression['var'] === 'val') {
+            return $replacement;
+        }
+
+        foreach ($expression as $key => $value) {
+            $expression[$key] = $this->replaceMutationValueVariable($value, $replacement);
+        }
+
+        return $expression;
     }
 
     protected function normalizeMutationExpressionVariables(mixed $expression): mixed
@@ -450,7 +660,7 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
     }
 
     /**
-     * @param  array<string, ParameterDefinition>  $parametersByKey
+     * @param  array<string, ProfileParameterDefinition>  $parametersByKey
      * @param  array<string, array<string, mixed>>  $bindingDefinitions
      */
     protected function syncBindings(
@@ -461,12 +671,25 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
         array $bindingDefinitions,
         array $deviceMetadata = [],
     ): void {
-        $expectedParameterIds = [];
+        $channel = DeviceChannel::query()
+            ->where('device_profile_version_id', $device->device_profile_version_id)
+            ->where('key', 'telemetry')
+            ->first()
+            ?? DeviceChannel::query()
+                ->where('device_profile_version_id', $device->device_profile_version_id)
+                ->where('key', 'heartbeat')
+                ->first();
+
+        if (! $channel instanceof DeviceChannel) {
+            return;
+        }
+
+        $expectedParameterKeys = [];
 
         foreach ($bindingDefinitions as $parameterKey => $bindingDefinition) {
             $parameter = $parametersByKey[$parameterKey] ?? null;
 
-            if (! $parameter instanceof ParameterDefinition) {
+            if (! $parameter instanceof ProfileParameterDefinition) {
                 continue;
             }
 
@@ -476,12 +699,13 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
                 continue;
             }
 
-            $expectedParameterIds[] = $parameter->id;
+            $expectedParameterKeys[] = $parameter->key;
 
             DeviceSignalBinding::query()->updateOrCreate(
                 [
                     'device_id' => $device->id,
-                    'parameter_definition_id' => $parameter->id,
+                    'device_channel_id' => $channel->id,
+                    'parameter_key' => $parameter->key,
                 ],
                 [
                     'source_topic' => $this->sourceTopicFor($hubImei, $peripheralTypeHex),
@@ -503,8 +727,8 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
         $bindingCleanupQuery = DeviceSignalBinding::query()
             ->where('device_id', $device->id);
 
-        if ($expectedParameterIds !== []) {
-            $bindingCleanupQuery->whereNotIn('parameter_definition_id', $expectedParameterIds);
+        if ($expectedParameterKeys !== []) {
+            $bindingCleanupQuery->whereNotIn('parameter_key', $expectedParameterKeys);
         }
 
         $bindingCleanupQuery->delete();
@@ -529,12 +753,6 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
                 ];
             }
 
-            if ($mode === 'twosComplement' && $normalizedPath === '$.io_1_value') {
-                return [
-                    'mode' => 'twosComplement',
-                    'strip_prefix_bytes' => 2,
-                ];
-            }
         }
 
         return null;
@@ -559,14 +777,14 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
     }
 
     /**
-     * @param  array<array-key, DeviceSchemaVersion>  $schemaVersions
+     * @param  array<array-key, DeviceProfileVersion>  $schemaVersions
      * @return array<int, int>
      */
     protected function schemaVersionNumbers(array $schemaVersions): array
     {
         return array_values(array_unique(array_map(
-            static fn (DeviceSchemaVersion $schemaVersion): int => (int) $schemaVersion->version,
-            array_filter($schemaVersions, static fn (mixed $schemaVersion): bool => $schemaVersion instanceof DeviceSchemaVersion),
+            static fn (DeviceProfileVersion $schemaVersion): int => (int) $schemaVersion->version,
+            array_filter($schemaVersions, static fn (mixed $schemaVersion): bool => $schemaVersion instanceof DeviceProfileVersion),
         )));
     }
 
@@ -580,22 +798,31 @@ abstract class LegacyImoniMigrationSeederSupport extends Seeder
             array_filter($expectedVersions, static fn (mixed $version): bool => is_numeric($version)),
         )));
 
-        DeviceSchemaVersion::query()
+        DeviceProfileVersion::query()
             ->where('status', 'draft')
-            ->whereHas('schema', fn ($schemaQuery) => $schemaQuery
-                ->where('name', $schemaName)
-                ->whereHas('deviceType', fn ($deviceTypeQuery) => $deviceTypeQuery
-                    ->where('key', $deviceTypeKey)
-                    ->whereNull('organization_id')))
+            ->whereHas('profile', fn ($profileQuery) => $profileQuery
+                ->where('key', $deviceTypeKey)
+                ->whereNull('organization_id'))
             ->when(
                 $normalizedExpectedVersions !== [],
                 fn ($query) => $query->whereNotIn('version', $normalizedExpectedVersions),
             )
             ->get()
-            ->reject(fn (DeviceSchemaVersion $schemaVersion): bool => Device::withTrashed()
-                ->where('device_schema_version_id', $schemaVersion->id)
-                ->exists() || $schemaVersion->telemetryLogs()->exists())
-            ->each(fn (DeviceSchemaVersion $schemaVersion) => $schemaVersion->delete());
+            ->reject(function (DeviceProfileVersion $schemaVersion): bool {
+                try {
+                    $profileVersion = $this->profileVersionForSchemaVersion($schemaVersion);
+                } catch (\RuntimeException) {
+                    return false;
+                }
+
+                return Device::withTrashed()
+                    ->where('device_profile_version_id', $profileVersion->id)
+                    ->exists()
+                    || DeviceTelemetryLog::query()
+                        ->where('device_profile_version_id', $profileVersion->id)
+                        ->exists();
+            })
+            ->each(fn (DeviceProfileVersion $schemaVersion) => $schemaVersion->delete());
     }
 
     protected function schemaVariantKey(string $prefix, mixed ...$parts): string

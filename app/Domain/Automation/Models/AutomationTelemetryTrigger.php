@@ -6,8 +6,7 @@ namespace App\Domain\Automation\Models;
 
 use App\Domain\Automation\Services\AutomationTriggerCacheInvalidator;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\Shared\Models\Organization;
 use Database\Factories\Domain\Automation\Models\AutomationTelemetryTriggerFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -65,15 +64,9 @@ class AutomationTelemetryTrigger extends Model
         return $this->belongsTo(Device::class);
     }
 
-    /** @return BelongsTo<DeviceType, $this> */
-    public function deviceType(): BelongsTo
+    /** @return BelongsTo<DeviceChannel, $this> */
+    public function channel(): BelongsTo
     {
-        return $this->belongsTo(DeviceType::class);
-    }
-
-    /** @return BelongsTo<SchemaVersionTopic, $this> */
-    public function schemaVersionTopic(): BelongsTo
-    {
-        return $this->belongsTo(SchemaVersionTopic::class);
+        return $this->belongsTo(DeviceChannel::class, 'device_channel_id');
     }
 }

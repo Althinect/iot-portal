@@ -48,7 +48,7 @@ class WidgetFormSchemaFactory
             Select::make('parameter_keys')
                 ->label('Series parameters')
                 ->multiple()
-                ->options(fn (Get $get): array => $this->optionsService->parameterOptions($get('schema_version_topic_id')))
+                ->options(fn (Get $get): array => $this->optionsService->parameterOptions($get('device_channel_id')))
                 ->helperText('Choose one or more parameters. Colors are assigned automatically.')
                 ->required(),
             ...$this->transportSchema(true, true, 10, 120, 240),
@@ -70,7 +70,7 @@ class WidgetFormSchemaFactory
             ...$this->baseScopeSchema($dashboard, defaultTitle: 'Energy Consumption'),
             Select::make('parameter_key')
                 ->label('Counter parameter')
-                ->options(fn (Get $get): array => $this->optionsService->counterParameterOptions($get('schema_version_topic_id')))
+                ->options(fn (Get $get): array => $this->optionsService->counterParameterOptions($get('device_channel_id')))
                 ->required(),
             Select::make('bar_interval')
                 ->label('Aggregation interval')
@@ -96,7 +96,7 @@ class WidgetFormSchemaFactory
             ...$this->baseScopeSchema($dashboard, defaultTitle: 'Gauge'),
             Select::make('parameter_key')
                 ->label('Gauge parameter')
-                ->options(fn (Get $get): array => $this->optionsService->numericParameterOptions($get('schema_version_topic_id')))
+                ->options(fn (Get $get): array => $this->optionsService->numericParameterOptions($get('device_channel_id')))
                 ->required(),
             Select::make('gauge_style')
                 ->label('Gauge style')
@@ -162,7 +162,7 @@ class WidgetFormSchemaFactory
             ...$this->baseScopeSchema($dashboard, defaultTitle: 'State Card'),
             Select::make('parameter_key')
                 ->label('State parameter')
-                ->options(fn (Get $get): array => $this->optionsService->stateParameterOptions($get('schema_version_topic_id')))
+                ->options(fn (Get $get): array => $this->optionsService->stateParameterOptions($get('device_channel_id')))
                 ->required(),
             Select::make('display_style')
                 ->label('Display style')
@@ -189,7 +189,7 @@ class WidgetFormSchemaFactory
             ...$this->baseScopeSchema($dashboard, defaultTitle: 'State Timeline'),
             Select::make('parameter_key')
                 ->label('State parameter')
-                ->options(fn (Get $get): array => $this->optionsService->stateParameterOptions($get('schema_version_topic_id')))
+                ->options(fn (Get $get): array => $this->optionsService->stateParameterOptions($get('device_channel_id')))
                 ->required(),
             ...$this->stateMappingsSchema(),
             ...$this->transportSchema(true, true, 10, 360, 240),
@@ -370,13 +370,13 @@ class WidgetFormSchemaFactory
             Select::make('parameter_keys')
                 ->label('Series parameters')
                 ->multiple()
-                ->options(fn (Get $get): array => $this->optionsService->parameterOptions($get('schema_version_topic_id')))
+                ->options(fn (Get $get): array => $this->optionsService->parameterOptions($get('device_channel_id')))
                 ->visible(fn (Get $get): bool => $get('widget_type') === WidgetType::LineChart->value)
                 ->required(fn (Get $get): bool => $get('widget_type') === WidgetType::LineChart->value),
             Select::make('parameter_key')
                 ->label('Parameter')
                 ->options(function (Get $get): array {
-                    $topicId = $get('schema_version_topic_id');
+                    $topicId = $get('device_channel_id');
                     $type = $get('widget_type');
 
                     if ($type === WidgetType::BarChart->value) {
@@ -521,7 +521,7 @@ class WidgetFormSchemaFactory
                 condition: $visibleCondition,
                 defaultTitle: $defaultTitle,
             ),
-            Select::make('schema_version_topic_id')
+            Select::make('device_channel_id')
                 ->label('Publish topic')
                 ->options(fn (Get $get): array => $this->optionsService->topicOptions($dashboard, $get('device_id')))
                 ->searchable()
@@ -543,7 +543,7 @@ class WidgetFormSchemaFactory
                 optionsResolver: fn (): array => $this->optionsService->deviceOptions($dashboard),
                 defaultTitle: 'Latest Status',
             ),
-            Select::make('schema_version_topic_id')
+            Select::make('device_channel_id')
                 ->label('Publish topic')
                 ->options(fn (Get $get): array => $this->optionsService->topicOptions($dashboard, $get('device_id')))
                 ->searchable()
@@ -1061,10 +1061,10 @@ class WidgetFormSchemaFactory
 
     private function resolveStatusSummaryTopicId(Get $get): mixed
     {
-        return $get('schema_version_topic_id')
-            ?? $get('../../schema_version_topic_id')
-            ?? $get('../../../schema_version_topic_id')
-            ?? $get('../../../../schema_version_topic_id');
+        return $get('device_channel_id')
+            ?? $get('../../device_channel_id')
+            ?? $get('../../../device_channel_id')
+            ?? $get('../../../../device_channel_id');
     }
 
     /**

@@ -29,7 +29,7 @@ class ThresholdPolicyWorkflowProjector
     {
         $policy->loadMissing([
             'device',
-            'parameterDefinition.topic',
+            'deviceChannel',
             'notificationProfile',
             'managedWorkflow.activeVersion',
         ]);
@@ -46,10 +46,10 @@ class ThresholdPolicyWorkflowProjector
             return $this->pauseManagedWorkflow($policy);
         }
 
-        $topic = $policy->schemaVersionTopic();
+        $parameter = $policy->profileParameterDefinition();
 
-        if ($topic === null) {
-            throw new RuntimeException("Threshold policy [{$policy->id}] does not reference a publish topic.");
+        if ($parameter === null) {
+            throw new RuntimeException("Threshold policy [{$policy->id}] does not reference an active profile parameter.");
         }
 
         $profile = $policy->notificationProfile;
@@ -58,7 +58,7 @@ class ThresholdPolicyWorkflowProjector
             return $this->pauseManagedWorkflow($policy);
         }
 
-        return DB::transaction(function () use ($policy, $profile, $topic): AutomationWorkflow {
+        return DB::transaction(function () use ($policy, $profile, $parameter): AutomationWorkflow {
             $workflow = $this->resolveManagedWorkflow($policy);
 
             $workflow->forceFill([
@@ -75,7 +75,7 @@ class ThresholdPolicyWorkflowProjector
                 ],
             ])->save();
 
-            $graphPayload = $this->buildGraphPayload($policy, $profile, $topic->id);
+            $graphPayload = $this->buildGraphPayload($policy, $profile, (int) $parameter->device_channel_id, $parameter->key);
             $graph = WorkflowGraph::fromArray($graphPayload);
 
             $this->workflowGraphValidator->validate($graph);
@@ -102,7 +102,7 @@ class ThresholdPolicyWorkflowProjector
 
     public function syncForNotificationProfile(NotificationProfile $profile): void
     {
-        $profile->loadMissing('thresholdPolicies.parameterDefinition.topic', 'users');
+        $profile->loadMissing('thresholdPolicies.deviceChannel', 'users');
 
         $profile->thresholdPolicies
             ->each(fn (ThresholdPolicy $policy): ?AutomationWorkflow => $this->sync($policy));
@@ -211,7 +211,8 @@ class ThresholdPolicyWorkflowProjector
     private function buildGraphPayload(
         ThresholdPolicy $policy,
         NotificationProfile $profile,
-        int $topicId,
+        int $deviceChannelId,
+        string $parameterKey,
     ): array {
         $conditionLogic = $policy->resolvedConditionJsonLogic();
         $summary = sprintf(
@@ -235,8 +236,8 @@ class ThresholdPolicyWorkflowProjector
                             'mode' => 'event',
                             'source' => [
                                 'device_id' => $policy->device_id,
-                                'topic_id' => $topicId,
-                                'parameter_definition_id' => $policy->parameter_definition_id,
+                                'device_channel_id' => $deviceChannelId,
+                                'parameter_key' => $parameterKey,
                             ],
                         ],
                     ],
@@ -292,7 +293,8 @@ class ThresholdPolicyWorkflowProjector
     {
         return $policy->wasChanged([
             'device_id',
-            'parameter_definition_id',
+            'device_channel_id',
+            'parameter_key',
             'notification_profile_id',
             'minimum_value',
             'maximum_value',

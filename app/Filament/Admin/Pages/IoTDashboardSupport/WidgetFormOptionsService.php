@@ -7,12 +7,12 @@ namespace App\Filament\Admin\Pages\IoTDashboardSupport;
 use App\Domain\Automation\Models\AutomationThresholdPolicy;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Models\VirtualDeviceLink;
-use App\Domain\DeviceSchema\Enums\ParameterCategory;
-use App\Domain\DeviceSchema\Enums\ParameterDataType;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Models\DerivedParameterDefinition;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ChannelDirection;
+use App\Domain\DeviceProfile\Enums\ParameterCategory;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileDerivedParameterDefinition;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\Reporting\Models\OrganizationReportSetting;
@@ -40,7 +40,6 @@ class WidgetFormOptionsService
             Device::query()
                 ->where('organization_id', $dashboard->organization_id)
                 ->where('is_virtual', true)
-                ->whereHas('deviceType', fn (Builder $query): Builder => $query->where('key', 'stenter_line'))
                 ->whereHas('virtualDeviceLinks', fn (Builder $query): Builder => $query->where('purpose', 'status'))
                 ->whereHas('virtualDeviceLinks', fn (Builder $query): Builder => $query->where('purpose', 'length')),
             collapseSingleGroup: true,
@@ -56,8 +55,7 @@ class WidgetFormOptionsService
             Device::query()
                 ->where('organization_id', $dashboard->organization_id)
                 ->where('is_virtual', false)
-                ->whereHas('deviceType', fn (Builder $query): Builder => $query->where('key', 'energy_meter'))
-                ->whereHas('schemaVersion.derivedParameters', fn (Builder $query): Builder => $query->where('key', 'status')),
+                ->whereHas('profileVersion.derivedParameters', fn (Builder $query): Builder => $query->where('key', 'status')),
             collapseSingleGroup: true,
         );
     }
@@ -71,9 +69,8 @@ class WidgetFormOptionsService
             Device::query()
                 ->where('organization_id', $dashboard->organization_id)
                 ->where('is_virtual', false)
-                ->whereHas('deviceType', fn (Builder $query): Builder => $query->where('key', 'steam_meter'))
-                ->whereHas('schemaVersion.derivedParameters', fn (Builder $query): Builder => $query->where('key', 'totalisedCount'))
-                ->whereHas('schemaVersion.topics.parameters', fn (Builder $query): Builder => $query->where('key', 'flow')),
+                ->whereHas('profileVersion.derivedParameters', fn (Builder $query): Builder => $query->where('key', 'totalisedCount'))
+                ->whereHas('profileVersion.channels.parameters', fn (Builder $query): Builder => $query->where('key', 'flow')),
             collapseSingleGroup: true,
         );
     }
@@ -90,34 +87,30 @@ class WidgetFormOptionsService
         $device = Device::query()
             ->whereKey((int) $deviceId)
             ->where('organization_id', $dashboard->organization_id)
-            ->first(['id', 'device_schema_version_id']);
+            ->first(['id', 'device_profile_version_id']);
 
         if (! $device instanceof Device) {
             return [];
         }
 
-        return SchemaVersionTopic::query()
-            ->with('schemaVersion.schema.deviceType')
-            ->where('direction', TopicDirection::Publish->value)
-            ->where('device_schema_version_id', $device->device_schema_version_id)
+        return DeviceChannel::query()
+            ->with('version.profile')
+            ->where('direction', ChannelDirection::Publish->value)
+            ->where('device_profile_version_id', $device->device_profile_version_id)
             ->orderBy('label')
-            ->get(['id', 'label', 'suffix', 'device_schema_version_id'])
-            ->mapWithKeys(function (SchemaVersionTopic $topic): array {
-                $schemaNameValue = data_get($topic, 'schemaVersion.schema.name');
-                $schemaName = is_string($schemaNameValue) && trim($schemaNameValue) !== ''
-                    ? $schemaNameValue
-                    : 'Unknown Schema';
-                $versionValue = data_get($topic, 'schemaVersion.version');
+            ->get(['id', 'label', 'address', 'device_profile_version_id'])
+            ->mapWithKeys(function (DeviceChannel $topic): array {
+                $profileNameValue = data_get($topic, 'version.profile.name');
+                $profileName = is_string($profileNameValue) && trim($profileNameValue) !== ''
+                    ? $profileNameValue
+                    : 'Unknown Profile';
+                $versionValue = data_get($topic, 'version.version');
                 $version = is_scalar($versionValue)
                     ? (string) $versionValue
                     : '?';
-                $deviceTypeValue = data_get($topic, 'schemaVersion.schema.deviceType.name');
-                $deviceType = is_string($deviceTypeValue) && trim($deviceTypeValue) !== ''
-                    ? $deviceTypeValue
-                    : 'Unknown Type';
 
                 return [
-                    (string) $topic->id => "{$topic->label} ({$topic->suffix}) · {$deviceType} · {$schemaName} v{$version}",
+                    (string) $topic->id => "{$topic->label} ({$topic->address}) · {$profileName} v{$version}",
                 ];
             })
             ->all();
@@ -132,12 +125,12 @@ class WidgetFormOptionsService
             return [];
         }
 
-        return ParameterDefinition::query()
-            ->where('schema_version_topic_id', (int) $topicId)
+        return ProfileParameterDefinition::query()
+            ->where('device_channel_id', (int) $topicId)
             ->where('is_active', true)
             ->orderBy('sequence')
             ->get(['key', 'label'])
-            ->mapWithKeys(fn (ParameterDefinition $parameter): array => [
+            ->mapWithKeys(fn (ProfileParameterDefinition $parameter): array => [
                 $parameter->key => "{$parameter->label} ({$parameter->key})",
             ])
             ->all();
@@ -152,8 +145,8 @@ class WidgetFormOptionsService
             return [];
         }
 
-        $counterParameters = ParameterDefinition::query()
-            ->where('schema_version_topic_id', (int) $topicId)
+        $counterParameters = ProfileParameterDefinition::query()
+            ->where('device_channel_id', (int) $topicId)
             ->where('is_active', true)
             ->whereIn('type', [ParameterDataType::Integer->value, ParameterDataType::Decimal->value])
             ->where(function (Builder $query): void {
@@ -162,7 +155,7 @@ class WidgetFormOptionsService
             })
             ->orderBy('sequence')
             ->get(['key', 'label'])
-            ->mapWithKeys(fn (ParameterDefinition $parameter): array => [
+            ->mapWithKeys(fn (ProfileParameterDefinition $parameter): array => [
                 $parameter->key => "{$parameter->label} ({$parameter->key})",
             ])
             ->all();
@@ -183,13 +176,13 @@ class WidgetFormOptionsService
             return [];
         }
 
-        return ParameterDefinition::query()
-            ->where('schema_version_topic_id', (int) $topicId)
+        return ProfileParameterDefinition::query()
+            ->where('device_channel_id', (int) $topicId)
             ->where('is_active', true)
             ->whereIn('type', [ParameterDataType::Integer->value, ParameterDataType::Decimal->value])
             ->orderBy('sequence')
             ->get(['key', 'label'])
-            ->mapWithKeys(fn (ParameterDefinition $parameter): array => [
+            ->mapWithKeys(fn (ProfileParameterDefinition $parameter): array => [
                 $parameter->key => "{$parameter->label} ({$parameter->key})",
             ])
             ->all();
@@ -340,8 +333,8 @@ class WidgetFormOptionsService
             return [];
         }
 
-        return ParameterDefinition::query()
-            ->where('schema_version_topic_id', (int) $topicId)
+        return ProfileParameterDefinition::query()
+            ->where('device_channel_id', (int) $topicId)
             ->where('is_active', true)
             ->orderBy('sequence')
             ->get([
@@ -352,8 +345,8 @@ class WidgetFormOptionsService
                 'validation_rules',
                 'control_ui',
             ])
-            ->filter(fn (ParameterDefinition $parameter): bool => $parameter->isDashboardStateParameter())
-            ->mapWithKeys(fn (ParameterDefinition $parameter): array => [
+            ->filter(fn (ProfileParameterDefinition $parameter): bool => $parameter->isDashboardStateParameter())
+            ->mapWithKeys(fn (ProfileParameterDefinition $parameter): array => [
                 $parameter->key => "{$parameter->label} ({$parameter->key})",
             ])
             ->all();
@@ -365,7 +358,7 @@ class WidgetFormOptionsService
     public function thresholdPolicyOptions(IoTDashboard $dashboard): array
     {
         return AutomationThresholdPolicy::query()
-            ->with(['device', 'parameterDefinition'])
+            ->with('device')
             ->where('organization_id', $dashboard->organization_id)
             ->where('is_active', true)
             ->orderBy('sort_order')
@@ -390,8 +383,8 @@ class WidgetFormOptionsService
             return [];
         }
 
-        $parameter = ParameterDefinition::query()
-            ->where('schema_version_topic_id', (int) $topicId)
+        $parameter = ProfileParameterDefinition::query()
+            ->where('device_channel_id', (int) $topicId)
             ->where('key', trim($parameterKey))
             ->first([
                 'id',
@@ -401,7 +394,7 @@ class WidgetFormOptionsService
                 'control_ui',
             ]);
 
-        if (! $parameter instanceof ParameterDefinition) {
+        if (! $parameter instanceof ProfileParameterDefinition) {
             return [];
         }
 
@@ -412,7 +405,7 @@ class WidgetFormOptionsService
      * @param  array<string, mixed>  $data
      * @return array{
      *     device: Device,
-     *     topic: SchemaVersionTopic,
+     *     topic: DeviceChannel,
      *     series: array<int, array{key: string, label: string, color: string, unit?: string|null}>,
      *     parameter_metadata: array<string, array{
      *         label: string,
@@ -449,8 +442,8 @@ class WidgetFormOptionsService
         $deviceId = is_numeric($data['device_id'] ?? null)
             ? (int) $data['device_id']
             : null;
-        $topicId = is_numeric($data['schema_version_topic_id'] ?? null)
-            ? (int) $data['schema_version_topic_id']
+        $topicId = is_numeric($data['device_channel_id'] ?? null)
+            ? (int) $data['device_channel_id']
             : null;
 
         if ($deviceId === null || $topicId === null) {
@@ -460,19 +453,19 @@ class WidgetFormOptionsService
         $device = Device::query()
             ->whereKey($deviceId)
             ->where('organization_id', $dashboard->organization_id)
-            ->first(['id', 'organization_id', 'device_schema_version_id']);
+            ->first(['id', 'organization_id', 'device_profile_version_id']);
 
         if (! $device instanceof Device) {
             return null;
         }
 
-        $topic = SchemaVersionTopic::query()
+        $topic = DeviceChannel::query()
             ->whereKey($topicId)
-            ->where('direction', TopicDirection::Publish->value)
-            ->where('device_schema_version_id', $device->device_schema_version_id)
-            ->first(['id', 'device_schema_version_id']);
+            ->where('direction', ChannelDirection::Publish->value)
+            ->where('device_profile_version_id', $device->device_profile_version_id)
+            ->first(['id', 'device_profile_version_id']);
 
-        if (! $topic instanceof SchemaVersionTopic) {
+        if (! $topic instanceof DeviceChannel) {
             return null;
         }
 
@@ -507,7 +500,7 @@ class WidgetFormOptionsService
      * @param  array<string, mixed>  $data
      * @return array{
      *     device: Device,
-     *     topic: SchemaVersionTopic,
+     *     topic: DeviceChannel,
      *     series: array<int, array{key: string, label: string, color: string, unit?: string|null}>,
      *     parameter_metadata: array<string, array{
      *         label: string,
@@ -542,7 +535,7 @@ class WidgetFormOptionsService
         }
 
         $representativePolicy = AutomationThresholdPolicy::query()
-            ->with(['device', 'parameterDefinition.topic'])
+            ->with(['device', 'deviceChannel'])
             ->where('organization_id', $dashboard->organization_id)
             ->when(
                 $scope === 'selected',
@@ -554,9 +547,9 @@ class WidgetFormOptionsService
             ->first();
 
         $device = $representativePolicy?->device;
-        $topic = $representativePolicy?->parameterDefinition?->topic;
+        $topic = $representativePolicy?->deviceChannel;
 
-        if (! $device instanceof Device || ! $topic instanceof SchemaVersionTopic) {
+        if (! $device instanceof Device || ! $topic instanceof DeviceChannel) {
             return null;
         }
 
@@ -572,7 +565,7 @@ class WidgetFormOptionsService
      * @param  array<string, mixed>  $data
      * @return array{
      *     device: Device,
-     *     topic: SchemaVersionTopic,
+     *     topic: DeviceChannel,
      *     series: array<int, array{key: string, label: string, color: string, unit?: string|null}>,
      *     parameter_metadata: array<string, array{
      *         label: string,
@@ -582,7 +575,7 @@ class WidgetFormOptionsService
      *         default_color: string,
      *         is_counter: bool
      *     }>,
-     *     stenter_sources: array{status: array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null, length: array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null}
+     *     stenter_sources: array{status: array{device_id: int, device_channel_id: int, parameter_key: string}|null, length: array{device_id: int, device_channel_id: int, parameter_key: string}|null}
      * }|null
      */
     private function resolveStenterUtilizationInput(IoTDashboard $dashboard, array $data): ?array
@@ -596,22 +589,13 @@ class WidgetFormOptionsService
         }
 
         $device = Device::query()
-            ->with(['schemaVersion.topics', 'deviceType', 'virtualDeviceLinks.sourceDevice.schemaVersion.topics.parameters'])
+            ->with(['profileVersion.channels', 'virtualDeviceLinks.sourceDevice.profileVersion.channels.parameters'])
             ->whereKey($deviceId)
             ->where('organization_id', $dashboard->organization_id)
             ->where('is_virtual', true)
-            ->whereHas('deviceType', fn (Builder $query): Builder => $query->where('key', 'stenter_line'))
             ->first();
 
         if (! $device instanceof Device) {
-            return null;
-        }
-
-        $topic = $device->schemaVersion?->topics
-            ?->first(fn (SchemaVersionTopic $topic): bool => $topic->key === 'telemetry')
-            ?? $device->schemaVersion?->topics?->first(fn (SchemaVersionTopic $topic): bool => $topic->isPublish());
-
-        if (! $topic instanceof SchemaVersionTopic) {
             return null;
         }
 
@@ -624,9 +608,21 @@ class WidgetFormOptionsService
             return null;
         }
 
+        $channel = $device->profileVersion?->channels
+            ?->first(fn (DeviceChannel $channel): bool => $channel->key === 'telemetry')
+            ?? $device->profileVersion?->channels?->first(fn (DeviceChannel $channel): bool => $channel->isPublish());
+
+        if (! $channel instanceof DeviceChannel) {
+            $channel = DeviceChannel::query()->find($sources['status']['device_channel_id']);
+        }
+
+        if (! $channel instanceof DeviceChannel) {
+            return null;
+        }
+
         return [
             'device' => $device,
-            'topic' => $topic,
+            'topic' => $channel,
             'series' => [],
             'parameter_metadata' => [],
             'stenter_sources' => $sources,
@@ -637,7 +633,7 @@ class WidgetFormOptionsService
      * @param  array<string, mixed>  $data
      * @return array{
      *     device: Device,
-     *     topic: SchemaVersionTopic,
+     *     topic: DeviceChannel,
      *     series: array<int, array{key: string, label: string, color: string, unit?: string|null}>,
      *     parameter_metadata: array<string, array{
      *         label: string,
@@ -647,7 +643,7 @@ class WidgetFormOptionsService
      *         default_color: string,
      *         is_counter: bool
      *     }>,
-     *     compressor_sources: array{status: array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null}
+     *     compressor_sources: array{status: array{device_id: int, device_channel_id: int, parameter_key: string}|null}
      * }|null
      */
     private function resolveCompressorUtilizationInput(IoTDashboard $dashboard, array $data): ?array
@@ -661,35 +657,34 @@ class WidgetFormOptionsService
         }
 
         $device = Device::query()
-            ->with(['schemaVersion.topics', 'schemaVersion.derivedParameters', 'deviceType'])
+            ->with(['profileVersion.channels', 'profileVersion.derivedParameters'])
             ->whereKey($deviceId)
             ->where('organization_id', $dashboard->organization_id)
             ->where('is_virtual', false)
-            ->whereHas('deviceType', fn (Builder $query): Builder => $query->where('key', 'energy_meter'))
-            ->whereHas('schemaVersion.derivedParameters', fn (Builder $query): Builder => $query->where('key', 'status'))
+            ->whereHas('profileVersion.derivedParameters', fn (Builder $query): Builder => $query->where('key', 'status'))
             ->first();
 
         if (! $device instanceof Device) {
             return null;
         }
 
-        $topic = $device->schemaVersion?->topics
-            ?->first(fn (SchemaVersionTopic $topic): bool => $topic->key === 'telemetry')
-            ?? $device->schemaVersion?->topics?->first(fn (SchemaVersionTopic $topic): bool => $topic->isPublish());
+        $channel = $device->profileVersion?->channels
+            ?->first(fn (DeviceChannel $channel): bool => $channel->key === 'telemetry')
+            ?? $device->profileVersion?->channels?->first(fn (DeviceChannel $channel): bool => $channel->isPublish());
 
-        if (! $topic instanceof SchemaVersionTopic) {
+        if (! $channel instanceof DeviceChannel) {
             return null;
         }
 
         return [
             'device' => $device,
-            'topic' => $topic,
+            'topic' => $channel,
             'series' => [],
             'parameter_metadata' => [],
             'compressor_sources' => [
                 'status' => [
                     'device_id' => (int) $device->id,
-                    'schema_version_topic_id' => (int) $topic->id,
+                    'device_channel_id' => (int) $channel->id,
                     'parameter_key' => 'status',
                 ],
             ],
@@ -700,7 +695,7 @@ class WidgetFormOptionsService
      * @param  array<string, mixed>  $data
      * @return array{
      *     device: Device,
-     *     topic: SchemaVersionTopic,
+     *     topic: DeviceChannel,
      *     series: array<int, array{key: string, label: string, color: string, unit?: string|null}>,
      *     parameter_metadata: array<string, array{
      *         label: string,
@@ -710,7 +705,7 @@ class WidgetFormOptionsService
      *         default_color: string,
      *         is_counter: bool
      *     }>,
-     *     steam_meter_sources: array{flow: array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null, total: array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null}
+     *     steam_meter_sources: array{flow: array{device_id: int, device_channel_id: int, parameter_key: string}|null, total: array{device_id: int, device_channel_id: int, parameter_key: string}|null}
      * }|null
      */
     private function resolveSteamMeterInput(IoTDashboard $dashboard, array $data): ?array
@@ -724,39 +719,38 @@ class WidgetFormOptionsService
         }
 
         $device = Device::query()
-            ->with(['schemaVersion.topics.parameters', 'schemaVersion.derivedParameters', 'deviceType'])
+            ->with(['profileVersion.channels.parameters', 'profileVersion.derivedParameters'])
             ->whereKey($deviceId)
             ->where('organization_id', $dashboard->organization_id)
             ->where('is_virtual', false)
-            ->whereHas('deviceType', fn (Builder $query): Builder => $query->where('key', 'steam_meter'))
-            ->whereHas('schemaVersion.derivedParameters', fn (Builder $query): Builder => $query->where('key', 'totalisedCount'))
+            ->whereHas('profileVersion.derivedParameters', fn (Builder $query): Builder => $query->where('key', 'totalisedCount'))
             ->first();
 
         if (! $device instanceof Device) {
             return null;
         }
 
-        $topic = $device->schemaVersion?->topics
-            ?->first(fn (SchemaVersionTopic $topic): bool => $topic->isPublish() && $topic->parameters->contains(fn (ParameterDefinition $parameter): bool => $parameter->key === 'flow' && (bool) $parameter->is_active));
+        $channel = $device->profileVersion?->channels
+            ?->first(fn (DeviceChannel $channel): bool => $channel->isPublish() && $channel->parameters->contains(fn ($parameter): bool => $parameter->key === 'flow' && (bool) $parameter->is_active));
 
-        if (! $topic instanceof SchemaVersionTopic) {
+        if (! $channel instanceof DeviceChannel) {
             return null;
         }
 
         return [
             'device' => $device,
-            'topic' => $topic,
+            'topic' => $channel,
             'series' => [],
             'parameter_metadata' => [],
             'steam_meter_sources' => [
                 'flow' => [
                     'device_id' => (int) $device->id,
-                    'schema_version_topic_id' => (int) $topic->id,
+                    'device_channel_id' => (int) $channel->id,
                     'parameter_key' => 'flow',
                 ],
                 'total' => [
                     'device_id' => (int) $device->id,
-                    'schema_version_topic_id' => (int) $topic->id,
+                    'device_channel_id' => (int) $channel->id,
                     'parameter_key' => 'totalisedCount',
                 ],
             ],
@@ -764,7 +758,7 @@ class WidgetFormOptionsService
     }
 
     /**
-     * @return array{device_id: int, schema_version_topic_id: int, parameter_key: string}|null
+     * @return array{device_id: int, device_channel_id: int, parameter_key: string}|null
      */
     private function resolveVirtualLinkSource(Device $virtualDevice, string $purpose, string $parameterKey): ?array
     {
@@ -776,22 +770,24 @@ class WidgetFormOptionsService
             return null;
         }
 
-        $topic = $sourceDevice->schemaVersion?->topics
-            ?->first(function (SchemaVersionTopic $topic) use ($parameterKey): bool {
-                if (! $topic->isPublish()) {
+        $sourceDevice->loadMissing('profileVersion.channels.parameters');
+
+        $channel = $sourceDevice->profileVersion?->channels
+            ?->first(function (DeviceChannel $channel) use ($parameterKey): bool {
+                if (! $channel->isPublish()) {
                     return false;
                 }
 
-                return $topic->parameters->contains(fn (ParameterDefinition $parameter): bool => $parameter->key === $parameterKey && (bool) $parameter->is_active);
+                return $channel->parameters->contains(fn ($parameter): bool => $parameter->key === $parameterKey && (bool) $parameter->is_active);
             });
 
-        if (! $topic instanceof SchemaVersionTopic) {
+        if (! $channel instanceof DeviceChannel) {
             return null;
         }
 
         return [
             'device_id' => (int) $sourceDevice->id,
-            'schema_version_topic_id' => (int) $topic->id,
+            'device_channel_id' => (int) $channel->id,
             'parameter_key' => $parameterKey,
         ];
     }
@@ -800,7 +796,7 @@ class WidgetFormOptionsService
      * @param  array<string, mixed>  $data
      * @return array{
      *     device: Device,
-     *     topic: SchemaVersionTopic,
+     *     topic: DeviceChannel,
      *     series: array<int, array{key: string, label: string, color: string, unit?: string|null}>,
      *     parameter_metadata: array<string, array{
      *         label: string,
@@ -823,14 +819,14 @@ class WidgetFormOptionsService
         }
 
         $policy = AutomationThresholdPolicy::query()
-            ->with(['device', 'parameterDefinition.topic'])
+            ->with(['device', 'deviceChannel'])
             ->where('organization_id', $dashboard->organization_id)
             ->find($policyId);
 
         $device = $policy?->device;
-        $topic = $policy?->parameterDefinition?->topic;
+        $topic = $policy?->deviceChannel;
 
-        if (! $device instanceof Device || ! $topic instanceof SchemaVersionTopic) {
+        if (! $device instanceof Device || ! $topic instanceof DeviceChannel) {
             return null;
         }
 
@@ -846,7 +842,7 @@ class WidgetFormOptionsService
      * @param  array<int, array{device_id: int, parameter_key: string}>  $deviceCards
      * @return array{
      *     device: Device,
-     *     topic: SchemaVersionTopic,
+     *     topic: DeviceChannel,
      *     series: array<int, array{key: string, label: string, color: string, unit?: string|null}>,
      *     parameter_metadata: array<string, array{
      *         label: string,
@@ -864,15 +860,15 @@ class WidgetFormOptionsService
             $device = Device::query()
                 ->whereKey($deviceCard['device_id'])
                 ->where('organization_id', $dashboard->organization_id)
-                ->first(['id', 'organization_id', 'device_schema_version_id']);
+                ->first(['id', 'organization_id', 'device_profile_version_id']);
 
             if (! $device instanceof Device) {
                 continue;
             }
 
-            $topic = SchemaVersionTopic::query()
-                ->where('device_schema_version_id', (int) $device->device_schema_version_id)
-                ->where('direction', TopicDirection::Publish->value)
+            $topic = DeviceChannel::query()
+                ->where('device_profile_version_id', (int) $device->device_profile_version_id)
+                ->where('direction', ChannelDirection::Publish->value)
                 ->whereHas('parameters', function ($query) use ($deviceCard): void {
                     $query
                         ->where('key', $deviceCard['parameter_key'])
@@ -882,7 +878,7 @@ class WidgetFormOptionsService
                 ->orderBy('id')
                 ->first();
 
-            if (! $topic instanceof SchemaVersionTopic) {
+            if (! $topic instanceof DeviceChannel) {
                 continue;
             }
 
@@ -987,12 +983,12 @@ class WidgetFormOptionsService
             return [];
         }
 
-        return ParameterDefinition::query()
-            ->where('schema_version_topic_id', (int) $topicId)
+        return ProfileParameterDefinition::query()
+            ->where('device_channel_id', (int) $topicId)
             ->where('is_active', true)
             ->orderBy('sequence')
             ->get(['key', 'label', 'unit'])
-            ->mapWithKeys(fn (ParameterDefinition $parameter): array => [
+            ->mapWithKeys(fn (ProfileParameterDefinition $parameter): array => [
                 $parameter->key => [
                     'label' => "{$parameter->label} ({$parameter->key})",
                     'unit' => trim((string) $parameter->unit) !== ''
@@ -1019,25 +1015,25 @@ class WidgetFormOptionsService
             return [];
         }
 
-        $topic = SchemaVersionTopic::query()
+        $topic = DeviceChannel::query()
             ->whereKey((int) $topicId)
-            ->first(['id', 'device_schema_version_id']);
+            ->first(['id', 'device_profile_version_id']);
 
-        if (! $topic instanceof SchemaVersionTopic) {
+        if (! $topic instanceof DeviceChannel) {
             return [];
         }
 
         $metadata = [];
 
-        $parameters = ParameterDefinition::query()
-            ->where('schema_version_topic_id', $topic->id)
+        $parameters = ProfileParameterDefinition::query()
+            ->where('device_channel_id', $topic->id)
             ->where('is_active', true)
             ->whereIn('type', [ParameterDataType::Integer->value, ParameterDataType::Decimal->value])
             ->orderBy('sequence')
             ->get(['key', 'label', 'unit', 'category', 'validation_rules', 'control_ui', 'type']);
 
         foreach ($parameters as $index => $parameter) {
-            /** @var ParameterDefinition $parameter */
+            /** @var ProfileParameterDefinition $parameter */
             if ($parameter->isDashboardStateParameter()) {
                 continue;
             }
@@ -1059,8 +1055,8 @@ class WidgetFormOptionsService
             ];
         }
 
-        $derivedParameters = DerivedParameterDefinition::query()
-            ->where('device_schema_version_id', $topic->device_schema_version_id)
+        $derivedParameters = ProfileDerivedParameterDefinition::query()
+            ->where('device_profile_version_id', $topic->device_profile_version_id)
             ->whereIn('data_type', [
                 ParameterDataType::Integer->value,
                 ParameterDataType::Decimal->value,
@@ -1106,15 +1102,15 @@ class WidgetFormOptionsService
             return [];
         }
 
-        return ParameterDefinition::query()
-            ->where('schema_version_topic_id', (int) $topicId)
+        return ProfileParameterDefinition::query()
+            ->where('device_channel_id', (int) $topicId)
             ->where('is_active', true)
             ->whereIn('type', [ParameterDataType::Integer->value, ParameterDataType::Decimal->value])
             ->orderBy('sequence')
             ->get(['key', 'label', 'unit', 'category', 'validation_rules', 'control_ui', 'type'])
-            ->reject(fn (ParameterDefinition $parameter): bool => $parameter->isDashboardStateParameter())
+            ->reject(fn (ProfileParameterDefinition $parameter): bool => $parameter->isDashboardStateParameter())
             ->values()
-            ->mapWithKeys(function (ParameterDefinition $parameter, int $index): array {
+            ->mapWithKeys(function (ProfileParameterDefinition $parameter, int $index): array {
                 $label = trim((string) $parameter->label);
                 $label = $label !== '' ? $label : $parameter->key;
                 $unit = trim((string) $parameter->unit);

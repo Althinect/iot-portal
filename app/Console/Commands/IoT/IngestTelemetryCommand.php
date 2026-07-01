@@ -7,8 +7,8 @@ namespace App\Console\Commands\IoT;
 use App\Domain\DataIngestion\DTO\IncomingTelemetryEnvelope;
 use App\Domain\DataIngestion\Jobs\ProcessInboundTelemetryJob;
 use App\Domain\DataIngestion\Services\DeviceSignalBindingResolver;
-use App\Domain\DataIngestion\Services\DeviceTelemetryTopicResolver;
 use App\Domain\DeviceManagement\Models\Device;
+use App\Domain\DeviceProfile\Services\ProfileChannelResolver;
 use App\Domain\Shared\Services\BasisNatsClientHeartbeatProbe;
 use App\Domain\Shared\Services\NatsConnectionHeartbeat;
 use App\Events\TelemetryIncoming;
@@ -23,6 +23,22 @@ use Laravel\Telescope\Telescope;
 
 class IngestTelemetryCommand extends Command
 {
+    /**
+     * @var list<string>
+     */
+    private const DEFAULT_SUBJECTS = [
+        'devices.*.telemetry',
+        'devices.*.*.telemetry',
+        'devices.*.*.*.telemetry',
+        'migration.source.imoni.*.*.telemetry',
+        'migration.source.egravity.*.telemetry',
+    ];
+
+    /**
+     * @var list<string>
+     */
+    private const UNSAFE_BROAD_SUBJECTS = ['>', '#'];
+
     protected $signature = 'iot:ingest-telemetry
                             {--host= : NATS broker host}
                             {--port= : NATS broker port}
@@ -55,8 +71,8 @@ class IngestTelemetryCommand extends Command
             port: $port,
             timeout: $this->resolveTimeout(),
         );
-        /** @var DeviceTelemetryTopicResolver $topicResolver */
-        $topicResolver = app(DeviceTelemetryTopicResolver::class);
+        /** @var ProfileChannelResolver $channelResolver */
+        $channelResolver = app(ProfileChannelResolver::class);
         /** @var DeviceSignalBindingResolver $bindingResolver */
         $bindingResolver = app(DeviceSignalBindingResolver::class);
         $heartbeat = new NatsConnectionHeartbeat($this->resolveHealthCheckInterval());
@@ -67,7 +83,7 @@ class IngestTelemetryCommand extends Command
                 $lastActivityAt = microtime(true);
 
                 foreach ($subjects as $subject) {
-                    $client->subscribe($subject, function (Payload $payload) use ($bindingResolver, $queue, $queueConnection, $topicResolver, &$lastActivityAt): void {
+                    $client->subscribe($subject, function (Payload $payload) use ($bindingResolver, $channelResolver, $queue, $queueConnection, &$lastActivityAt): void {
                         $lastActivityAt = microtime(true);
                         $sourceSubject = $payload->subject ?? '';
                         $mqttTopic = str_replace('.', '/', $sourceSubject);
@@ -76,8 +92,10 @@ class IngestTelemetryCommand extends Command
                             return;
                         }
 
-                        $resolvedTopic = $topicResolver->resolve($mqttTopic);
-                        $supportsBindingTopic = $bindingResolver->supportsTopic($mqttTopic);
+                        [
+                            'resolvedTopic' => $resolvedTopic,
+                            'supportsBindingTopic' => $supportsBindingTopic,
+                        ] = $this->resolveTelemetrySource($mqttTopic, $channelResolver, $bindingResolver);
 
                         if ($resolvedTopic === null && ! $supportsBindingTopic) {
                             return;
@@ -152,6 +170,29 @@ class IngestTelemetryCommand extends Command
 
         /** @phpstan-ignore deadCode.unreachable */
         return self::SUCCESS;
+    }
+
+    /**
+     * @return array{resolvedTopic: array<string, mixed>|null, supportsBindingTopic: bool}
+     */
+    private function resolveTelemetrySource(
+        string $mqttTopic,
+        ProfileChannelResolver $channelResolver,
+        DeviceSignalBindingResolver $bindingResolver,
+    ): array {
+        $supportsBindingTopic = $bindingResolver->supportsTopic($mqttTopic);
+
+        if ($supportsBindingTopic) {
+            return [
+                'resolvedTopic' => null,
+                'supportsBindingTopic' => true,
+            ];
+        }
+
+        return [
+            'resolvedTopic' => $channelResolver->resolve($mqttTopic),
+            'supportsBindingTopic' => false,
+        ];
     }
 
     /**
@@ -230,7 +271,7 @@ class IngestTelemetryCommand extends Command
 
         return $this->normalizeSubjects($this->resolveStringConfig(
             'ingestion.nats.subject',
-            'devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry',
+            implode(',', self::DEFAULT_SUBJECTS),
         ));
     }
 
@@ -241,19 +282,11 @@ class IngestTelemetryCommand extends Command
     {
         $normalizedSubjects = collect(explode(',', $subjects))
             ->map(fn (string $subject): string => trim($subject))
-            ->filter(fn (string $subject): bool => $subject !== '')
+            ->filter(fn (string $subject): bool => $subject !== '' && ! in_array($subject, self::UNSAFE_BROAD_SUBJECTS, true))
             ->values()
             ->all();
 
-        return $normalizedSubjects === []
-            ? [
-                'devices.*.telemetry',
-                'devices.*.*.telemetry',
-                'devices.*.*.*.telemetry',
-                'migration.source.imoni.*.*.telemetry',
-                'migration.source.egravity.*.telemetry',
-            ]
-            : $normalizedSubjects;
+        return $normalizedSubjects === [] ? self::DEFAULT_SUBJECTS : $normalizedSubjects;
     }
 
     private function resolveQueue(): string

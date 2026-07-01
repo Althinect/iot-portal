@@ -8,7 +8,7 @@ use App\Domain\Alerts\Models\ThresholdPolicy;
 use App\Domain\Alerts\Services\AlertIncidentManager;
 use App\Domain\Automation\Enums\AutomationWorkflowStatus;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Services\JsonLogicEvaluator;
+use App\Domain\DeviceProfile\Services\JsonLogicEvaluator;
 use App\Events\TelemetryReceived;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Collection;
@@ -35,7 +35,7 @@ class QueueTelemetryThresholdAlertRecords implements ShouldQueue
         }
 
         $this->candidatePolicies($event)->each(function (ThresholdPolicy $policy) use ($payload, $telemetryLog): void {
-            $parameter = $policy->parameterDefinition;
+            $parameter = $policy->profileParameterDefinition();
             $value = $parameter?->extractValue($payload);
 
             if (! is_numeric($value)) {
@@ -71,13 +71,11 @@ class QueueTelemetryThresholdAlertRecords implements ShouldQueue
         }
 
         return ThresholdPolicy::query()
-            ->with(['parameterDefinition', 'managedWorkflow'])
+            ->with(['deviceChannel', 'managedWorkflow'])
             ->where('organization_id', (int) $device->organization_id)
             ->where('device_id', (int) $device->id)
+            ->where('device_channel_id', (int) $telemetryLog->device_channel_id)
             ->where('is_active', true)
-            ->whereHas('parameterDefinition', function ($query) use ($telemetryLog): void {
-                $query->where('schema_version_topic_id', (int) $telemetryLog->schema_version_topic_id);
-            })
             ->get()
             ->filter(function (ThresholdPolicy $policy): bool {
                 return $policy->managedWorkflow?->status !== AutomationWorkflowStatus::Active->value;

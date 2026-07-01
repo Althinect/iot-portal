@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Alerts\Models;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use Carbon\Carbon;
@@ -60,10 +60,10 @@ class Alert extends Model
         return $this->belongsTo(Device::class);
     }
 
-    /** @return BelongsTo<ParameterDefinition, $this> */
-    public function parameterDefinition(): BelongsTo
+    /** @return BelongsTo<DeviceChannel, $this> */
+    public function deviceChannel(): BelongsTo
     {
-        return $this->belongsTo(ParameterDefinition::class);
+        return $this->belongsTo(DeviceChannel::class);
     }
 
     /** @return BelongsTo<DeviceTelemetryLog, $this> */

@@ -5,8 +5,15 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceManagement\Models\DeviceType;
-use App\Domain\DeviceSchema\Models\DeviceSchema;
+use App\Domain\DeviceProfile\Enums\ChannelDirection;
+use App\Domain\DeviceProfile\Enums\ChannelPurpose;
+use App\Domain\DeviceProfile\Enums\ChannelTransport;
+use App\Domain\DeviceProfile\Enums\ParameterCategory;
+use App\Domain\DeviceProfile\Enums\ParameterDataType;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfile;
+use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Telemetry\Services\TelemetryLogRecorder;
 use Illuminate\Database\Seeder;
@@ -23,30 +30,14 @@ class DeviceTelemetrySeeder extends Seeder
     {
         $organization = Organization::first() ?? Organization::factory()->create();
 
-        $deviceType = DeviceType::where('key', 'energy_meter')->first();
-
-        if (! $deviceType) {
-            $this->command->warn('Energy Meter DeviceType not found. Please run DeviceSchemaSeeder first.');
-
-            return;
-        }
-
-        $schema = DeviceSchema::where('device_type_id', $deviceType->id)->first();
-        $version = $schema?->versions()->where('status', 'active')->first();
-
-        if (! $version) {
-            $this->command->warn('Active schema version for Energy Meter not found.');
-
-            return;
-        }
+        $version = $this->ensureEnergyMeterProfile($organization->id);
 
         $device = Device::firstOrCreate([
             'organization_id' => $organization->id,
-            'device_type_id' => $deviceType->id,
             'external_id' => 'main-energy-meter-01',
         ], [
             'name' => 'Main Building Energy Meter',
-            'device_schema_version_id' => $version->id,
+            'device_profile_version_id' => $version->id,
             'metadata' => [
                 'location' => 'Main Electrical Room',
                 'model' => 'EM-3PH-400',
@@ -138,5 +129,78 @@ class DeviceTelemetrySeeder extends Seeder
         $bar->finish();
         $this->command->newLine();
         $this->command->info('Telemetry history generated successfully.');
+    }
+
+    private function ensureEnergyMeterProfile(int $organizationId): DeviceProfileVersion
+    {
+        $profile = DeviceProfile::query()->firstOrCreate([
+            'organization_id' => $organizationId,
+            'key' => 'energy_meter',
+        ], [
+            'name' => 'Energy Meter',
+            'tags' => null,
+        ]);
+
+        $version = DeviceProfileVersion::query()->firstOrCreate([
+            'device_profile_id' => $profile->id,
+            'version' => 1,
+        ], [
+            'status' => 'active',
+            'protocol' => 'mqtt',
+            'protocol_config' => [
+                'broker_host' => '127.0.0.1',
+                'broker_port' => 1883,
+                'base_topic' => 'energy_meter',
+                'security_mode' => 'username_password',
+                'username' => 'energy_meter',
+                'password' => 'energy_meter_password',
+                'use_tls' => false,
+            ],
+        ]);
+
+        $channel = DeviceChannel::query()->updateOrCreate([
+            'device_profile_version_id' => $version->id,
+            'key' => 'telemetry',
+        ], [
+            'label' => 'Telemetry',
+            'direction' => ChannelDirection::Publish,
+            'purpose' => ChannelPurpose::Telemetry,
+            'transport' => ChannelTransport::Mqtt,
+            'address' => 'telemetry',
+            'qos' => 1,
+            'retain' => false,
+            'sequence' => 0,
+        ]);
+
+        $parameters = [
+            ['V1', 'Voltage V1', 'voltages.V1', ParameterDataType::Decimal, ParameterCategory::Measurement],
+            ['V2', 'Voltage V2', 'voltages.V2', ParameterDataType::Decimal, ParameterCategory::Measurement],
+            ['V3', 'Voltage V3', 'voltages.V3', ParameterDataType::Decimal, ParameterCategory::Measurement],
+            ['A1', 'Current A1', 'currents.A1', ParameterDataType::Decimal, ParameterCategory::Measurement],
+            ['A2', 'Current A2', 'currents.A2', ParameterDataType::Decimal, ParameterCategory::Measurement],
+            ['A3', 'Current A3', 'currents.A3', ParameterDataType::Decimal, ParameterCategory::Measurement],
+            ['total_energy_kwh', 'Total Energy', 'energy.total_energy_kwh', ParameterDataType::Decimal, ParameterCategory::Counter],
+            ['meter_state', 'Meter State', 'status.meter_state', ParameterDataType::String, ParameterCategory::State],
+        ];
+
+        foreach ($parameters as $index => [$key, $label, $jsonPath, $type, $category]) {
+            ProfileParameterDefinition::query()->updateOrCreate([
+                'device_channel_id' => $channel->id,
+                'key' => $key,
+            ], [
+                'label' => $label,
+                'json_path' => $jsonPath,
+                'type' => $type,
+                'category' => $category,
+                'required' => true,
+                'is_critical' => false,
+                'validation_rules' => $key === 'meter_state' ? ['enum' => ['idle', 'normal', 'fault']] : null,
+                'mutation_expression' => null,
+                'sequence' => $index + 1,
+                'is_active' => true,
+            ]);
+        }
+
+        return $version;
     }
 }

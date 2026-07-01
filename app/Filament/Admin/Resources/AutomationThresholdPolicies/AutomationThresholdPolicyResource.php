@@ -8,9 +8,9 @@ use App\Domain\Automation\Models\AutomationNotificationProfile;
 use App\Domain\Automation\Models\AutomationThresholdPolicy;
 use App\Domain\Automation\Services\GuidedConditionService;
 use App\Domain\DeviceManagement\Models\Device;
-use App\Domain\DeviceSchema\Enums\TopicDirection;
-use App\Domain\DeviceSchema\Models\ParameterDefinition;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceProfile\Enums\ChannelDirection;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
@@ -97,8 +97,8 @@ class AutomationThresholdPolicyResource extends Resource
         $deviceId = is_numeric($data['device_id'] ?? null)
             ? (int) $data['device_id']
             : null;
-        $parameterDefinitionId = is_numeric($data['parameter_definition_id'] ?? null)
-            ? (int) $data['parameter_definition_id']
+        $parameterDefinitionId = is_numeric($data['parameter_key'] ?? null)
+            ? (int) $data['parameter_key']
             : null;
         $notificationProfileId = is_numeric($data['notification_profile_id'] ?? null)
             ? (int) $data['notification_profile_id']
@@ -114,7 +114,7 @@ class AutomationThresholdPolicyResource extends Resource
         $device = Device::query()
             ->whereKey($deviceId)
             ->where('organization_id', $organizationId)
-            ->first(['id', 'device_schema_version_id']);
+            ->first(['id', 'device_profile_version_id']);
 
         if (! $device instanceof Device) {
             throw ValidationException::withMessages([
@@ -122,21 +122,21 @@ class AutomationThresholdPolicyResource extends Resource
             ]);
         }
 
-        $publishTopicIds = SchemaVersionTopic::query()
-            ->where('device_schema_version_id', (int) $device->device_schema_version_id)
-            ->where('direction', TopicDirection::Publish->value)
+        $publishTopicIds = DeviceChannel::query()
+            ->where('device_profile_version_id', (int) $device->device_profile_version_id)
+            ->where('direction', ChannelDirection::Publish->value)
             ->pluck('id')
             ->all();
 
-        $parameter = ParameterDefinition::query()
+        $parameter = ProfileParameterDefinition::query()
             ->whereKey($parameterDefinitionId)
             ->where('is_active', true)
-            ->whereIn('schema_version_topic_id', $publishTopicIds)
+            ->whereIn('device_channel_id', $publishTopicIds)
             ->first(['id']);
 
-        if (! $parameter instanceof ParameterDefinition) {
+        if (! $parameter instanceof ProfileParameterDefinition) {
             throw ValidationException::withMessages([
-                'parameter_definition_id' => 'The selected parameter must belong to the device telemetry schema.',
+                'parameter_key' => 'The selected parameter must belong to the device telemetry schema.',
             ]);
         }
 
@@ -210,14 +210,14 @@ class AutomationThresholdPolicyResource extends Resource
         $duplicateExists = AutomationThresholdPolicy::query()
             ->where('organization_id', $organizationId)
             ->where('device_id', $deviceId)
-            ->where('parameter_definition_id', $parameterDefinitionId)
+            ->where('parameter_key', $parameterDefinitionId)
             ->where('is_active', true)
             ->when($ignoreRecordId !== null, fn (Builder $query) => $query->whereKeyNot($ignoreRecordId))
             ->exists();
 
         if ($duplicateExists) {
             throw ValidationException::withMessages([
-                'parameter_definition_id' => 'Only one active threshold policy is allowed per device and parameter.',
+                'parameter_key' => 'Only one active threshold policy is allowed per device and parameter.',
             ]);
         }
 

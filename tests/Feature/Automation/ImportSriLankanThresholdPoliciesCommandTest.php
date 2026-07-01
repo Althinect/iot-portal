@@ -89,7 +89,7 @@ it('imports sri lankan legacy alert rules into threshold policies, notification 
         ->and($cld10?->is_active)->toBeTrue()
         ->and($cld10Disabled)->not->toBeNull()
         ->and($cld10Disabled?->device_id)->toBe($cld10?->device_id)
-        ->and($cld10Disabled?->parameter_definition_id)->toBe($cld10?->parameter_definition_id)
+        ->and($cld10Disabled?->parameter_key)->toBe($cld10?->parameter_key)
         ->and((float) $cld10Disabled?->minimum_value)->toBe(15.0)
         ->and((float) $cld10Disabled?->maximum_value)->toBe(18.0)
         ->and($cld10Disabled?->is_active)->toBeFalse()

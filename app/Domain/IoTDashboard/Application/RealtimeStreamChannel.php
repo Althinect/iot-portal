@@ -9,15 +9,15 @@ use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 
 final class RealtimeStreamChannel
 {
-    public static function forDeviceTopic(string $deviceUuid, int $topicId): ?string
+    public static function forDeviceChannel(string $deviceUuid, int $channelId): ?string
     {
         $resolvedDeviceUuid = trim($deviceUuid);
 
-        if ($resolvedDeviceUuid === '' || $topicId < 1) {
+        if ($resolvedDeviceUuid === '' || $channelId < 1) {
             return null;
         }
 
-        return "iot-dashboard.device.{$resolvedDeviceUuid}.topic.{$topicId}";
+        return "iot-dashboard.device.{$resolvedDeviceUuid}.channel.{$channelId}";
     }
 
     public static function forTelemetryLog(DeviceTelemetryLog $telemetryLog): ?string
@@ -27,11 +27,11 @@ final class RealtimeStreamChannel
         $deviceUuid = is_string($telemetryLog->device?->uuid)
             ? $telemetryLog->device->uuid
             : '';
-        $topicId = is_numeric($telemetryLog->schema_version_topic_id)
-            ? (int) $telemetryLog->schema_version_topic_id
+        $channelId = is_numeric($telemetryLog->device_channel_id)
+            ? (int) $telemetryLog->device_channel_id
             : 0;
 
-        return self::forDeviceTopic($deviceUuid, $topicId);
+        return self::forDeviceChannel($deviceUuid, $channelId);
     }
 
     public static function forWidget(IoTDashboardWidget $widget): ?string
@@ -41,8 +41,8 @@ final class RealtimeStreamChannel
         $deviceUuid = is_string($widget->device?->uuid)
             ? $widget->device->uuid
             : '';
-        $topicId = (int) $widget->schema_version_topic_id;
+        $channelId = (int) $widget->device_channel_id;
 
-        return self::forDeviceTopic($deviceUuid, $topicId);
+        return self::forDeviceChannel($deviceUuid, $channelId);
     }
 }

@@ -11,7 +11,8 @@ use App\Domain\DeviceControl\Services\ControlSchemaBuilder;
 use App\Domain\DeviceControl\Services\DeviceCommandDispatcher;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Publishing\Nats\NatsDeviceStateStore;
-use App\Domain\DeviceSchema\Models\SchemaVersionTopic;
+use App\Domain\DeviceManagement\ValueObjects\Protocol\MqttProtocolConfig;
+use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Filament\Actions\DeviceManagement\ProvisionX509CertificateAction;
 use App\Filament\Actions\DeviceManagement\RevokeX509CertificateAction;
 use App\Filament\Actions\DeviceManagement\RotateX509CertificateAction;
@@ -49,7 +50,7 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
 
     protected string $view = 'filament.admin.resources.device-management.devices.pages.device-control-dashboard';
 
-    public ?string $selectedTopicId = null;
+    public ?string $selectedChannelId = null;
 
     public ?string $commandPayloadJson = '{}';
 
@@ -87,7 +88,7 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
     public ?array $initialDeviceState = null;
 
     /**
-     * Initial per-topic device states loaded from the NATS KV store on page mount.
+     * Initial per-channel device states loaded from the NATS KV store on page mount.
      *
      * @var array<int, array{topic: string, payload: array<string, mixed>, stored_at: string}>
      */
@@ -124,9 +125,9 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
             ->components([
                 Grid::make(3)->schema([
                     Group::make([
-                        Radio::make('selectedTopicId')
-                            ->label('Subscribe Topic')
-                            ->options(fn (): array => $this->getSubscribeTopicOptionsProperty())
+                        Radio::make('selectedChannelId')
+                            ->label('Command Channel')
+                            ->options(fn (): array => $this->getSubscribeChannelOptionsProperty())
                             ->required()
                             ->live()
                             ->afterStateUpdated(function (Set $set): void {
@@ -194,7 +195,7 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
         /** @var Device $device */
         $device = $this->getRecord();
 
-        $device->loadMissing('deviceType', 'schemaVersion.topics.parameters');
+        $device->loadMissing('profileVersion.channels.parameters');
 
         $this->deviceConnectionState = $device->effectiveConnectionState();
 
@@ -205,9 +206,9 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
 
     public function loadDefaultPayload(): void
     {
-        $topics = $this->getSubscribeTopics();
+        $channels = $this->getSubscribeChannels();
 
-        if ($topics->isEmpty()) {
+        if ($channels->isEmpty()) {
             $this->commandPayloadJson = '{}';
             $this->controlSchema = [];
             $this->controlValues = [];
@@ -215,19 +216,18 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
             return;
         }
 
-        $topic = $this->selectedTopicId
-            ? $topics->firstWhere('id', (int) $this->selectedTopicId)
-            : $topics->first();
+        $channel = $this->selectedChannelId
+            ? $channels->firstWhere('id', (int) $this->selectedChannelId)
+            : $channels->first();
 
-        if ($topic) {
-            $this->selectedTopicId = (string) $topic->id;
-            $template = $topic->buildCommandPayloadTemplate();
-            $this->commandPayloadJson = json_encode($template, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}';
+        if ($channel) {
+            $this->selectedChannelId = (string) $channel->id;
 
             /** @var ControlSchemaBuilder $builder */
             $builder = app(ControlSchemaBuilder::class);
-            $this->controlSchema = $builder->buildForTopic($topic);
-            $this->controlValues = $builder->defaultControlValues($topic);
+            $this->controlSchema = $builder->buildForChannel($channel);
+            $this->controlValues = $builder->defaultControlValues($channel);
+            $this->syncAdvancedJsonFromControls();
             $this->normalizeControlValuesForUi();
         }
     }
@@ -261,21 +261,21 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
 
     public function sendCommand(): void
     {
-        if (! $this->selectedTopicId) {
+        if (! $this->selectedChannelId) {
             Notification::make()
-                ->title('No topic selected')
-                ->body('Please select a subscribe topic first.')
+                ->title('No channel selected')
+                ->body('Please select a command channel first.')
                 ->warning()
                 ->send();
 
             return;
         }
 
-        $topic = SchemaVersionTopic::find((int) $this->selectedTopicId);
+        $channel = DeviceChannel::query()->with('parameters')->find((int) $this->selectedChannelId);
 
-        if (! $topic) {
+        if (! $channel) {
             Notification::make()
-                ->title('Topic not found')
+                ->title('Channel not found')
                 ->danger()
                 ->send();
 
@@ -303,9 +303,9 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
             }
 
             $payload = $this->normalizePayloadArray($decodedPayload);
-            $errors = $payloadResolver->validatePayload($topic, $payload);
+            $errors = $payloadResolver->validatePayload($channel, $payload);
         } else {
-            $resolved = $payloadResolver->resolveFromControls($topic, $this->controlValues);
+            $resolved = $payloadResolver->resolveFromControls($channel, $this->controlValues);
             $payload = $resolved['payload'];
             $errors = $resolved['errors'];
         }
@@ -330,7 +330,7 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
 
         $commandLog = $dispatcher->dispatch(
             device: $device,
-            topic: $topic,
+            channel: $channel,
             payload: $payload,
             userId: is_int(auth()->id()) ? auth()->id() : null,
         );
@@ -347,7 +347,7 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
 
         Notification::make()
             ->title('Command sent')
-            ->body("Published to {$topic->suffix}")
+            ->body("Published to {$channel->address}")
             ->success()
             ->send();
     }
@@ -373,8 +373,8 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
                     ->label('#')
                     ->sortable(),
 
-                TextColumn::make('topic.suffix')
-                    ->label('Topic'),
+                TextColumn::make('channel.address')
+                    ->label('Channel'),
 
                 TextColumn::make('status')
                     ->badge()
@@ -405,27 +405,31 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
             ->poll('5s');
     }
 
-    private function getSelectedTopic(): ?SchemaVersionTopic
+    private function getSelectedChannel(): ?DeviceChannel
     {
-        if (! $this->selectedTopicId) {
+        if (! $this->selectedChannelId) {
             return null;
         }
 
-        return $this->getSubscribeTopics()->firstWhere('id', (int) $this->selectedTopicId);
+        return $this->getSubscribeChannels()->firstWhere('id', (int) $this->selectedChannelId);
     }
 
     public function getResolvedMqttTopic(): string
     {
-        $topic = $this->getSelectedTopic();
+        $channel = $this->getSelectedChannel();
 
-        if (! $topic) {
+        if (! $channel) {
             return '—';
         }
 
         /** @var Device $device */
         $device = $this->getRecord();
 
-        return $topic->resolvedTopic($device);
+        $identifier = $device->external_id ?: $device->uuid;
+        $protocolConfig = $device->profileVersion?->protocol_config;
+        $baseTopic = $protocolConfig instanceof MqttProtocolConfig ? $protocolConfig->getBaseTopic() : 'device';
+
+        return trim($baseTopic, '/').'/'.$identifier.'/'.$channel->address;
     }
 
     public function getResolvedNatsSubject(): string
@@ -435,30 +439,30 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
 
     public function getMqttSettings(): string
     {
-        $topic = $this->getSelectedTopic();
+        $channel = $this->getSelectedChannel();
 
-        if (! $topic) {
+        if (! $channel) {
             return '—';
         }
 
-        $qos = $topic->qos ?? 0;
-        $retain = ($topic->retain ?? false) ? 'Yes' : 'No';
+        $qos = $channel->qos ?? 0;
+        $retain = ($channel->retain ?? false) ? 'Yes' : 'No';
 
         return "QoS {$qos} · Retain: {$retain}";
     }
 
     /**
-     * @return Collection<int, SchemaVersionTopic>
+     * @return Collection<int, DeviceChannel>
      */
-    private function getSubscribeTopics(): Collection
+    private function getSubscribeChannels(): Collection
     {
         /** @var Device $device */
         $device = $this->getRecord();
 
-        $device->loadMissing('schemaVersion.topics.parameters');
+        $device->loadMissing('profileVersion.channels.parameters');
 
-        return $device->schemaVersion?->topics
-            ?->filter(fn (SchemaVersionTopic $t): bool => $t->isSubscribe())
+        return $device->profileVersion?->channels
+            ?->filter(fn (DeviceChannel $channel): bool => $channel->isSubscribe())
             ->sortBy('sequence')
                 ?? collect();
     }
@@ -466,12 +470,12 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
     /**
      * @return array<int|string, string>
      */
-    public function getSubscribeTopicOptionsProperty(): array
+    public function getSubscribeChannelOptionsProperty(): array
     {
         $options = [];
 
-        foreach ($this->getSubscribeTopics() as $topic) {
-            $options[(string) $topic->id] = "{$topic->label} ({$topic->suffix})";
+        foreach ($this->getSubscribeChannels() as $channel) {
+            $options[(string) $channel->id] = "{$channel->label} ({$channel->address})";
         }
 
         return $options;
@@ -620,15 +624,15 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
 
     private function syncAdvancedJsonFromControls(): void
     {
-        $topic = $this->getSelectedTopic();
+        $channel = $this->getSelectedChannel();
 
-        if (! $topic) {
+        if (! $channel) {
             return;
         }
 
         /** @var CommandPayloadResolver $payloadResolver */
         $payloadResolver = app(CommandPayloadResolver::class);
-        $resolved = $payloadResolver->resolveFromControls($topic, $this->controlValues);
+        $resolved = $payloadResolver->resolveFromControls($channel, $this->controlValues);
 
         $this->commandPayloadJson = json_encode(
             $resolved['payload'],
