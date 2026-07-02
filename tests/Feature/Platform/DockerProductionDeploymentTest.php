@@ -50,9 +50,10 @@ it('defines a production docker compose stack beside the local sail stack', func
         ->and($services['iot-ingest-telemetry']['environment']['INGESTION_NATS_SUBJECT'])->toBe('${INGESTION_NATS_SUBJECT:-devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry}')
         ->and($services['ingestion-go-events']['command'])->toBe('php artisan ingestion:consume-go-events --host=emqx --port=4222')
         ->and($services['ingestion-go-events']['healthcheck']['disable'])->toBeTrue()
-        ->and($services['horizon']['command'])->toBe('php artisan horizon')
+        ->and($services['horizon']['command'])->toBe('php artisan horizon --quiet')
         ->and($services['horizon']['healthcheck']['disable'])->toBeTrue()
         ->and($services['horizon']['stop_grace_period'])->toBe('1h')
+        ->and($services['scheduler']['command'])->toBe('php artisan schedule:work --quiet')
         ->and($services['scheduler']['healthcheck']['disable'])->toBeTrue()
         ->and($services['nightwatch']['healthcheck']['disable'])->toBeTrue()
         ->and($services['pulse-check']['healthcheck']['disable'])->toBeTrue()
@@ -68,11 +69,29 @@ it('defines a production docker compose stack beside the local sail stack', func
         ->and($services['emqx']['volumes'])->toContain('./docker/emqx/base.hocon:/opt/emqx/etc/base.hocon:ro')
         ->and($services['emqx']['healthcheck']['test'])->toBe(['CMD', '/opt/emqx/bin/emqx', 'ctl', 'status'])
         ->and($services['nats']['ports'])->not->toContain('${NATS_MQTT_BIND:-127.0.0.1}:${FORWARD_NATS_MQTT_PORT:-1883}:1883')
+        ->and($services['redis']['command'])->toContain('--loglevel')
+        ->and($services['redis']['command'])->toContain('warning')
         ->and($services['node-red']['environment']['MQTT_BROKER_HOST'])->toBe('${NODE_RED_MQTT_BROKER_HOST:-emqx}')
         ->and($services['node-red']['environment']['MQTT_BROKER_PASSWORD'])->toBe('${NODE_RED_MQTT_PASSWORD:?Set NODE_RED_MQTT_PASSWORD in .env.production}')
         ->and($services['node-red']['depends_on']['emqx']['condition'])->toBe('service_healthy')
+        ->and($services['grafana']['environment']['GF_LOG_LEVEL'])->toBe('${GRAFANA_LOG_LEVEL:-warn}')
+        ->and($services['loki']['command'])->toContain('-config.expand-env=true')
+        ->and($services['loki']['command'])->toContain('-log.level=${LOKI_LOG_LEVEL:-warn}')
+        ->and($services['loki']['environment']['LOKI_RETENTION_PERIOD'])->toBe('${LOKI_RETENTION_PERIOD:-48h}')
+        ->and($services['prometheus']['command'])->toContain('--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-3d}')
+        ->and($services['prometheus']['command'])->toContain('--storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-1GB}')
         ->and($services['web']['volumes'])->toContain('app-storage:/app/storage')
         ->and($services['web']['volumes'])->toContain('app-bootstrap-cache:/app/bootstrap/cache');
+
+    $servicesMissingLogRotation = array_keys(array_filter($services, fn (array $service): bool => ! isset($service['logging'])));
+
+    expect($servicesMissingLogRotation)->toBe([]);
+
+    foreach ($services as $service) {
+        expect($service['logging']['driver'])->toBe('json-file')
+            ->and($service['logging']['options']['max-size'])->toBe('${DOCKER_LOG_MAX_SIZE:-10m}')
+            ->and($service['logging']['options']['max-file'])->toBe('${DOCKER_LOG_MAX_FILE:-3}');
+    }
 });
 
 it('defines local EMQX MQTT services for sail development', function (): void {
@@ -183,6 +202,7 @@ it('ships deployment automation for release commands and horizon reloads', funct
         ->not->toBeFalse()
         ->toContain('PRODUCTION_COMPOSE_FILES=compose.production.yaml:compose.forge.yaml')
         ->toContain('PRODUCTION_SKIP_PULL=false')
+        ->toContain('PRODUCTION_PRUNE_DANGLING_IMAGES=true')
         ->toContain('compose=(docker compose --env-file "$env_file")')
         ->toContain('compose+=(-f "$compose_file")')
         ->toContain('Skipping production image pull because PRODUCTION_SKIP_PULL is enabled')
@@ -192,7 +212,8 @@ it('ships deployment automation for release commands and horizon reloads', funct
         ->toContain('php artisan horizon:terminate')
         ->toContain('php artisan pulse:restart')
         ->toContain('up -d --wait --wait-timeout 300 pgsql redis nats emqx')
-        ->toContain('up -d --remove-orphans');
+        ->toContain('up -d --remove-orphans')
+        ->toContain('docker image prune --force --filter "dangling=true"');
 
     expect($workflow)
         ->not->toBeFalse()
@@ -268,12 +289,20 @@ it('ships production monitoring services for laravel and container telemetry', f
     expect($productionEnvironment)
         ->not->toBeFalse()
         ->toContain('LOG_STACK=stderr')
+        ->toContain('PRODUCTION_PRUNE_DANGLING_IMAGES=true')
         ->toContain('NIGHTWATCH_ENABLED=false')
         ->toContain('NIGHTWATCH_INGEST_URI=nightwatch:2407')
         ->toContain('PULSE_INGEST_DRIVER=redis')
         ->toContain('PULSE_REDIS_CONNECTION=default')
+        ->toContain('DOCKER_LOG_MAX_SIZE=10m')
+        ->toContain('DOCKER_LOG_MAX_FILE=3')
         ->toContain('GRAFANA_BIND=127.0.0.1')
         ->toContain('GRAFANA_ADMIN_PASSWORD=')
+        ->toContain('GRAFANA_LOG_LEVEL=warn')
+        ->toContain('LOKI_LOG_LEVEL=warn')
+        ->toContain('LOKI_RETENTION_PERIOD=48h')
+        ->toContain('PROMETHEUS_RETENTION=3d')
+        ->toContain('PROMETHEUS_RETENTION_SIZE=1GB')
         ->toContain('EMQX_DASHBOARD_BIND=127.0.0.1')
         ->toContain('EMQX_DASHBOARD_PASSWORD=replace-with-strong-emqx-dashboard-password');
 
@@ -295,6 +324,10 @@ it('ships production monitoring services for laravel and container telemetry', f
         ->toContain('job_name: emqx_data_integration')
         ->toContain('/api/v5/prometheus/data_integration')
         ->toContain('emqx:18083');
+
+    expect($lokiConfig)
+        ->not->toBeFalse()
+        ->toContain('retention_period: ${LOKI_RETENTION_PERIOD}');
 
     expect($grafanaDatasources)
         ->not->toBeFalse()
@@ -342,12 +375,12 @@ it('ships production monitoring services for laravel and container telemetry', f
         ->toContain('"uid": "P8E80F9AEF21F6940"')
         ->toContain('{compose_project=\\"$compose_project\\", service=~\\"$service\\", container=~\\"$container\\"}')
         ->toContain('count_over_time')
-        ->toContain('(?i)(error|exception|critical|fatal|panic)')
+        ->toContain('(?i)$search')
         ->toContain('web|horizon|scheduler|reverb|iot-ingest-telemetry|iot-listen-presence|iot-listen-states|emqx');
 
     expect($lokiConfig)
         ->not->toBeFalse()
-        ->toContain('retention_period: 168h')
+        ->toContain('retention_period: ${LOKI_RETENTION_PERIOD}')
         ->toContain('schema: v13');
 });
 

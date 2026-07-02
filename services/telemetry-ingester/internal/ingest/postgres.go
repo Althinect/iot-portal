@@ -206,10 +206,12 @@ func (s *PostgresStore) currentRegistry(ctx context.Context) (*registry, error) 
 		return s.registry, nil
 	}
 
+	previousRegistry := s.registry
 	registry, err := s.loadRegistry(ctx)
 	if err != nil {
 		return nil, err
 	}
+	logRegistryRefresh(s.logger, previousRegistry, registry)
 	s.registry = registry
 	s.refreshedAt = time.Now()
 	return registry, nil
@@ -265,8 +267,21 @@ func (s *PostgresStore) loadRegistry(ctx context.Context) (*registry, error) {
 		}
 	}
 
-	s.logger.Info("telemetry registry refreshed", "topics", len(registry.topics), "binding_topics", len(registry.bindings))
 	return registry, nil
+}
+
+func logRegistryRefresh(logger *slog.Logger, previousRegistry *registry, nextRegistry *registry) {
+	topics := len(nextRegistry.topics)
+	bindingTopics := len(nextRegistry.bindings)
+	attributes := []any{"topics", topics, "binding_topics", bindingTopics}
+
+	if previousRegistry == nil || len(previousRegistry.topics) != topics || len(previousRegistry.bindings) != bindingTopics {
+		logger.Info("telemetry registry refreshed", attributes...)
+
+		return
+	}
+
+	logger.Debug("telemetry registry refreshed", attributes...)
 }
 
 func (s *PostgresStore) loadDevices(ctx context.Context) (map[int64]Device, error) {

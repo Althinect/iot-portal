@@ -35,6 +35,12 @@ x-app-environment: &app-environment
     XDG_CONFIG_HOME: /app/storage/octane/xdg/config
     XDG_DATA_HOME: /app/storage/octane/xdg/data
 
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '${DOCKER_LOG_MAX_SIZE:-10m}'
+    max-file: '${DOCKER_LOG_MAX_FILE:-3}'
+
 x-app-service: &app-service
     image: '${APP_IMAGE:?Set APP_IMAGE in .env.production}'
     env_file:
@@ -47,6 +53,7 @@ x-app-service: &app-service
     volumes:
         - app-storage:/app/storage
         - app-bootstrap-cache:/app/bootstrap/cache
+    logging: *default-logging
     depends_on:
         pgsql:
             condition: service_healthy
@@ -80,6 +87,7 @@ services:
         depends_on:
             - web
             - reverb
+        logging: *default-logging
         restart: unless-stopped
 
     web:
@@ -126,6 +134,7 @@ services:
             INGESTION_NATS_PORT: 4222
             INGESTION_PIPELINE_DRIVER: go
             INGESTION_NATS_SUBJECT: '${INGESTION_NATS_SUBJECT:-devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry}'
+        logging: *default-logging
         restart: unless-stopped
         networks:
             - production
@@ -146,7 +155,7 @@ services:
 
     scheduler:
         <<: *app-command-service
-        command: php artisan schedule:work
+        command: php artisan schedule:work --quiet
 
     nightwatch:
         <<: *app-command-service
@@ -188,6 +197,7 @@ services:
             interval: 10s
             timeout: 5s
             retries: 5
+        logging: *default-logging
         restart: unless-stopped
 
     redis:
@@ -199,6 +209,8 @@ services:
             - '--save'
             - '60'
             - '1'
+            - '--loglevel'
+            - warning
         volumes:
             - redis-data:/data
         networks:
@@ -211,6 +223,7 @@ services:
             interval: 10s
             timeout: 5s
             retries: 5
+        logging: *default-logging
         restart: unless-stopped
 
     nats:
@@ -233,6 +246,7 @@ services:
             interval: 10s
             timeout: 5s
             retries: 5
+        logging: *default-logging
         restart: unless-stopped
 
     emqx:
@@ -263,6 +277,7 @@ services:
             timeout: 10s
             retries: 12
             start_period: 30s
+        logging: *default-logging
         restart: unless-stopped
 
     node-red:
@@ -284,6 +299,7 @@ services:
         depends_on:
             emqx:
                 condition: service_healthy
+        logging: *default-logging
         restart: unless-stopped
 
     grafana:
@@ -295,6 +311,7 @@ services:
             GF_SECURITY_ADMIN_PASSWORD: '${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env.production}'
             GF_SERVER_ROOT_URL: '${GRAFANA_ROOT_URL:-http://localhost:3000}'
             GF_USERS_ALLOW_SIGN_UP: 'false'
+            GF_LOG_LEVEL: '${GRAFANA_LOG_LEVEL:-warn}'
         ports:
             - '${GRAFANA_BIND:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000'
         volumes:
@@ -305,17 +322,23 @@ services:
         depends_on:
             - loki
             - prometheus
+        logging: *default-logging
         restart: unless-stopped
 
     loki:
         image: '${LOKI_IMAGE:-grafana/loki:3.7.2}'
         command:
             - '-config.file=/etc/loki/config.yaml'
+            - '-config.expand-env=true'
+            - '-log.level=${LOKI_LOG_LEVEL:-warn}'
+        environment:
+            LOKI_RETENTION_PERIOD: '${LOKI_RETENTION_PERIOD:-48h}'
         volumes:
             - './docker/monitoring/loki/config.yaml:/etc/loki/config.yaml:ro'
             - loki-data:/loki
         networks:
             - production
+        logging: *default-logging
         restart: unless-stopped
 
     prometheus:
@@ -323,13 +346,15 @@ services:
         command:
             - '--config.file=/etc/prometheus/prometheus.yml'
             - '--storage.tsdb.path=/prometheus'
-            - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}'
+            - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-3d}'
+            - '--storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-1GB}'
             - '--web.enable-lifecycle'
         volumes:
             - './docker/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro'
             - prometheus-data:/prometheus
         networks:
             - production
+        logging: *default-logging
         restart: unless-stopped
 
     alloy:
@@ -345,6 +370,7 @@ services:
             - production
         depends_on:
             - loki
+        logging: *default-logging
         restart: unless-stopped
 
     node-exporter:
@@ -356,6 +382,7 @@ services:
             - '/:/host:ro,rslave'
         networks:
             - production
+        logging: *default-logging
         restart: unless-stopped
 
     cadvisor:
@@ -368,6 +395,7 @@ services:
             - '/dev/disk/:/dev/disk:ro'
         networks:
             - production
+        logging: *default-logging
         restart: unless-stopped
 
 networks:

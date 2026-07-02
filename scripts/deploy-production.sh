@@ -18,6 +18,7 @@ Optional:
   PRODUCTION_COMPOSE_FILES=compose.production.yaml:compose.forge.yaml
   PRODUCTION_ENV_FILE=.env.production
   PRODUCTION_SKIP_PULL=false
+  PRODUCTION_PRUNE_DANGLING_IMAGES=true
 USAGE
 }
 
@@ -35,6 +36,7 @@ repo_root="$(cd "$script_dir/.." && pwd)"
 compose_files_config="${PRODUCTION_COMPOSE_FILES:-${PRODUCTION_COMPOSE_FILE:-compose.production.yaml}}"
 env_file="${PRODUCTION_ENV_FILE:-.env.production}"
 skip_pull="${PRODUCTION_SKIP_PULL:-false}"
+prune_dangling_images="${PRODUCTION_PRUNE_DANGLING_IMAGES:-true}"
 
 if ! command_exists docker; then
     echo "Error: docker is required." >&2
@@ -93,6 +95,15 @@ echo "Signaling Pulse daemons to restart..."
 
 echo "Reconciling production stack..."
 "${compose[@]}" up -d --remove-orphans
+
+if [[ "$prune_dangling_images" == "true" || "$prune_dangling_images" == "1" ]]; then
+    echo "Pruning dangling Docker images..."
+    if ! docker image prune --force --filter "dangling=true"; then
+        echo "Warning: failed to prune dangling Docker images." >&2
+    fi
+else
+    echo "Skipping Docker image prune because PRODUCTION_PRUNE_DANGLING_IMAGES is disabled..."
+fi
 
 echo
 echo "Production stack status:"
