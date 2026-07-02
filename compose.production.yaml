@@ -139,10 +139,10 @@ services:
         <<: *app-command-service
         command: php artisan ingestion:consume-go-events --host=emqx --port=4222
 
-    horizon:
-        <<: *app-command-service
-        command: php artisan horizon
-        stop_grace_period: 1h
+  horizon:
+    <<: *app-command-service
+    command: php artisan horizon --quiet
+    stop_grace_period: 1h
 
     scheduler:
         <<: *app-command-service
