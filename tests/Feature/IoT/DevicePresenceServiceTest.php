@@ -8,6 +8,8 @@ use App\Events\DeviceConnectionChanged;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
+use Psr\Log\LoggerInterface;
 
 uses(RefreshDatabase::class);
 
@@ -207,6 +209,34 @@ it('resolves a device by UUID and marks it offline', function (): void {
 
 it('handles unknown UUID gracefully without exceptions', function (): void {
     Event::fake([DeviceConnectionChanged::class]);
+
+    $this->service->markOnlineByUuid('non-existent-uuid');
+    $this->service->markOfflineByUuid('non-existent-uuid');
+
+    Event::assertNotDispatched(DeviceConnectionChanged::class);
+});
+
+it('logs unknown presence identifiers below warning level', function (): void {
+    Event::fake([DeviceConnectionChanged::class]);
+
+    $logger = Mockery::mock(LoggerInterface::class);
+
+    Log::shouldReceive('channel')
+        ->twice()
+        ->with('device_control')
+        ->andReturn($logger);
+
+    $logger
+        ->shouldReceive('debug')
+        ->once()
+        ->with('Presence online message for unknown device', ['identifier' => 'non-existent-uuid']);
+
+    $logger
+        ->shouldReceive('debug')
+        ->once()
+        ->with('Presence offline message for unknown device', ['identifier' => 'non-existent-uuid']);
+
+    $logger->shouldNotReceive('warning');
 
     $this->service->markOnlineByUuid('non-existent-uuid');
     $this->service->markOfflineByUuid('non-existent-uuid');

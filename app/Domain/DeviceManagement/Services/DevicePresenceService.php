@@ -152,7 +152,7 @@ class DevicePresenceService
         $device = $this->resolveDeviceByIdentifier($identifier);
 
         if ($device === null) {
-            Log::channel('device_control')->warning('Presence offline message for unknown device', [
+            Log::channel('device_control')->debug('Presence offline message for unknown device', [
                 'identifier' => $identifier,
             ]);
 
@@ -167,7 +167,7 @@ class DevicePresenceService
         $device = $this->resolveDeviceByIdentifier($identifier);
 
         if ($device === null) {
-            Log::channel('device_control')->warning('Presence online message for unknown device', [
+            Log::channel('device_control')->debug('Presence online message for unknown device', [
                 'identifier' => $identifier,
             ]);
 
