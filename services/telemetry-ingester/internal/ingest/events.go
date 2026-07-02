@@ -14,12 +14,17 @@ import (
 )
 
 type NATSEventPublisher struct {
-	nc     *nats.Conn
-	config config.Config
+	nc            *nats.Conn
+	sideEffectsNC *nats.Conn
+	config        config.Config
 }
 
-func NewNATSEventPublisher(nc *nats.Conn, cfg config.Config) *NATSEventPublisher {
-	return &NATSEventPublisher{nc: nc, config: cfg}
+func NewNATSEventPublisher(nc *nats.Conn, sideEffectsNC *nats.Conn, cfg config.Config) *NATSEventPublisher {
+	if sideEffectsNC == nil {
+		sideEffectsNC = nc
+	}
+
+	return &NATSEventPublisher{nc: nc, sideEffectsNC: sideEffectsNC, config: cfg}
 }
 
 func (p *NATSEventPublisher) PublishIncoming(_ context.Context, envelope Envelope) error {
@@ -104,7 +109,7 @@ func (p *NATSEventPublisher) PublishAnalytics(_ context.Context, telemetry Persi
 			return nil
 		}
 
-		return p.publish(p.buildTelemetrySubject(resolved.Device, resolved.Channel), map[string]any{
+		return p.publishSideEffect(p.buildTelemetrySubject(resolved.Device, resolved.Channel), map[string]any{
 			"ingestion_message_id": message.ID,
 			"organization_id":      resolved.Device.OrganizationID,
 			"device_uuid":          resolved.Device.UUID,
@@ -120,7 +125,7 @@ func (p *NATSEventPublisher) PublishAnalytics(_ context.Context, telemetry Persi
 		return nil
 	}
 
-	return p.publish(p.buildInvalidSubject(resolved.Device, invalidReason(telemetry.ValidationErrors)), map[string]any{
+	return p.publishSideEffect(p.buildInvalidSubject(resolved.Device, invalidReason(telemetry.ValidationErrors)), map[string]any{
 		"ingestion_message_id": message.ID,
 		"organization_id":      resolved.Device.OrganizationID,
 		"device_uuid":          resolved.Device.UUID,
@@ -140,8 +145,16 @@ func (p *NATSEventPublisher) publish(subject string, payload map[string]any) err
 	return p.nc.Publish(subject, encoded)
 }
 
+func (p *NATSEventPublisher) publishSideEffect(subject string, payload map[string]any) error {
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return p.sideEffectsNC.Publish(subject, encoded)
+}
+
 func (p *NATSEventPublisher) hotStateBucket() (nats.KeyValue, error) {
-	js, err := p.nc.JetStream()
+	js, err := p.sideEffectsNC.JetStream()
 	if err != nil {
 		return nil, err
 	}

@@ -13,6 +13,7 @@ type Config struct {
 	Driver                string
 	DatabaseURL           string
 	NATSURL               string
+	SideEffectsNATSURL    string
 	Subjects              []string
 	RegistryTTLSeconds    int
 	StageLogMode          string
@@ -32,12 +33,15 @@ type Config struct {
 func FromEnv() Config {
 	host := envString("INGESTION_NATS_HOST", envString("IOT_NATS_HOST", "127.0.0.1"))
 	port := envString("INGESTION_NATS_PORT", envString("IOT_NATS_PORT", "4222"))
+	sideEffectsHost := envString("INGESTION_SIDE_EFFECTS_NATS_HOST", envString("IOT_NATS_HOST", host))
+	sideEffectsPort := envString("INGESTION_SIDE_EFFECTS_NATS_PORT", envString("IOT_NATS_PORT", port))
 
 	return Config{
 		Enabled:               envBool("INGESTION_PIPELINE_ENABLED", true),
 		Driver:                envString("INGESTION_PIPELINE_DRIVER", "go"),
 		DatabaseURL:           databaseURL(),
 		NATSURL:               envString("INGESTION_NATS_URL", "nats://"+host+":"+port),
+		SideEffectsNATSURL:    envString("INGESTION_SIDE_EFFECTS_NATS_URL", "nats://"+sideEffectsHost+":"+sideEffectsPort),
 		Subjects:              envList("INGESTION_NATS_SUBJECT", "devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry"),
 		RegistryTTLSeconds:    envInt("INGESTION_REGISTRY_TTL_SECONDS", 30),
 		StageLogMode:          envString("INGESTION_STAGE_LOG_MODE", "failures"),

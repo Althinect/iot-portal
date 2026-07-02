@@ -132,6 +132,8 @@ services:
             DB_PORT: 5432
             INGESTION_NATS_HOST: emqx
             INGESTION_NATS_PORT: 4222
+            INGESTION_SIDE_EFFECTS_NATS_HOST: nats
+            INGESTION_SIDE_EFFECTS_NATS_PORT: 4222
             INGESTION_PIPELINE_DRIVER: go
             INGESTION_NATS_SUBJECT: '${INGESTION_NATS_SUBJECT:-devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry}'
         logging: *default-logging

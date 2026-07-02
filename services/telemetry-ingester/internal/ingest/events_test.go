@@ -7,7 +7,7 @@ import (
 )
 
 func TestAnalyticsSubjectsMatchLaravelContract(t *testing.T) {
-	publisher := NewNATSEventPublisher(nil, config.Config{
+	publisher := NewNATSEventPublisher(nil, nil, config.Config{
 		SubjectEnvironment: "Production",
 		AnalyticsPrefix:    "iot.v1.analytics",
 		InvalidPrefix:      "iot.v1.invalid",

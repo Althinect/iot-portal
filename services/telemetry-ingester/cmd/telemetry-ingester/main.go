@@ -38,8 +38,18 @@ func main() {
 	}
 	defer nc.Drain()
 
+	sideEffectsNC := nc
+	if strings.TrimSpace(cfg.SideEffectsNATSURL) != "" && cfg.SideEffectsNATSURL != cfg.NATSURL {
+		sideEffectsNC, err = nats.Connect(cfg.SideEffectsNATSURL, nats.Name("iot-portal-telemetry-ingester-side-effects"))
+		if err != nil {
+			logger.Error("side effects nats connection failed", "error", err)
+			os.Exit(1)
+		}
+		defer sideEffectsNC.Drain()
+	}
+
 	store := ingest.NewPostgresStore(db, cfg, logger)
-	publisher := ingest.NewNATSEventPublisher(nc, cfg)
+	publisher := ingest.NewNATSEventPublisher(nc, sideEffectsNC, cfg)
 	pipeline := ingest.NewPipeline(store, publisher, cfg, logger)
 
 	for _, subject := range cfg.Subjects {

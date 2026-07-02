@@ -100,6 +100,8 @@ services:
             INGESTION_PIPELINE_DRIVER: go
             INGESTION_NATS_HOST: emqx
             INGESTION_NATS_PORT: 4222
+            INGESTION_SIDE_EFFECTS_NATS_HOST: nats
+            INGESTION_SIDE_EFFECTS_NATS_PORT: 4222
             INGESTION_NATS_SUBJECT: '${INGESTION_NATS_SUBJECT:-devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry}'
             INGESTION_NATS_ANALYTICS_PREFIX: '${INGESTION_NATS_ANALYTICS_PREFIX:-iot.v1.analytics}'
             INGESTION_NATS_INVALID_PREFIX: '${INGESTION_NATS_INVALID_PREFIX:-iot.v1.invalid}'
