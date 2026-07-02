@@ -86,3 +86,4 @@ Set `INGESTION_PIPELINE_HOT_STATE_COALESCE_SECONDS=0` to restore per-row hot-sta
 ## Documentation Map
 
 - [02 - Architecture](02-architecture.md)
+- [03 - Operations](03-operations.md)
