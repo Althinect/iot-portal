@@ -103,6 +103,7 @@ type PersistedTelemetry struct {
 	ValidationStatus string
 	FinalValues      map[string]any
 	ValidationErrors map[string]any
+	RecordedAt       time.Time
 }
 
 type StageLog struct {

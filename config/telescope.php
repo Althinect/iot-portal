@@ -118,7 +118,6 @@ return [
     ],
 
     'ignore_commands' => [
-        'iot:ingest-telemetry',
         'iot:listen-for-device-states',
         'iot:listen-for-device-presence',
     ],

@@ -165,6 +165,7 @@ func (s *PostgresStore) PersistTelemetry(
 		ValidationStatus: validationStatus,
 		FinalValues:      finalValues,
 		ValidationErrors: validationErrors,
+		RecordedAt:       receivedAt,
 	}, nil
 }
 

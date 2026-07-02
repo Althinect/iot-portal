@@ -10,13 +10,7 @@ use App\Domain\Automation\Contracts\TriggerMatcher;
 use App\Domain\Automation\Listeners\QueueTelemetryAutomationRuns;
 use App\Domain\Automation\Models\AutomationWorkflow;
 use App\Domain\Automation\Services\DatabaseTriggerMatcher;
-use App\Domain\DataIngestion\Contracts\AnalyticsPublisher;
-use App\Domain\DataIngestion\Contracts\HotStateStore;
 use App\Domain\DataIngestion\Listeners\BroadcastTelemetryRealtimeUpdate;
-use App\Domain\DataIngestion\Listeners\QueueTelemetryAnalyticsPublishes;
-use App\Domain\DataIngestion\Listeners\QueueTelemetryHotStateWrites;
-use App\Domain\DataIngestion\Services\NatsAnalyticsPublisher;
-use App\Domain\DataIngestion\Services\NatsKvHotStateStore;
 use App\Domain\DeviceManagement\Publishing\Mqtt\MqttCommandPublisher;
 use App\Domain\DeviceManagement\Publishing\Mqtt\PhpMqttCommandPublisher;
 use App\Domain\DeviceManagement\Publishing\Nats\BasisNatsDeviceStateStore;
@@ -74,8 +68,6 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(NatsPublisherFactory::class, BasisNatsPublisherFactory::class);
         $this->app->bind(NatsDeviceStateStore::class, BasisNatsDeviceStateStore::class);
         $this->app->bind(MqttCommandPublisher::class, PhpMqttCommandPublisher::class);
-        $this->app->bind(HotStateStore::class, NatsKvHotStateStore::class);
-        $this->app->bind(AnalyticsPublisher::class, NatsAnalyticsPublisher::class);
         $this->app->bind(TriggerMatcher::class, DatabaseTriggerMatcher::class);
         $this->app->singleton(RuntimeSettingRegistry::class);
         $this->app->scoped(RuntimeSettingManager::class);
@@ -147,8 +139,6 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(TelemetryReceived::class, BroadcastTelemetryRealtimeUpdate::class);
         Event::listen(TelemetryReceived::class, QueueTelemetryAutomationRuns::class);
         Event::listen(TelemetryReceived::class, QueueTelemetryThresholdAlertRecords::class);
-        Event::listen(TelemetryReceived::class, QueueTelemetryHotStateWrites::class);
-        Event::listen(TelemetryReceived::class, QueueTelemetryAnalyticsPublishes::class);
 
         $invalidateDeviceProfileContracts = static function (): void {
             DeviceProfileContractResolver::invalidateSharedVersion();

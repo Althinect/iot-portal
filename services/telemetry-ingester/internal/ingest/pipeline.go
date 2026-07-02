@@ -31,6 +31,8 @@ type Store interface {
 type EventPublisher interface {
 	PublishIncoming(context.Context, Envelope) error
 	PublishPersisted(context.Context, PersistedTelemetry, Message, ResolvedTopic) error
+	PublishHotState(context.Context, PersistedTelemetry, Message, ResolvedTopic, string) error
+	PublishAnalytics(context.Context, PersistedTelemetry, Message, ResolvedTopic) error
 }
 
 type Pipeline struct {
@@ -170,6 +172,14 @@ func (p *Pipeline) ingestOne(ctx context.Context, envelope Envelope) error {
 		if err := p.store.MarkOnline(ctx, resolved.Device.ID, envelope.ReceivedAt); err != nil {
 			p.logger.Warn("device presence update failed", "device_id", resolved.Device.ID, "error", err)
 		}
+	}
+
+	if err := p.publisher.PublishHotState(ctx, telemetry, message, *resolved, status); err != nil {
+		p.logger.Warn("hot-state publish failed", "telemetry_log_id", telemetry.ID, "error", err)
+	}
+
+	if err := p.publisher.PublishAnalytics(ctx, telemetry, message, *resolved); err != nil {
+		p.logger.Warn("analytics publish failed", "telemetry_log_id", telemetry.ID, "error", err)
 	}
 
 	if err := p.publisher.PublishPersisted(ctx, telemetry, message, *resolved); err != nil {

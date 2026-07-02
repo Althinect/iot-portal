@@ -211,8 +211,8 @@ flowchart LR
 
  Received --> Broadcast["BroadcastTelemetryRealtimeUpdate<br/>runtime setting + throttle"]
  Broadcast --> Reverb["TelemetryRealtimeUpdated<br/>Reverb dashboard broadcast"]
-    Received --> HotState["QueueTelemetryHotStateWrites<br/>coalesced NATS KV latest values"]
-    Received --> Analytics["QueueTelemetryAnalyticsPublishes<br/>analytics fan-out"]
+Go --> HotState["Go hot-state writer<br/>NATS KV latest values"]
+Go --> Analytics["Go analytics publisher<br/>analytics / invalid fan-out"]
     Received --> Alerts["QueueTelemetryThresholdAlertRecords"]
     Received --> Automation["QueueTelemetryAutomationRuns"]
 
@@ -245,7 +245,7 @@ flowchart TD
 
     Events --> Rollback{"Need rollback?"}
     Rollback -->|"no"| Done["Go path remains active"]
-    Rollback -->|"yes"| PHP["Switch compose service back to<br/>php artisan iot:ingest-telemetry<br/>and set driver=laravel"]
+Rollback -->|"yes"| GoRollback["Redeploy previous Go ingester image<br/>or disable ingestion while investigating"]
 
     classDef decision fill:#FFE66D,stroke:#F08C00,color:#000
     classDef success fill:#95E1D3,stroke:#087F5B,color:#000
@@ -255,7 +255,7 @@ flowchart TD
     class Resolve,Validate,Rollback decision
     class Persist,Warning,Events,Done success
     class FailedTerminal,Invalid failure
-    class PHP rollback
+class GoRollback rollback
 ```
 
 ## Operational Notes
@@ -264,4 +264,4 @@ flowchart TD
 - Production compose expects `TELEMETRY_INGESTER_IMAGE`.
 - The Go ingester subscribes to EMQX on port `4222`, not the standalone NATS container, because Node-RED publishes telemetry into EMQX/MQTT.
 - `failed_terminal` with `channel_not_registered` usually means the incoming source topic has no active `device_signal_bindings` row.
-- Rollback is the PHP path: set the driver to `laravel` and run the legacy `php artisan iot:ingest-telemetry` service instead of the Go container.
+- Rollback is image-based: redeploy the previous Go ingester image or temporarily disable ingestion while investigating.

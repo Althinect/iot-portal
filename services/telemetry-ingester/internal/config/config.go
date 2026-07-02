@@ -18,8 +18,13 @@ type Config struct {
 	StageLogMode          string
 	StageLogSampleRate    float64
 	CaptureStageSnapshots bool
+	SubjectEnvironment    string
 	AnalyticsPrefix       string
 	InvalidPrefix         string
+	PublishAnalytics      bool
+	PublishInvalidEvents  bool
+	WriteHotState         bool
+	HotStateBucket        string
 	IncomingEventSubject  string
 	PersistedEventSubject string
 }
@@ -38,8 +43,13 @@ func FromEnv() Config {
 		StageLogMode:          envString("INGESTION_STAGE_LOG_MODE", "failures"),
 		StageLogSampleRate:    envFloat("INGESTION_STAGE_LOG_SAMPLE_RATE", 0),
 		CaptureStageSnapshots: envBool("INGESTION_CAPTURE_STAGE_SNAPSHOTS", true),
+		SubjectEnvironment:    envString("INGESTION_SUBJECT_ENVIRONMENT", envString("APP_ENV", "production")),
 		AnalyticsPrefix:       envString("INGESTION_NATS_ANALYTICS_PREFIX", "iot.v1.analytics"),
 		InvalidPrefix:         envString("INGESTION_NATS_INVALID_PREFIX", "iot.v1.invalid"),
+		PublishAnalytics:      envBool("INGESTION_PIPELINE_PUBLISH_ANALYTICS", true),
+		PublishInvalidEvents:  envBool("INGESTION_PIPELINE_PUBLISH_INVALID", true),
+		WriteHotState:         envBool("INGESTION_PIPELINE_WRITE_HOT_STATE", true),
+		HotStateBucket:        envString("INGESTION_HOT_STATE_BUCKET", "device-states"),
 		IncomingEventSubject:  envString("INGESTION_GO_INCOMING_SUBJECT", "iot.v1.ingestion.incoming"),
 		PersistedEventSubject: envString("INGESTION_GO_PERSISTED_SUBJECT", "iot.v1.ingestion.persisted"),
 	}
