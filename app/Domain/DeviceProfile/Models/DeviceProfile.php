@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\DeviceProfile\Models;
 
+use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\Shared\Models\Organization;
 use Database\Factories\Domain\DeviceProfile\Models\DeviceProfileFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -11,6 +12,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -58,6 +61,53 @@ class DeviceProfile extends Model
     public function versions(): HasMany
     {
         return $this->hasMany(DeviceProfileVersion::class, 'device_profile_id');
+    }
+
+    /**
+     * @return HasManyThrough<DeviceChannel, DeviceProfileVersion, $this>
+     */
+    public function channels(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            DeviceChannel::class,
+            DeviceProfileVersion::class,
+            'device_profile_id',
+            'device_profile_version_id',
+            'id',
+            'id',
+        );
+    }
+
+    /**
+     * @return HasManyThrough<Device, DeviceProfileVersion, $this>
+     */
+    public function devices(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            Device::class,
+            DeviceProfileVersion::class,
+            'device_profile_id',
+            'device_profile_version_id',
+            'id',
+            'id',
+        );
+    }
+
+    /**
+     * @return HasOne<DeviceProfileVersion, $this>
+     */
+    public function activeVersion(): HasOne
+    {
+        return $this->hasOne(DeviceProfileVersion::class, 'device_profile_id')
+            ->where('status', DeviceProfileVersion::STATUS_ACTIVE);
+    }
+
+    /**
+     * @return HasOne<DeviceProfileVersion, $this>
+     */
+    public function latestVersion(): HasOne
+    {
+        return $this->hasOne(DeviceProfileVersion::class, 'device_profile_id')->latestOfMany('version');
     }
 
     public function isGlobal(): bool

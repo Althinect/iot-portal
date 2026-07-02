@@ -112,6 +112,28 @@ it('can render the create device page', function (): void {
         ->assertSuccessful();
 });
 
+it('creates a device through the profile and active version setup flow', function (): void {
+    ['organization' => $organization, 'profile' => $profile, 'activeProfileVersion' => $activeProfileVersion] = createGenericDeviceFormContext();
+
+    livewire(CreateDevice::class)
+        ->fillForm([
+            'name' => 'Energy Meter 01',
+            'organization_id' => $organization->id,
+            'device_profile_id' => $profile->id,
+            'device_profile_version_id' => $activeProfileVersion->id,
+            'is_virtual' => false,
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $this->assertDatabaseHas('devices', [
+        'name' => 'Energy Meter 01',
+        'organization_id' => $organization->id,
+        'device_profile_version_id' => $activeProfileVersion->id,
+        'is_virtual' => false,
+    ]);
+});
+
 it('can create a virtual device and attach physical source devices by purpose', function (): void {
     ['organization' => $organization, 'activeProfileVersion' => $activeProfileVersion] = createGenericDeviceFormContext();
 

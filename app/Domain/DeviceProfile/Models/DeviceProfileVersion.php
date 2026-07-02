@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 /**
  * @property int $id
@@ -31,6 +32,12 @@ class DeviceProfileVersion extends Model
 {
     /** @use HasFactory<DeviceProfileVersionFactory> */
     use HasFactory;
+
+    public const STATUS_DRAFT = 'draft';
+
+    public const STATUS_ACTIVE = 'active';
+
+    public const STATUS_SUPERSEDED = 'superseded';
 
     protected $guarded = ['id'];
 
@@ -77,9 +84,47 @@ class DeviceProfileVersion extends Model
         return $this->hasMany(ProfileDerivedParameterDefinition::class, 'device_profile_version_id');
     }
 
+    /**
+     * @return HasMany<Device, $this>
+     */
+    public function devices(): HasMany
+    {
+        return $this->hasMany(Device::class, 'device_profile_version_id');
+    }
+
+    /**
+     * @return HasManyThrough<DeviceChannelLink, DeviceChannel, $this>
+     */
+    public function channelLinks(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            DeviceChannelLink::class,
+            DeviceChannel::class,
+            'device_profile_version_id',
+            'from_device_channel_id',
+            'id',
+            'id',
+        );
+    }
+
     public function isActive(): bool
     {
-        return $this->status === 'active';
+        return $this->status === self::STATUS_ACTIVE;
+    }
+
+    public function isDraft(): bool
+    {
+        return $this->status === self::STATUS_DRAFT;
+    }
+
+    public function isSuperseded(): bool
+    {
+        return $this->status === self::STATUS_SUPERSEDED;
+    }
+
+    public function canEditContract(): bool
+    {
+        return $this->isDraft();
     }
 
     public function hasFirmwareTemplate(): bool
