@@ -48,7 +48,7 @@ class DialogSmsChannel
         $payload = [
             'messages' => [[
                 'number' => $phoneNumber,
-                'mask' => $message->mask ?: $this->stringConfig('services.sms.mask', 'ALTHINECT'),
+                'mask' => $message->mask ?: $this->stringConfig('services.sms.mask', 'ELWIDS'),
                 'text' => $message->body,
                 'campaignName' => $message->campaignName ?: $this->stringConfig('services.sms.campaign_name', 'alerts'),
             ]],

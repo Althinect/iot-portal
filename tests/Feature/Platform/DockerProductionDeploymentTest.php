@@ -471,6 +471,34 @@ it('documents production environment variables for proxy and reverb separation',
         ->toContain('NODE_RED_MQTT_BROKER_HOST=emqx');
 });
 
+it('uses ELWIDS as the application brand in every environment and production build fallback', function (): void {
+    $exampleEnvironment = file_get_contents(base_path('.env.example'));
+    $productionEnvironment = file_get_contents(base_path('.env.production.example'));
+    $dockerfile = file_get_contents(base_path('Dockerfile'));
+    $workflow = file_get_contents(base_path('.github/workflows/docker-production.yml'));
+
+    expect($exampleEnvironment)
+        ->not->toBeFalse()
+        ->toContain('APP_NAME=ELWIDS')
+        ->toContain('SMS_GATEWAY_MASK=ELWIDS');
+
+    expect($productionEnvironment)
+        ->not->toBeFalse()
+        ->toContain('APP_NAME=ELWIDS')
+        ->toContain('SMS_GATEWAY_MASK=ELWIDS');
+
+    expect($dockerfile)
+        ->not->toBeFalse()
+        ->toContain('ARG VITE_APP_NAME="ELWIDS"');
+
+    expect($workflow)
+        ->not->toBeFalse()
+        ->toContain("VITE_APP_NAME=\${{ vars.VITE_APP_NAME || 'ELWIDS' }}");
+
+    expect(config('app.name'))->toBe('ELWIDS')
+        ->and(config('services.sms.mask'))->toBe('ELWIDS');
+});
+
 it('configures laravel for reverse proxies and internal reverb broadcasting', function (): void {
     $bootstrap = file_get_contents(base_path('bootstrap/app.php'));
     $applicationConfig = file_get_contents(config_path('app.php'));

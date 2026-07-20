@@ -52,7 +52,7 @@ class AutomationNotificationProfileFactory extends Factory
                 : [$this->faker->safeEmail()],
             'subject' => $channel === 'email' ? $this->faker->sentence() : null,
             'body' => $this->faker->sentence(10),
-            'mask' => $channel === 'sms' ? 'ALTHINECT' : null,
+            'mask' => $channel === 'sms' ? 'ELWIDS' : null,
             'campaign_name' => $channel === 'sms' ? 'Cold Room Monitoring' : null,
             'legacy_metadata' => null,
         ];
@@ -64,7 +64,7 @@ class AutomationNotificationProfileFactory extends Factory
             'channel' => 'sms',
             'recipients' => ['94771234567'],
             'subject' => null,
-            'mask' => 'ALTHINECT',
+            'mask' => 'ELWIDS',
             'campaign_name' => 'Cold Room Monitoring',
         ]);
     }

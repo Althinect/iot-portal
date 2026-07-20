@@ -38,7 +38,7 @@ class AutomationSmsAlertChannel implements AutomationAlertChannel
 
         $mask = $this->stringFromContext($context, 'alert.metadata.mask')
             ?: $this->stringFromContext($context, 'node.config.metadata.mask')
-            ?: $this->stringConfig('services.sms.mask', 'ALTHINECT');
+            ?: $this->stringConfig('services.sms.mask', 'ELWIDS');
         $campaignName = $this->stringFromContext($context, 'alert.metadata.campaign_name')
             ?: $this->stringFromContext($context, 'node.config.metadata.campaign_name')
             ?: $this->stringConfig('services.sms.campaign_name', 'alerts');

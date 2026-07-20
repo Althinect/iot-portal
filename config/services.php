@@ -41,7 +41,7 @@ return [
         'url' => env('SMS_GATEWAY_URL', 'https://richcommunication.dialog.lk/api/sms/send'),
         'user' => env('SMS_GATEWAY_USER'),
         'digest' => env('SMS_GATEWAY_DIGEST'),
-        'mask' => env('SMS_GATEWAY_MASK', 'ALTHINECT'),
+        'mask' => env('SMS_GATEWAY_MASK', 'ELWIDS'),
         'campaign_name' => env('SMS_GATEWAY_CAMPAIGN_NAME', 'alerts'),
         'timeout_seconds' => (int) env('SMS_GATEWAY_TIMEOUT_SECONDS', 15),
     ],

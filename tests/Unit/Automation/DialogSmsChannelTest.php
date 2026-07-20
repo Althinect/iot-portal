@@ -17,7 +17,7 @@ beforeEach(function (): void {
         'services.sms.url' => 'https://dialog.example.test/sms',
         'services.sms.user' => 'Althinect_iot',
         'services.sms.digest' => 'digest-token',
-        'services.sms.mask' => 'ALTHINECT',
+        'services.sms.mask' => 'ELWIDS',
         'services.sms.campaign_name' => 'alerts',
         'services.sms.timeout_seconds' => 10,
     ]);
