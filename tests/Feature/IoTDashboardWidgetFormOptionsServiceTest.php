@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domain\DeviceProfile\Enums\ParameterCategory;
 use App\Domain\DeviceProfile\Enums\ParameterDataType;
 use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceProfile;
 use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Filament\Admin\Pages\IoTDashboardSupport\WidgetFormOptionsService;
@@ -104,4 +105,63 @@ it('builds state parameter options from profile parameters without dashboard sta
         ->and($options)->toHaveKey('mode')
         ->and($options['mode'])->toBe('Mode (mode)')
         ->and($options)->not->toHaveKey('temperature');
+});
+
+it('includes energy counter parameters without broadening ordinary state parameter options', function (): void {
+    $standardProfileVersion = DeviceProfileVersion::factory()->active()->create();
+    $standardChannel = DeviceChannel::factory()
+        ->publish()
+        ->create(['device_profile_version_id' => $standardProfileVersion->id]);
+    $energyProfile = DeviceProfile::factory()->create(['key' => 'energy_meter']);
+    $energyProfileVersion = DeviceProfileVersion::factory()
+        ->forProfile($energyProfile)
+        ->active()
+        ->create();
+    $energyChannel = DeviceChannel::factory()
+        ->publish()
+        ->create(['device_profile_version_id' => $energyProfileVersion->id]);
+
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $standardChannel->id,
+        'key' => 'machine_state',
+        'label' => 'Machine State',
+        'type' => ParameterDataType::Integer,
+        'category' => ParameterCategory::State,
+        'is_active' => true,
+    ]);
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $standardChannel->id,
+        'key' => 'production_count',
+        'label' => 'Production Count',
+        'type' => ParameterDataType::Integer,
+        'category' => ParameterCategory::Counter,
+        'is_active' => true,
+    ]);
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $energyChannel->id,
+        'key' => 'TotalEnergy',
+        'label' => 'Total Energy',
+        'type' => ParameterDataType::Decimal,
+        'category' => ParameterCategory::Counter,
+        'is_active' => true,
+    ]);
+    ProfileParameterDefinition::factory()->create([
+        'device_channel_id' => $energyChannel->id,
+        'key' => 'PhaseAVoltage',
+        'label' => 'Phase A Voltage',
+        'type' => ParameterDataType::Decimal,
+        'category' => ParameterCategory::Measurement,
+        'is_active' => true,
+    ]);
+
+    $standardOptions = app(WidgetFormOptionsService::class)->stateParameterOptions($standardChannel->id);
+    $energyOptions = app(WidgetFormOptionsService::class)->stateParameterOptions($energyChannel->id);
+
+    expect($standardOptions)
+        ->toHaveKey('machine_state')
+        ->not->toHaveKey('production_count');
+
+    expect($energyOptions)
+        ->toHaveKey('TotalEnergy', 'Total Energy (TotalEnergy)')
+        ->not->toHaveKey('PhaseAVoltage');
 });

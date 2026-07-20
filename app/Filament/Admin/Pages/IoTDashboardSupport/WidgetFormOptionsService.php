@@ -334,10 +334,12 @@ class WidgetFormOptionsService
         }
 
         return ProfileParameterDefinition::query()
+            ->with('channel.version.profile')
             ->where('device_channel_id', (int) $topicId)
             ->where('is_active', true)
             ->orderBy('sequence')
             ->get([
+                'device_channel_id',
                 'key',
                 'label',
                 'type',
@@ -345,7 +347,7 @@ class WidgetFormOptionsService
                 'validation_rules',
                 'control_ui',
             ])
-            ->filter(fn (ProfileParameterDefinition $parameter): bool => $this->isDashboardStateParameter($parameter))
+            ->filter(fn (ProfileParameterDefinition $parameter): bool => $this->isDashboardStateParameter($parameter) || $this->isDashboardEnergyParameter($parameter))
             ->mapWithKeys(fn (ProfileParameterDefinition $parameter): array => [
                 $parameter->key => "{$parameter->label} ({$parameter->key})",
             ])
@@ -1235,6 +1237,17 @@ class WidgetFormOptionsService
         }
 
         return is_array($parameter->resolvedControlUi()['state_mappings'] ?? null);
+    }
+
+    private function isDashboardEnergyParameter(ProfileParameterDefinition $parameter): bool
+    {
+        if ($parameter->category !== ParameterCategory::Counter) {
+            return false;
+        }
+
+        $profileKey = $parameter->channel?->version?->profile?->key;
+
+        return is_string($profileKey) && str_contains(strtolower($profileKey), 'energy');
     }
 
     /**
