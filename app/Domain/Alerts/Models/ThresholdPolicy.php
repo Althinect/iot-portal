@@ -94,12 +94,12 @@ class ThresholdPolicy extends Model
     {
         $this->loadMissing('deviceChannel');
 
-        if (! $this->deviceChannel instanceof DeviceChannel || ! is_string($this->parameter_key)) {
+        if (! is_numeric($this->device_channel_id) || ! is_string($this->parameter_key)) {
             return null;
         }
 
         return ProfileParameterDefinition::query()
-            ->where('device_channel_id', $this->deviceChannel->id)
+            ->where('device_channel_id', (int) $this->device_channel_id)
             ->where('key', $this->parameter_key)
             ->where('is_active', true)
             ->first();

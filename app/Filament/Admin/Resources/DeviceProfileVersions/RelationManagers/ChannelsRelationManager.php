@@ -10,7 +10,10 @@ use App\Domain\DeviceProfile\Enums\ChannelTransport;
 use App\Domain\DeviceProfile\Enums\ParameterCategory;
 use App\Domain\DeviceProfile\Enums\ParameterDataType;
 use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
+use App\Filament\Admin\Support\JsonCodeEditorState;
 use Filament\Actions;
+use Filament\Forms\Components\CodeEditor;
+use Filament\Forms\Components\CodeEditor\Enums\Language;
 use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
@@ -58,7 +61,8 @@ class ChannelsRelationManager extends RelationManager
                         TextInput::make('http_method')
                             ->label('HTTP method')
                             ->maxLength(10)
-                            ->default(''),
+                            ->default('')
+                            ->dehydrateStateUsing(fn (mixed $state): string => is_string($state) ? $state : ''),
                         TextInput::make('qos')
                             ->label('QoS')
                             ->numeric()
@@ -77,40 +81,65 @@ class ChannelsRelationManager extends RelationManager
                     ->columnSpanFull(),
                 Repeater::make('parameters')
                     ->relationship()
+                    ->defaultItems(0)
                     ->schema([
                         TextInput::make('key')
                             ->required()
                             ->maxLength(100)
-                            ->regex('/^[a-z0-9_-]+$/'),
+                            ->regex('/^[a-z0-9_-]+$/')
+                            ->columnSpan(4),
                         TextInput::make('label')
                             ->required()
-                            ->maxLength(255),
+                            ->maxLength(255)
+                            ->columnSpan(4),
                         TextInput::make('json_path')
                             ->required()
-                            ->maxLength(255),
+                            ->maxLength(255)
+                            ->columnSpan(4),
                         Select::make('type')
                             ->options(ParameterDataType::class)
                             ->default(ParameterDataType::Decimal->value)
-                            ->required(),
+                            ->required()
+                            ->columnSpan(3),
                         Select::make('category')
                             ->options(ParameterCategory::class)
                             ->default(ParameterCategory::Measurement->value)
-                            ->required(),
+                            ->required()
+                            ->columnSpan(3),
                         TextInput::make('unit')
-                            ->maxLength(50),
+                            ->maxLength(50)
+                            ->columnSpan(2),
                         Toggle::make('required')
-                            ->default(false),
+                            ->default(false)
+                            ->columnSpan(2),
                         Toggle::make('is_critical')
                             ->label('Critical')
-                            ->default(false),
+                            ->default(false)
+                            ->columnSpan(1),
                         Toggle::make('is_active')
-                            ->default(true),
+                            ->default(true)
+                            ->columnSpan(1),
                         KeyValue::make('validation_rules')
                             ->columnSpanFull(),
                         KeyValue::make('control_ui')
                             ->columnSpanFull(),
+                        Section::make('Advanced mutation')
+                            ->schema([
+                                CodeEditor::make('mutation_expression')
+                                    ->label('Mutation expression')
+                                    ->language(Language::Json)
+                                    ->rules(['nullable', 'json'])
+                                    ->formatStateUsing(fn (mixed $state): string => JsonCodeEditorState::encode($state))
+                                    ->dehydrateStateUsing(fn (mixed $state): ?array => JsonCodeEditorState::decode($state))
+                                    ->helperText('Optional JSON Logic. Use val for the extracted value; leave blank for no mutation.')
+                                    ->columnSpanFull(),
+                            ])
+                            ->compact()
+                            ->collapsible()
+                            ->collapsed()
+                            ->columnSpanFull(),
                     ])
-                    ->columns(3)
+                    ->columns(12)
                     ->collapsible()
                     ->cloneable()
                     ->reorderable()

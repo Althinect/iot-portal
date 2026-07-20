@@ -29,8 +29,8 @@ FROM node:22-alpine AS frontend
 
 WORKDIR /app
 
-ARG VITE_APP_NAME="LMU IoT Portal"
-ARG VITE_REVERB_APP_KEY="lmu-iot-portal-key"
+ARG VITE_APP_NAME="IoT Portal"
+ARG VITE_REVERB_APP_KEY="iot-portal-key"
 ARG VITE_REVERB_HOST=""
 ARG VITE_REVERB_PORT="443"
 ARG VITE_REVERB_SCHEME="https"

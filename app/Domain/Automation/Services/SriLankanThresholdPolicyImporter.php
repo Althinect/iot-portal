@@ -20,6 +20,7 @@ class SriLankanThresholdPolicyImporter
 {
     public function __construct(
         private readonly ThresholdPolicyWorkflowProjector $thresholdPolicyWorkflowProjector,
+        private readonly GuidedConditionService $guidedConditionService,
     ) {}
 
     /**
@@ -319,6 +320,10 @@ class SriLankanThresholdPolicyImporter
     ): AutomationThresholdPolicy {
         ['minimum_value' => $minimumValue, 'maximum_value' => $maximumValue] = $this->parseLegacyLogic($legacyRule->logic);
         ['value' => $cooldownValue, 'unit' => $cooldownUnit] = $this->mapCooldown((int) $legacyRule->alert_interval);
+        $condition = $this->guidedConditionService->fromLegacyBounds(
+            minimumValue: $minimumValue,
+            maximumValue: $maximumValue,
+        );
 
         $policy = AutomationThresholdPolicy::query()
             ->withTrashed()
@@ -339,6 +344,9 @@ class SriLankanThresholdPolicyImporter
                 : $device->name.' Temperature Threshold',
             'minimum_value' => $minimumValue,
             'maximum_value' => $maximumValue,
+            'condition_mode' => $condition['condition_mode'],
+            'guided_condition' => $condition['guided_condition'],
+            'condition_json_logic' => $condition['condition_json_logic'],
             'is_active' => (bool) $legacyRule->enabled,
             'cooldown_value' => $cooldownValue,
             'cooldown_unit' => $cooldownUnit,

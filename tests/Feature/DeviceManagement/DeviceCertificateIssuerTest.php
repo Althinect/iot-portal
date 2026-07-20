@@ -27,7 +27,7 @@ function configureTestPkiPaths(): array
     ]);
     $csr = openssl_csr_new([
         'countryName' => 'US',
-        'organizationName' => 'LMU IoT Portal Tests',
+        'organizationName' => 'IoT Portal Tests',
         'commonName' => 'Local Test Root CA',
     ], $privateKey, ['digest_alg' => 'sha256']);
     $certificate = openssl_csr_sign($csr, null, $privateKey, 3650, ['digest_alg' => 'sha256']);

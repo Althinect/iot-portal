@@ -21,7 +21,7 @@ export default defineConfig({
         host: '127.0.0.1',
         origin: 'http://127.0.0.1:5173',
         cors: {
-            origin: 'http://lmu-iot-portal.test',
+            origin: 'http://localhost:8081',
         },
         hmr: {
             host: '127.0.0.1',

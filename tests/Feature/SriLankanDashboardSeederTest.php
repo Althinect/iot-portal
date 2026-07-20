@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\Automation\Models\AutomationThresholdPolicy;
+use App\Domain\Automation\Services\GuidedConditionService;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
@@ -24,6 +25,27 @@ it('seeds sri lankan status and history dashboards for the communicating cold-ro
 
     $configuredScopes = resolveSriLankanConfiguredScopes($organization);
     $firstScope = $configuredScopes[0];
+    $staleCondition = app(GuidedConditionService::class)->fromLegacyBounds(
+        minimumValue: -100.0,
+        maximumValue: 100.0,
+    );
+
+    AutomationThresholdPolicy::query()->create([
+        'organization_id' => $organization->id,
+        'device_id' => $firstScope['device']->id,
+        'device_channel_id' => $firstScope['topic']->id,
+        'parameter_key' => $firstScope['parameter']->key,
+        'name' => 'Stale CLD 02 Temperature Threshold',
+        'minimum_value' => -100.0,
+        'maximum_value' => 100.0,
+        'condition_mode' => $staleCondition['condition_mode'],
+        'guided_condition' => $staleCondition['guided_condition'],
+        'condition_json_logic' => $staleCondition['condition_json_logic'],
+        'is_active' => true,
+        'cooldown_value' => 1,
+        'cooldown_unit' => 'day',
+        'sort_order' => 99,
+    ]);
 
     $statusDashboard = IoTDashboard::query()->create([
         'organization_id' => $organization->id,
@@ -132,6 +154,10 @@ it('seeds sri lankan status and history dashboards for the communicating cold-ro
 
     foreach ($configuredScopes as $index => $scope) {
         $policy = $thresholdPolicies->get($scope['device']->id);
+        $expectedCondition = app(GuidedConditionService::class)->fromLegacyBounds(
+            minimumValue: $scope['card']['minimum_value'],
+            maximumValue: $scope['card']['maximum_value'],
+        );
         $cardTitle = $scope['card']['room_name'];
         $chartTitle = $scope['card']['room_name'].' Temperature History';
         $cardWidget = $statusWidgets->get($cardTitle);
@@ -146,7 +172,8 @@ it('seeds sri lankan status and history dashboards for the communicating cold-ro
             ->and((float) $policy?->minimum_value)->toBe($scope['card']['minimum_value'])
             ->and((float) $policy?->maximum_value)->toBe($scope['card']['maximum_value'])
             ->and($policy?->condition_mode)->toBe('guided')
-            ->and($policy?->condition_json_logic)->not->toBeEmpty()
+            ->and($policy?->guided_condition)->toEqual($expectedCondition['guided_condition'])
+            ->and($policy?->condition_json_logic)->toEqual($expectedCondition['condition_json_logic'])
             ->and($cardWidget)->not->toBeNull()
             ->and($cardWidget?->type)->toBe('threshold_status_card')
             ->and($cardWidget?->device_id)->toBe($scope['device']->id)

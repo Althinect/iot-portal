@@ -152,10 +152,10 @@ class InitializeDevicePkiCommand extends Command
 
     private function subjectOrganization(): string
     {
-        $value = config('iot.pki.subject.organization', config('app.name', 'LMU IoT Portal'));
+        $value = config('iot.pki.subject.organization', config('app.name', 'IoT Portal'));
 
         return is_string($value) && trim($value) !== ''
             ? trim($value)
-            : 'LMU IoT Portal';
+            : 'IoT Portal';
     }
 }

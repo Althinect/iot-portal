@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines how logging is used across the LMU IoT Portal after the logging rationalization pass.
+This document defines how logging is used across the IoT Portal after the logging rationalization pass.
 
 The goal is simple:
 

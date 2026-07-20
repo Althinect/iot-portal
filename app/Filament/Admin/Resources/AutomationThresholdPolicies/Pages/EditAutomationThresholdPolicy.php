@@ -35,12 +35,11 @@ class EditAutomationThresholdPolicy extends EditRecord
 
     protected function mutateFormDataBeforeFill(array $data): array
     {
-        $data['condition_json_logic_text'] = json_encode(
-            is_array($data['condition_json_logic'] ?? null) ? $data['condition_json_logic'] : [],
-            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
-        ) ?: '{}';
+        $record = $this->getRecord();
 
-        return $data;
+        return $record instanceof AutomationThresholdPolicy
+            ? AutomationThresholdPolicyResource::prepareThresholdPolicyFormDataBeforeFill($data, $record)
+            : $data;
     }
 
     protected function afterSave(): void

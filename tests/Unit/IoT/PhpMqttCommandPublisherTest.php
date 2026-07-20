@@ -26,7 +26,7 @@ it('uses a fixed client ID with persistent session in the CONNECT packet', funct
     $clientIdLength = unpack('n', substr($packet, $clientIdLengthOffset, 2))[1];
     $clientId = substr($packet, $clientIdLengthOffset + 2, $clientIdLength);
 
-    expect($clientId)->toBe('lmu-iot-portal-cmd');
+    expect($clientId)->toBe('iot-portal-cmd');
 });
 
 it('sends messages with QoS 1', function (): void {
@@ -70,7 +70,7 @@ it('uses a deterministic client ID across multiple invocations', function (): vo
     $secondId = $extractClientId();
 
     expect($firstId)->toBe($secondId)
-        ->and($firstId)->toBe('lmu-iot-portal-cmd');
+        ->and($firstId)->toBe('iot-portal-cmd');
 });
 
 it('serializes publishes with a lock file', function (): void {

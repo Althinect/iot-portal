@@ -1,4 +1,4 @@
-# Contributing to LMU IoT Portal
+# Contributing to IoT Portal
 
 ## 🔄 Git Workflow
 

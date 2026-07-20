@@ -23,9 +23,9 @@ use RuntimeException;
  */
 final class PhpMqttCommandPublisher implements MqttCommandPublisher
 {
-    private const string CLIENT_ID = 'lmu-iot-portal-cmd';
+    private const string CLIENT_ID = 'iot-portal-cmd';
 
-    private const string LOCK_FILE = 'lmu-iot-portal-mqtt-cmd.lock';
+    private const string LOCK_FILE = 'iot-portal-mqtt-cmd.lock';
 
     private const int CONNECT_TIMEOUT_SECONDS = 5;
 

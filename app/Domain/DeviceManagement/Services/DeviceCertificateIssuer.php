@@ -198,11 +198,11 @@ class DeviceCertificateIssuer
     {
         $device->loadMissing('organization');
 
-        $organizationNameValue = config('iot.pki.subject.organization', config('app.name', 'LMU IoT Portal'));
+        $organizationNameValue = config('iot.pki.subject.organization', config('app.name', 'IoT Portal'));
         $countryNameValue = config('iot.pki.subject.country', 'US');
         $organizationName = is_string($organizationNameValue) && trim($organizationNameValue) !== ''
             ? trim($organizationNameValue)
-            : 'LMU IoT Portal';
+            : 'IoT Portal';
         $countryName = is_string($countryNameValue) && trim($countryNameValue) !== ''
             ? trim($countryNameValue)
             : 'US';

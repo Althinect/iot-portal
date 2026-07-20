@@ -1,4 +1,4 @@
-# LMU IoT Portal
+# IoT Portal
 
 > Multi-tenant IoT device management platform for monitoring and controlling connected devices
 
@@ -14,8 +14,8 @@
 ### 1. Clone & Install Dependencies
 
 ```bash
-git clone https://github.com/tharindarodrigo/lmu-iot-portal.git
-cd lmu-iot-portal
+git clone https://github.com/tharindarodrigo/iot-portal.git
+cd iot-portal
 ```
 
 Install dependencies with one of the following options:
@@ -44,7 +44,7 @@ Edit `.env` and set your database credentials:
 DB_CONNECTION=pgsql
 DB_HOST=pgsql
 DB_PORT=5432
-DB_DATABASE=lmu_iot_portal
+DB_DATABASE=iot_portal
 DB_USERNAME=sail
 DB_PASSWORD=password
 ```
@@ -72,7 +72,7 @@ Verify TimescaleDB is available:
 
 ```sql
 -- Connect to your database
-psql -d lmu_iot_portal
+psql -d iot_portal
 
 -- Check the extension loads
 CREATE EXTENSION IF NOT EXISTS timescaledb;
@@ -214,12 +214,7 @@ http://localhost:8081
 > For Docker mode, use `http://localhost:8081` for the web app and `ws://localhost:8090` for Reverb.  
 > Do not run host (`php artisan ...`) daemons in parallel with Docker daemons.
 
-If using Laravel Herd (host runtime):
-```
-https://lmu-iot-portal.test
-```
-
-Otherwise:
+For a host-only fallback:
 ```bash
 php artisan serve
 ```

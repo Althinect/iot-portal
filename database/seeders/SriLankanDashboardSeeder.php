@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Domain\Automation\Models\AutomationThresholdPolicy;
+use App\Domain\Automation\Services\GuidedConditionService;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
@@ -115,6 +116,11 @@ class SriLankanDashboardSeeder extends Seeder
         $policiesByDeviceId = [];
 
         foreach ($configuredScopes as $index => $scope) {
+            $condition = app(GuidedConditionService::class)->fromLegacyBounds(
+                minimumValue: $scope['card']['minimum_value'],
+                maximumValue: $scope['card']['maximum_value'],
+            );
+
             $policy = AutomationThresholdPolicy::query()
                 ->withTrashed()
                 ->firstOrNew([
@@ -129,6 +135,9 @@ class SriLankanDashboardSeeder extends Seeder
                 'name' => $scope['card']['room_name'].' Temperature Threshold',
                 'minimum_value' => $scope['card']['minimum_value'],
                 'maximum_value' => $scope['card']['maximum_value'],
+                'condition_mode' => $condition['condition_mode'],
+                'guided_condition' => $condition['guided_condition'],
+                'condition_json_logic' => $condition['condition_json_logic'],
                 'is_active' => true,
                 'cooldown_value' => 1,
                 'cooldown_unit' => 'day',

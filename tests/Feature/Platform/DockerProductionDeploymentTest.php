@@ -147,7 +147,7 @@ it('configures EMQX as the MQTT ingress broker and NATS gateway', function (): v
 
     expect($natsConfig)
         ->not->toBeFalse()
-        ->toContain('server_name: "lmu_iot_portal_nats"')
+        ->toContain('server_name: "iot_portal_nats"')
         ->not->toContain('mqtt {');
 
     expect($localBroker)

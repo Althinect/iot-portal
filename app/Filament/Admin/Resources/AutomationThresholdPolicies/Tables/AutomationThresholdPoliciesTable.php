@@ -27,8 +27,12 @@ class AutomationThresholdPoliciesTable
                     ->label('Organization')
                     ->searchable()
                     ->sortable(),
-                TextColumn::make('parameterDefinition.label')
+                TextColumn::make('parameter_key')
                     ->label('Parameter')
+                    ->state(
+                        fn (AutomationThresholdPolicy $record): string => $record->profileParameterDefinition()?->label
+                            ?? (string) $record->parameter_key,
+                    )
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('range')

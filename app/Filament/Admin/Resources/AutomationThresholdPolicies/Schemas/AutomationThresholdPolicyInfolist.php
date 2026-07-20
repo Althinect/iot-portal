@@ -21,7 +21,12 @@ class AutomationThresholdPolicyInfolist
                         TextEntry::make('name'),
                         TextEntry::make('organization.name')->label('Organization'),
                         TextEntry::make('device.name')->label('Device'),
-                        TextEntry::make('parameterDefinition.label')->label('Parameter'),
+                        TextEntry::make('parameter_key')
+                            ->label('Parameter')
+                            ->state(
+                                fn (AutomationThresholdPolicy $record): string => $record->profileParameterDefinition()?->label
+                                    ?? (string) $record->parameter_key,
+                            ),
                         TextEntry::make('range')
                             ->state(fn (AutomationThresholdPolicy $record): string => $record->rangeLabel()),
                         IconEntry::make('is_active')

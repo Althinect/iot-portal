@@ -1,7 +1,7 @@
 services:
   nats:
     image: nats:2.11-alpine
-    container_name: lmu-iot-portal-nats
+    container_name: iot-portal-nats
     restart: unless-stopped
     command: ["-c", "/etc/nats/nats.conf"]
     ports:
@@ -14,7 +14,7 @@ services:
 
   emqx:
     image: ${EMQX_IMAGE:-emqx/emqx-enterprise:6.2.1}
-    container_name: lmu-iot-portal-emqx
+    container_name: iot-portal-emqx
     hostname: emqx.local
     restart: unless-stopped
     environment:

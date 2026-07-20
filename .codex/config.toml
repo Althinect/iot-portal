@@ -1,12 +1,12 @@
 [mcp_servers.laravel-boost]
 command = "php"
 args = ["artisan", "boost:mcp"]
-cwd = "/Users/tharindarodrigo/Herd/lmu-iot-portal"
+cwd = "/Users/tharindarodrigo/Herd/iot-portal"
 
 [mcp_servers.herd]
 command = "php"
 args = ["/Applications/Herd.app/Contents/Resources/herd-mcp.phar"]
-cwd = "/Users/tharindarodrigo/Herd/lmu-iot-portal"
+cwd = "/Users/tharindarodrigo/Herd/iot-portal"
 
 [mcp_servers.herd.env]
-SITE_PATH = "/Users/tharindarodrigo/Herd/lmu-iot-portal"
+SITE_PATH = "/Users/tharindarodrigo/Herd/iot-portal"

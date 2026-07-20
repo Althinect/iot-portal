@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Admin\Resources\AutomationThresholdPolicies;
 
+use App\Domain\Alerts\Models\ThresholdPolicy;
 use App\Domain\Automation\Models\AutomationNotificationProfile;
 use App\Domain\Automation\Models\AutomationThresholdPolicy;
 use App\Domain\Automation\Services\GuidedConditionService;
@@ -132,13 +133,16 @@ class AutomationThresholdPolicyResource extends Resource
             ->whereKey($parameterDefinitionId)
             ->where('is_active', true)
             ->whereIn('device_channel_id', $publishTopicIds)
-            ->first(['id']);
+            ->first(['id', 'key', 'device_channel_id']);
 
         if (! $parameter instanceof ProfileParameterDefinition) {
             throw ValidationException::withMessages([
                 'parameter_key' => 'The selected parameter must belong to the device telemetry schema.',
             ]);
         }
+
+        $data['device_channel_id'] = $parameter->device_channel_id;
+        $data['parameter_key'] = $parameter->key;
 
         if ($notificationProfileId !== null) {
             $profileExists = AutomationNotificationProfile::query()
@@ -210,7 +214,8 @@ class AutomationThresholdPolicyResource extends Resource
         $duplicateExists = AutomationThresholdPolicy::query()
             ->where('organization_id', $organizationId)
             ->where('device_id', $deviceId)
-            ->where('parameter_key', $parameterDefinitionId)
+            ->where('device_channel_id', $parameter->device_channel_id)
+            ->where('parameter_key', $parameter->key)
             ->where('is_active', true)
             ->when($ignoreRecordId !== null, fn (Builder $query) => $query->whereKeyNot($ignoreRecordId))
             ->exists();
@@ -222,6 +227,28 @@ class AutomationThresholdPolicyResource extends Resource
         }
 
         unset($data['condition_json_logic_text']);
+
+        return $data;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public static function prepareThresholdPolicyFormDataBeforeFill(
+        array $data,
+        ThresholdPolicy $policy,
+    ): array {
+        $parameter = $policy->profileParameterDefinition();
+
+        if ($parameter instanceof ProfileParameterDefinition) {
+            $data['parameter_key'] = (string) $parameter->id;
+        }
+
+        $data['condition_json_logic_text'] = json_encode(
+            is_array($data['condition_json_logic'] ?? null) ? $data['condition_json_logic'] : [],
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
+        ) ?: '{}';
 
         return $data;
     }

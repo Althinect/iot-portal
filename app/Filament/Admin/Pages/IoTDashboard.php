@@ -464,13 +464,10 @@ class IoTDashboard extends Page
      */
     private function thresholdPolicyFormData(AutomationThresholdPolicy $policy): array
     {
-        $data = $policy->attributesToArray();
-        $data['condition_json_logic_text'] = json_encode(
-            is_array($data['condition_json_logic'] ?? null) ? $data['condition_json_logic'] : [],
-            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
-        ) ?: '{}';
-
-        return $data;
+        return AutomationThresholdPolicyResource::prepareThresholdPolicyFormDataBeforeFill(
+            $policy->attributesToArray(),
+            $policy,
+        );
     }
 
     /**

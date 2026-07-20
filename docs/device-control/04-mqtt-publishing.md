@@ -51,7 +51,7 @@ sequenceDiagram
     participant NATS as NATS MQTT Bridge
     
     PHP->>NATS: TCP connect to host:1883
-    PHP->>NATS: CONNECT packet<br/>ClientID: lmu-iot-portal-cmd<br/>Clean Session: 0
+    PHP->>NATS: CONNECT packet<br/>ClientID: iot-portal-cmd<br/>Clean Session: 0
     NATS-->>PHP: CONNACK (accepted)
     PHP->>NATS: PUBLISH (QoS 1)<br/>Topic: devices/rgb-led-01/control<br/>Payload: {"color":{"r":0,"g":255,"b":0}}
     NATS-->>PHP: PUBACK<br/>(message stored in JetStream)
@@ -61,16 +61,16 @@ sequenceDiagram
 
 ### Why Fixed Client ID + Persistent Session
 
-The publisher uses a **fixed client ID** (`lmu-iot-portal-cmd`) with **clean_session=0** (persistent session). This is a deliberate design decision to prevent a serious data corruption issue.
+The publisher uses a **fixed client ID** (`iot-portal-cmd`) with **clean_session=0** (persistent session). This is a deliberate design decision to prevent a serious data corruption issue.
 
 **The problem with random client IDs + clean_session=1:**
 
 When `clean_session=1` is set, the NATS MQTT bridge creates a new session record in the `$MQTT_sess` JetStream stream on CONNECT and deletes it on DISCONNECT. If every command uses a random client ID:
 
-1. CONNECT → creates session record for `lmu-iot-cmd-a1b2c3d4`
-2. DISCONNECT → deletes session record for `lmu-iot-cmd-a1b2c3d4`
-3. CONNECT → creates session record for `lmu-iot-cmd-e5f6g7h8`
-4. DISCONNECT → deletes session record for `lmu-iot-cmd-e5f6g7h8`
+1. CONNECT → creates session record for `iot-cmd-a1b2c3d4`
+2. DISCONNECT → deletes session record for `iot-cmd-a1b2c3d4`
+3. CONNECT → creates session record for `iot-cmd-e5f6g7h8`
+4. DISCONNECT → deletes session record for `iot-cmd-e5f6g7h8`
 5. ... hundreds of create/delete cycles ...
 
 This rapid churn on different JetStream subjects corrupts the `$MQTT_sess` stream, producing invalid JSON records. When the ESP32 (or any other device) reconnects, NATS tries to restore its session from this stream and fails with:
@@ -83,7 +83,7 @@ The device connects but gets **zero subscriptions restored** — it cannot recei
 
 **The fix with a fixed client ID + clean_session=0:**
 
-- Only one session record exists for `lmu-iot-portal-cmd` in the stream
+- Only one session record exists for `iot-portal-cmd` in the stream
 - Each connection updates the same record in place (no create/delete churn)
 - Since the publisher never subscribes, the persistent session has zero overhead
 - The `$MQTT_sess` stream remains healthy
@@ -132,7 +132,7 @@ This is handled by `DeviceCommandDispatcher::resolveTopicWithExternalId()`.
 |-----------|-------|--------|
 | Host | `127.0.0.1` (default) | `config('iot.mqtt.host')` or caller override |
 | Port | `1883` (default) | `config('iot.mqtt.port')` or caller override |
-| Client ID | `lmu-iot-portal-cmd` | Hardcoded constant |
+| Client ID | `iot-portal-cmd` | Hardcoded constant |
 | Clean Session | `0` (persistent) | Hardcoded |
 | Keep Alive | `60` seconds | Hardcoded constant |
 | Connect Timeout | `5` seconds | Hardcoded constant |

@@ -67,7 +67,7 @@ jobs:
       - name: Move issue based on PR status
         uses: alex-page/github-project-automation-plus@v0.9.0
         with:
-          project: LMU IoT Portal
+          project: IoT Portal
           column: ${{ github.event.pull_request.draft && 'In Progress' || 'In Review' }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -172,11 +172,11 @@ jobs:
    https://github.com/users/tharindarodrigo/projects/new
    ```
    - Template: "Team backlog"
-   - Name: "LMU IoT Portal Development"
+   - Name: "IoT Portal Development"
 
 2. **Link Repository**
    - In project settings → "Manage access"
-   - Add repository: `lmu-iot-portal`
+   - Add repository: `iot-portal`
 
 3. **Configure Built-in Automations**
    - Go to project → Settings → Workflows

@@ -18,6 +18,7 @@
 - [01 - Overview](device-management/01-overview.md)
 - [02 - Architecture](device-management/02-architecture.md)
 - [03 - Device Profile Redesign Proposal](device-management/03-device-profile-redesign.md)
+- [04 - Device Profile Onboarding UX Plan](device-management/04-device-profile-onboarding-ux-plan.md)
 
 ### Device Schema
 

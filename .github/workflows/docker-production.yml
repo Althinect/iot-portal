@@ -54,8 +54,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            VITE_APP_NAME=${{ vars.VITE_APP_NAME || 'LMU IoT Portal' }}
-            VITE_REVERB_APP_KEY=${{ vars.VITE_REVERB_APP_KEY || 'lmu-iot-portal-key' }}
+            VITE_APP_NAME=${{ vars.VITE_APP_NAME || 'IoT Portal' }}
+            VITE_REVERB_APP_KEY=${{ vars.VITE_REVERB_APP_KEY || 'iot-portal-key' }}
             VITE_REVERB_HOST=${{ vars.VITE_REVERB_HOST }}
             VITE_REVERB_PORT=${{ vars.VITE_REVERB_PORT || '443' }}
             VITE_REVERB_SCHEME=${{ vars.VITE_REVERB_SCHEME || 'https' }}

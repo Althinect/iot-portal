@@ -345,7 +345,7 @@ class WidgetFormOptionsService
                 'validation_rules',
                 'control_ui',
             ])
-            ->filter(fn (ProfileParameterDefinition $parameter): bool => $parameter->isDashboardStateParameter())
+            ->filter(fn (ProfileParameterDefinition $parameter): bool => $this->isDashboardStateParameter($parameter))
             ->mapWithKeys(fn (ProfileParameterDefinition $parameter): array => [
                 $parameter->key => "{$parameter->label} ({$parameter->key})",
             ])
@@ -1034,7 +1034,7 @@ class WidgetFormOptionsService
 
         foreach ($parameters as $index => $parameter) {
             /** @var ProfileParameterDefinition $parameter */
-            if ($parameter->isDashboardStateParameter()) {
+            if ($this->isDashboardStateParameter($parameter)) {
                 continue;
             }
 
@@ -1108,7 +1108,7 @@ class WidgetFormOptionsService
             ->whereIn('type', [ParameterDataType::Integer->value, ParameterDataType::Decimal->value])
             ->orderBy('sequence')
             ->get(['key', 'label', 'unit', 'category', 'validation_rules', 'control_ui', 'type'])
-            ->reject(fn (ProfileParameterDefinition $parameter): bool => $parameter->isDashboardStateParameter())
+            ->reject(fn (ProfileParameterDefinition $parameter): bool => $this->isDashboardStateParameter($parameter))
             ->values()
             ->mapWithKeys(function (ProfileParameterDefinition $parameter, int $index): array {
                 $label = trim((string) $parameter->label);
@@ -1222,6 +1222,19 @@ class WidgetFormOptionsService
         }
 
         return false;
+    }
+
+    private function isDashboardStateParameter(ProfileParameterDefinition $parameter): bool
+    {
+        if ($parameter->category === ParameterCategory::State) {
+            return true;
+        }
+
+        if (data_get($parameter->validation_rules, 'category') === ParameterCategory::State->value) {
+            return true;
+        }
+
+        return is_array($parameter->resolvedControlUi()['state_mappings'] ?? null);
     }
 
     /**

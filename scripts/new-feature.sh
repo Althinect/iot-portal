@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# LMU IoT Portal - Feature Branch Helper
+# IoT Portal - Feature Branch Helper
 # This script helps create properly formatted feature branches
 
 set -e
@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🚀 LMU IoT Portal - Feature Branch Creator${NC}"
+echo -e "${BLUE}🚀 IoT Portal - Feature Branch Creator${NC}"
 echo ""
 
 # Check if we're in git repo

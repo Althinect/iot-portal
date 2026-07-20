@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domain\Automation\Models\AutomationNotificationProfile;
 use App\Domain\Automation\Models\AutomationThresholdPolicy;
 use App\Domain\Automation\Models\AutomationWorkflow;
+use App\Domain\Automation\Services\GuidedConditionService;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Shared\Models\User;
 use Database\Seeders\SriLankanMigrationSeeder;
@@ -70,11 +71,17 @@ it('imports sri lankan legacy alert rules into threshold policies, notification 
     $cld10 = $policies->get('65e7eedce09437f4ad048a94');
     $cld10Disabled = $policies->get('6693449225c916423c0336d2');
     $cld11Disabled = $policies->get('65e7f02d3bb512a0e40d8324');
+    $expectedCld03Condition = app(GuidedConditionService::class)->fromLegacyBounds(
+        minimumValue: 2.0,
+        maximumValue: 8.0,
+    );
 
     expect($cld03)->not->toBeNull()
         ->and($cld03?->device?->name)->toBe('CLD 03')
         ->and((float) $cld03?->minimum_value)->toBe(2.0)
         ->and((float) $cld03?->maximum_value)->toBe(8.0)
+        ->and($cld03?->guided_condition)->toEqual($expectedCld03Condition['guided_condition'])
+        ->and($cld03?->condition_json_logic)->toEqual($expectedCld03Condition['condition_json_logic'])
         ->and($cld03?->is_active)->toBeTrue()
         ->and($cld03?->notificationProfile?->is($primaryProfile))->toBeTrue()
         ->and($cld03?->managed_workflow_id)->not->toBeNull()
@@ -105,6 +112,33 @@ it('imports sri lankan legacy alert rules into threshold policies, notification 
         ->where('is_managed', true)
         ->where('managed_type', 'threshold_policy')
         ->count())->toBe(6);
+
+    DB::connection('legacy_iot')
+        ->table('alert_rules')
+        ->where('mongodb_id', '65e7e863a1855a81740279e3')
+        ->update([
+            'logic' => json_encode([
+                'or' => [
+                    ['<' => [['var' => 'temperature'], 4]],
+                    ['>' => [['var' => 'temperature'], 6]],
+                ],
+            ], JSON_THROW_ON_ERROR),
+        ]);
+
+    $this->artisan('automation:import-sri-lankan-threshold-policies')
+        ->expectsOutputToContain('SriLankan threshold policy import completed.')
+        ->assertSuccessful();
+
+    $updatedCld03Condition = app(GuidedConditionService::class)->fromLegacyBounds(
+        minimumValue: 4.0,
+        maximumValue: 6.0,
+    );
+    $cld03->refresh();
+
+    expect((float) $cld03->minimum_value)->toBe(4.0)
+        ->and((float) $cld03->maximum_value)->toBe(6.0)
+        ->and($cld03->guided_condition)->toEqual($updatedCld03Condition['guided_condition'])
+        ->and($cld03->condition_json_logic)->toEqual($updatedCld03Condition['condition_json_logic']);
 });
 
 function configureLegacyIotConnectionForSriLankanImportTests(): void

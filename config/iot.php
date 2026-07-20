@@ -30,7 +30,7 @@ return [
         'default_validity_days' => (int) env('IOT_PKI_DEFAULT_VALIDITY_DAYS', 365),
         'subject' => [
             'country' => (string) env('IOT_PKI_SUBJECT_COUNTRY', 'US'),
-            'organization' => (string) env('IOT_PKI_SUBJECT_ORGANIZATION', (string) env('APP_NAME', 'LMU IoT Portal')),
+            'organization' => (string) env('IOT_PKI_SUBJECT_ORGANIZATION', (string) env('APP_NAME', 'IoT Portal')),
         ],
     ],
 
