@@ -45,6 +45,7 @@ class DatabaseSeeder extends Seeder
             TeejayMigrationSeeder::class,
             TeejayDashboardSeeder::class,
             ImportLegacyEntitiesSeeder::class,
+            PortalUserSeeder::class,
 
         ]);
     }

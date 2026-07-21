@@ -25,16 +25,16 @@ class IoTDashboardPolicy
 
     public function create(User $user): bool
     {
-        return true;
+        return $user->isSuperAdmin();
     }
 
     public function update(User $user, IoTDashboard $dashboard): bool
     {
-        return $this->view($user, $dashboard);
+        return $user->isSuperAdmin();
     }
 
     public function delete(User $user, IoTDashboard $dashboard): bool
     {
-        return $this->view($user, $dashboard);
+        return $user->isSuperAdmin();
     }
 }

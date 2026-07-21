@@ -61,15 +61,15 @@ export function renderThresholdStatusCardMarkup(widget) {
                     ></span>
                 </div>
             </header>
-            ${renderRuleMarkup(ruleLabel, policyId)}
+            ${renderRuleMarkup(ruleLabel, policyId, widget?.read_only === true)}
             ${prominentStatusMarkup}
             <div class="iot-threshold-status-card__value ${valueToneClass}">${escapeHtml(currentValueDisplay)}</div>
         </article>
     `;
 }
 
-function renderRuleMarkup(ruleLabel, policyId) {
-    if (!Number.isInteger(policyId) || policyId <= 0) {
+function renderRuleMarkup(ruleLabel, policyId, readOnly) {
+    if (readOnly || !Number.isInteger(policyId) || policyId <= 0) {
         return `<div class="iot-threshold-status-card__rule">${escapeHtml(ruleLabel)}</div>`;
     }
 

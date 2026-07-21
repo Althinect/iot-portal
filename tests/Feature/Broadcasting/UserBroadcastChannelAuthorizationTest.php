@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Domain\DeviceManagement\Models\Device;
+use App\Domain\Shared\Models\Organization;
 use App\Domain\Shared\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -56,5 +58,31 @@ it('denies the namespaced user private channel for a different user id', functio
     $request->setUserResolver(fn () => $authenticatedUser);
 
     expect(fn (): mixed => Broadcast::auth($request))
+        ->toThrow(AccessDeniedHttpException::class);
+});
+
+it('authorizes current dashboard device channel names only for organization members', function (): void {
+    $organization = Organization::factory()->create();
+    $otherOrganization = Organization::factory()->create();
+    $user = User::factory()->create();
+    $user->organizations()->attach($organization);
+    $device = Device::factory()->create(['organization_id' => $organization->id]);
+    $otherDevice = Device::factory()->create(['organization_id' => $otherOrganization->id]);
+
+    $authorizedRequest = Request::create('/broadcasting/auth', 'POST', [
+        'socket_id' => '1234.5678',
+        'channel_name' => "private-iot-dashboard.device.{$device->uuid}.channel.42",
+    ]);
+    $authorizedRequest->setUserResolver(fn () => $user);
+
+    expect(Broadcast::auth($authorizedRequest))->toBeArray()->toHaveKey('auth');
+
+    $deniedRequest = Request::create('/broadcasting/auth', 'POST', [
+        'socket_id' => '1234.5678',
+        'channel_name' => "private-iot-dashboard.device.{$otherDevice->uuid}.channel.42",
+    ]);
+    $deniedRequest->setUserResolver(fn () => $user);
+
+    expect(fn (): mixed => Broadcast::auth($deniedRequest))
         ->toThrow(AccessDeniedHttpException::class);
 });

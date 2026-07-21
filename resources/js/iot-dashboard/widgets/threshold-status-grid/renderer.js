@@ -97,7 +97,7 @@ function resolveStatusTone(status) {
     return 'is-no-data';
 }
 
-function renderStandardCard(card) {
+function renderStandardCard(card, readOnly) {
     const deviceName = typeof card?.device_name === 'string' && card.device_name.trim() !== ''
         ? card.device_name.trim()
         : 'Unnamed device';
@@ -113,7 +113,7 @@ function renderStandardCard(card) {
     const currentValueDisplay = typeof card?.current_value_display === 'string' && card.current_value_display.trim() !== ''
         ? card.current_value_display.trim()
         : '—';
-    const editUrl = typeof card?.edit_url === 'string' && card.edit_url.trim() !== ''
+    const editUrl = !readOnly && typeof card?.edit_url === 'string' && card.edit_url.trim() !== ''
         ? card.edit_url.trim()
         : null;
     const displayTimestamp = resolveCardTimestamp(card);
@@ -193,7 +193,7 @@ export function renderThresholdStatusGridMarkup(widget) {
 
     const cardMarkup = displayMode === 'sri_lankan_temperature'
         ? cards.map((card) => renderSriLankanCard(card)).join('')
-        : cards.map((card) => renderStandardCard(card)).join('');
+        : cards.map((card) => renderStandardCard(card, widget?.read_only === true)).join('');
 
     return `
         <div class="iot-threshold-grid ${displayMode === 'sri_lankan_temperature' ? 'iot-threshold-grid--sri-lankan' : ''}">

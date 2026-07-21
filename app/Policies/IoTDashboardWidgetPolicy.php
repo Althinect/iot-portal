@@ -9,6 +9,11 @@ use App\Domain\Shared\Models\User;
 
 class IoTDashboardWidgetPolicy
 {
+    public function create(User $user): bool
+    {
+        return $user->isSuperAdmin();
+    }
+
     public function view(User $user, IoTDashboardWidget $widget): bool
     {
         $widget->loadMissing('dashboard');
@@ -27,11 +32,11 @@ class IoTDashboardWidgetPolicy
 
     public function update(User $user, IoTDashboardWidget $widget): bool
     {
-        return $this->view($user, $widget);
+        return $user->isSuperAdmin();
     }
 
     public function delete(User $user, IoTDashboardWidget $widget): bool
     {
-        return $this->view($user, $widget);
+        return $user->isSuperAdmin();
     }
 }

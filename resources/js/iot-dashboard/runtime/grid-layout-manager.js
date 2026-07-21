@@ -4,8 +4,9 @@ const GRID_STACK_MARGIN = '6px';
 const MOBILE_BREAKPOINT = '(max-width: 768px)';
 
 export class GridLayoutManager {
-    constructor(onNodesResized) {
+    constructor(onNodesResized, readOnly = false) {
         this.onNodesResized = onNodesResized;
+        this.readOnly = readOnly;
         this.grid = null;
         this.widgets = new Map();
         this.pendingLayoutUpdates = new Map();
@@ -44,8 +45,8 @@ export class GridLayoutManager {
             cellHeight: GRID_STACK_CELL_HEIGHT,
             float: false,
             animate: true,
-            disableDrag: isMobile,
-            disableResize: isMobile,
+            disableDrag: isMobile || this.readOnly,
+            disableResize: isMobile || this.readOnly,
         }, container);
 
         this.grid.on('change', (_event, changedItems) => {
@@ -148,8 +149,8 @@ export class GridLayoutManager {
                 this.grid.column(GRID_STACK_COLUMNS, 'moveScale');
             }
             this.restoreDesktopLayout();
-            this.grid.enableMove(true);
-            this.grid.enableResize(true);
+            this.grid.enableMove(!this.readOnly);
+            this.grid.enableResize(!this.readOnly);
         }
 
         this.isMobileLayout = shouldUseMobileLayout;
@@ -210,7 +211,7 @@ export class GridLayoutManager {
     }
 
     queueLayoutPersistence(nodes) {
-        if (!Array.isArray(nodes) || nodes.length === 0 || !window.axios) {
+        if (this.readOnly || !Array.isArray(nodes) || nodes.length === 0 || !window.axios) {
             return;
         }
 

@@ -128,7 +128,10 @@ class DashboardRuntime {
             (payload) => this.appendRealtimePayload(payload),
             () => this.syncPolling(),
         );
-        this.gridManager = new GridLayoutManager((nodes) => this.resizeChartsForNodes(nodes));
+        this.gridManager = new GridLayoutManager(
+            (nodes) => this.resizeChartsForNodes(nodes),
+            config?.read_only === true,
+        );
         this.hydrationFrame = null;
         this.gridIntegrityObserver = null;
         this.gridIntegrityTimer = null;

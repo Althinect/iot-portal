@@ -9,6 +9,7 @@ use App\Domain\IoTDashboard\Application\WidgetRegistry;
 use App\Domain\IoTDashboard\Enums\WidgetType;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
+use App\Domain\Shared\Models\Organization;
 
 class WidgetBootstrapPayloadBuilder
 {
@@ -62,6 +63,27 @@ class WidgetBootstrapPayloadBuilder
                 ];
             })
             ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function buildForPortal(IoTDashboard $dashboard, Organization $organization): array
+    {
+        return collect($this->build($dashboard))
+            ->map(function (array $widget) use ($dashboard, $organization): array {
+                unset($widget['layout_url']);
+
+                $widget['snapshot_url'] = route('portal.iot-dashboard.dashboards.snapshots', [
+                    'organization' => $organization,
+                    'dashboard' => $dashboard,
+                    'widget' => $widget['id'],
+                ]);
+                $widget['read_only'] = true;
+
+                return $widget;
+            })
             ->all();
     }
 

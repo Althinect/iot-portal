@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Policies;
 
 use App\Domain\DeviceManagement\Models\Device;
@@ -10,12 +12,12 @@ class DevicePolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->hasPermissionTo(DevicePermission::VIEW_ANY);
+        return $user->organizations()->exists();
     }
 
     public function view(User $user, Device $model): bool
     {
-        return $user->hasPermissionTo(DevicePermission::VIEW);
+        return $user->organizations()->whereKey($model->organization_id)->exists();
     }
 
     public function create(User $user): bool

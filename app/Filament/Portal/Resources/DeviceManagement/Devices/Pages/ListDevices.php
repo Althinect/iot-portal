@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Filament\Portal\Resources\DeviceManagement\Devices\Pages;
 
 use App\Filament\Portal\Resources\DeviceManagement\Devices\DeviceResource;
-use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
 use Livewire\Attributes\On;
 
@@ -15,9 +14,7 @@ class ListDevices extends ListRecords
 
     protected function getHeaderActions(): array
     {
-        return [
-            Actions\CreateAction::make(),
-        ];
+        return [];
     }
 
     /**

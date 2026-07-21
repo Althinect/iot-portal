@@ -1,9 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Filament\Portal\Resources\DeviceManagement\Devices\Pages;
 
 use App\Filament\Portal\Resources\DeviceManagement\Devices\DeviceResource;
-use Filament\Actions;
 use Filament\Resources\Pages\ViewRecord;
 
 class ViewDevice extends ViewRecord
@@ -17,8 +18,6 @@ class ViewDevice extends ViewRecord
 
     protected function getHeaderActions(): array
     {
-        return [
-            Actions\EditAction::make(),
-        ];
+        return [];
     }
 }

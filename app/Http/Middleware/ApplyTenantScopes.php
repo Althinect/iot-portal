@@ -1,11 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Middleware;
 
 use App\Domain\Shared\Models\User;
 use Closure;
 use Filament\Facades\Filament;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -18,13 +19,15 @@ class ApplyTenantScopes
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (! empty(auth()->user()) && Filament::getTenant() != null) {
-            setPermissionsTeamId(Filament::getTenant()->id);
-        }
+        $tenant = Filament::getTenant();
 
-        User::addGlobalScope(
-            fn (Builder $query) => $query->whereRelation('organizations', 'organizations.id', Filament::getTenant()->id),
-        );
+        $user = $request->user();
+
+        if ($user instanceof User && $tenant !== null) {
+            setPermissionsTeamId($tenant->getKey());
+            $user->unsetRelation('roles');
+            $user->unsetRelation('permissions');
+        }
 
         return $next($request);
     }

@@ -9,11 +9,8 @@ use App\Domain\DeviceProfile\DTO\ChannelDefinition;
 use App\Domain\DeviceProfile\DTO\DeviceProfileContract;
 use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Domain\DeviceProfile\Services\DeviceProfileContractResolver;
-use App\Filament\Actions\DeviceManagement\SimulatePublishingActions;
 use App\Filament\Admin\Resources\DeviceManagement\Devices\RelationManagers\TelemetryLogsRelationManager;
 use BackedEnum;
-use Filament\Actions\BulkActionGroup;
-use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\KeyValue;
@@ -414,13 +411,6 @@ class DeviceResource extends Resource
             ])
             ->recordActions([
                 ViewAction::make(),
-                SimulatePublishingActions::recordAction(),
-                EditAction::make(),
-            ])
-            ->toolbarActions([
-                BulkActionGroup::make([
-                    SimulatePublishingActions::bulkAction(),
-                ]),
             ])
             ->defaultSort('created_at', 'desc');
     }
@@ -436,9 +426,7 @@ class DeviceResource extends Resource
     {
         return [
             'index' => Pages\ListDevices::route('/'),
-            'create' => Pages\CreateDevice::route('/create'),
             'view' => Pages\ViewDevice::route('/{record}'),
-            'edit' => Pages\EditDevice::route('/{record}/edit'),
         ];
     }
 }

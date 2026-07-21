@@ -28,6 +28,7 @@ function normalizeDashboardConfig(rawConfig) {
         snapshot_url: typeof rawConfig?.snapshot_url === 'string' && rawConfig.snapshot_url.trim() !== ''
             ? rawConfig.snapshot_url
             : null,
+        read_only: rawConfig?.read_only === true,
         widgets: Array.isArray(rawConfig?.widgets) ? rawConfig.widgets : [],
     };
 }
@@ -75,6 +76,7 @@ function handleWidgetsUpdated(event) {
             organization_id: null,
             default_history_preset: '6h',
             snapshot_url: null,
+            read_only: false,
             widgets,
         };
     } else {

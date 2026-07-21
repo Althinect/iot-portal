@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Policies;
 
 use App\Domain\Shared\Models\User;
@@ -10,12 +12,17 @@ class DeviceTelemetryLogPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->hasPermissionTo(DeviceTelemetryLogPermission::VIEW_ANY);
+        return $user->organizations()->exists();
     }
 
     public function view(User $user, DeviceTelemetryLog $deviceTelemetryLog): bool
     {
-        return $user->hasPermissionTo(DeviceTelemetryLogPermission::VIEW);
+        return $deviceTelemetryLog->device()
+            ->whereHas('organization', fn ($query) => $query->whereIn(
+                'organizations.id',
+                $user->organizations()->select('organizations.id'),
+            ))
+            ->exists();
     }
 
     public function create(User $user): bool
