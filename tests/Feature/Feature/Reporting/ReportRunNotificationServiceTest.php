@@ -22,7 +22,7 @@ it('persists a completed report notification with a download action and dispatch
     Event::fake([DatabaseNotificationsSent::class]);
 
     $organization = Organization::factory()->create();
-    $requestedBy = User::factory()->create();
+    $requestedBy = User::factory()->create(['is_super_admin' => true]);
     $device = Device::factory()->create(['organization_id' => $organization->id]);
 
     $reportRun = ReportRun::query()->create([
@@ -59,11 +59,51 @@ it('persists a completed report notification with a download action and dispatch
     Event::assertDispatched(DatabaseNotificationsSent::class);
 });
 
-it('persists a no-data report notification without a download action', function (): void {
+it('uses tenant portal links for a completed report requested by an organization user', function (): void {
     Event::fake([DatabaseNotificationsSent::class]);
 
     $organization = Organization::factory()->create();
     $requestedBy = User::factory()->create();
+    $requestedBy->organizations()->attach($organization);
+    $device = Device::factory()->create(['organization_id' => $organization->id]);
+
+    $reportRun = ReportRun::query()->create([
+        'organization_id' => $organization->id,
+        'device_id' => $device->id,
+        'requested_by_user_id' => $requestedBy->id,
+        'type' => ReportType::ParameterValues,
+        'status' => ReportRunStatus::Completed,
+        'format' => 'csv',
+        'from_at' => now()->subDay(),
+        'until_at' => now(),
+        'timezone' => 'UTC',
+        'storage_disk' => 'local',
+        'storage_path' => 'reports/portal-sample.csv',
+        'file_name' => 'portal-sample.csv',
+        'file_size' => 1024,
+        'generated_at' => now(),
+        'row_count' => 12,
+    ]);
+
+    app(ReportRunNotificationService::class)->sendForStatus($reportRun);
+
+    $databaseNotification = $requestedBy->notifications()->latest()->first();
+    $serializedData = json_encode($databaseNotification?->data ?? [], JSON_UNESCAPED_SLASHES);
+
+    expect((string) $serializedData)
+        ->toContain(route('filament.portal.pages.reports', ['tenant' => $organization]))
+        ->toContain(route('portal.reporting.report-runs.download', [
+            'organization' => $organization,
+            'reportRun' => $reportRun,
+        ]))
+        ->not->toContain(route('filament.admin.pages.reports'));
+});
+
+it('persists a no-data report notification without a download action', function (): void {
+    Event::fake([DatabaseNotificationsSent::class]);
+
+    $organization = Organization::factory()->create();
+    $requestedBy = User::factory()->create(['is_super_admin' => true]);
     $device = Device::factory()->create(['organization_id' => $organization->id]);
 
     $reportRun = ReportRun::query()->create([

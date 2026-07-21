@@ -6,6 +6,7 @@ namespace App\Domain\Reporting\Services;
 
 use App\Domain\Reporting\Enums\ReportRunStatus;
 use App\Domain\Reporting\Models\ReportRun;
+use App\Domain\Shared\Models\Organization;
 use App\Domain\Shared\Models\User;
 use Filament\Actions\Action;
 use Filament\Notifications\Events\DatabaseNotificationsSent;
@@ -15,7 +16,7 @@ class ReportRunNotificationService
 {
     public function sendForStatus(ReportRun $reportRun): void
     {
-        $reportRun->loadMissing(['requestedBy:id,name', 'device:id,name']);
+        $reportRun->loadMissing(['organization:id,name', 'requestedBy:id,name,is_super_admin', 'device:id,name']);
 
         $recipient = $reportRun->requestedBy;
 
@@ -43,19 +44,36 @@ class ReportRunNotificationService
             return;
         }
 
-        $actions = [
-            Action::make('openReports')
+        $organization = $reportRun->organization;
+        $reportsUrl = null;
+        $downloadUrl = null;
+
+        if ($recipient->isSuperAdmin()) {
+            $reportsUrl = route('filament.admin.pages.reports');
+            $downloadUrl = route('reporting.report-runs.download', ['reportRun' => $reportRun]);
+        } elseif ($organization instanceof Organization && $recipient->canAccessTenant($organization)) {
+            $reportsUrl = route('filament.portal.pages.reports', ['tenant' => $organization]);
+            $downloadUrl = route('portal.reporting.report-runs.download', [
+                'organization' => $organization,
+                'reportRun' => $reportRun,
+            ]);
+        }
+
+        $actions = [];
+
+        if (is_string($reportsUrl)) {
+            $actions[] = Action::make('openReports')
                 ->label('Open Reports')
                 ->button()
-                ->url(route('filament.admin.pages.reports'), shouldOpenInNewTab: true),
-        ];
+                ->url($reportsUrl, shouldOpenInNewTab: true);
+        }
 
-        if ($reportRun->status === ReportRunStatus::Completed && $reportRun->isDownloadable()) {
+        if ($reportRun->status === ReportRunStatus::Completed && $reportRun->isDownloadable() && is_string($downloadUrl)) {
             array_unshift($actions, Action::make('downloadReport')
                 ->label('Download')
                 ->button()
                 ->color('success')
-                ->url(route('reporting.report-runs.download', ['reportRun' => $reportRun]), shouldOpenInNewTab: true));
+                ->url($downloadUrl, shouldOpenInNewTab: true));
         }
 
         $resolvedNotification = $notification->actions($actions);

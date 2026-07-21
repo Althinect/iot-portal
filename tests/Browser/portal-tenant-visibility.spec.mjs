@@ -80,6 +80,8 @@ for (const organizationSpec of organizationSpecs) {
         await searchTable(page, otherFixture.dashboards[0].name);
         await expect(page.getByRole('table')).not.toContainText(otherFixture.dashboards[0].name);
 
+        await verifyPortalReports(page, fixture, otherFixture);
+
         for (const dashboard of fixture.dashboards) {
             await page.setViewportSize({ width: 1440, height: 1000 });
             await openReadOnlyDashboard(page, fixture, dashboard);
@@ -110,6 +112,12 @@ for (const organizationSpec of organizationSpecs) {
         expect((await page.request.get(
             `/portal/${fixture.id}/iot-dashboard/dashboards/${otherFixture.dashboards[0].id}/snapshots`,
         )).status()).toBe(404);
+        expect((await page.request.get(
+            `/portal/${otherFixture.id}/reports/report-runs/${otherFixture.report.id}/download`,
+        )).status()).toBe(403);
+        expect((await page.request.get(
+            `/portal/${fixture.id}/reports/report-runs/${otherFixture.report.id}/download`,
+        )).status()).toBe(404);
 
         expect(pageErrors).toEqual([]);
         expect(consoleErrors).toEqual([]);
@@ -126,6 +134,7 @@ async function signIn(page, fixture) {
 
     await expect(sidebar).toContainText('Devices');
     await expect(sidebar).toContainText('Dashboards');
+    await expect(sidebar).toContainText('Reports');
     await expect(sidebar).not.toContainText('Users');
     await expect(sidebar).not.toContainText('Roles');
 }
@@ -141,6 +150,59 @@ async function searchTable(page, searchTerm) {
 async function expectMutationControlsToBeAbsent(page, pattern) {
     await expect(page.getByRole('button', { name: pattern })).toHaveCount(0);
     await expect(page.getByRole('link', { name: pattern })).toHaveCount(0);
+}
+
+async function verifyPortalReports(page, fixture, otherFixture) {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/portal/${fixture.id}/reports`);
+    await expect(page.getByRole('heading', { name: 'Reports', exact: true })).toBeVisible();
+    await expect(page.getByText('Report Pipeline', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Organization', { exact: true })).toHaveCount(0);
+    await expectMutationControlsToBeAbsent(page, /settings|delete/i);
+
+    await searchTable(page, fixture.device.name);
+    await expect(page.getByRole('table')).toContainText(fixture.device.name);
+    await expect(page.getByRole('link', { name: 'Download' }).first()).toBeVisible();
+
+    const downloadUrl = await page.getByRole('link', { name: 'Download' }).first().getAttribute('href');
+    expect(downloadUrl).toBeTruthy();
+
+    const downloadResponse = await page.request.get(downloadUrl);
+    expect(downloadResponse.status()).toBe(200);
+    expect(downloadResponse.headers()['content-disposition']).toContain(fixture.report.fileName);
+
+    await searchTable(page, otherFixture.device.name);
+    await expect(page.getByRole('table')).not.toContainText(otherFixture.device.name);
+    await searchTable(page, '');
+
+    await page.getByRole('button', { name: 'Generate Report' }).click();
+    await expect(page.getByRole('heading', { name: 'Generate Device Report' })).toBeVisible();
+    await expect(page.getByText('Organization', { exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Select an option' }).first().click();
+    const deviceListbox = page.getByRole('listbox');
+    await deviceListbox.getByRole('textbox', { name: 'Search' }).fill(fixture.device.name);
+    await deviceListbox.getByRole('option', { name: new RegExp(escapeRegExp(fixture.device.name)) }).click();
+
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    await page.getByRole('textbox', { name: /From Date/ }).fill(yesterday);
+    await page.getByRole('textbox', { name: /To Date/ }).fill(yesterday);
+    await page.getByRole('button', { name: 'Queue Report' }).click();
+    await expect(page.getByText('Report queued', { exact: true })).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/portal/${fixture.id}/reports`);
+    await expect(page.getByRole('heading', { name: 'Reports', exact: true })).toBeVisible();
+
+    const viewportFit = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+    }));
+
+    expect(viewportFit.scrollWidth).toBeLessThanOrEqual(viewportFit.clientWidth + 2);
+}
+
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 async function openReadOnlyDashboard(page, fixture, dashboard) {
@@ -196,8 +258,12 @@ function seedAndReadPortalFixtures() {
     const php = `
 use App\\Domain\\DeviceManagement\\Models\\Device;
 use App\\Domain\\IoTDashboard\\Models\\IoTDashboard;
+use App\\Domain\\Reporting\\Enums\\ReportRunStatus;
+use App\\Domain\\Reporting\\Enums\\ReportType;
+use App\\Domain\\Reporting\\Models\\ReportRun;
 use App\\Domain\\Shared\\Models\\Organization;
 use App\\Domain\\Shared\\Models\\User;
+use Illuminate\\Support\\Facades\\Storage;
 
 $specs = json_decode(base64_decode('${encodedSpecs}'), true, flags: JSON_THROW_ON_ERROR);
 $fixtures = [];
@@ -220,10 +286,40 @@ foreach ($specs as $spec) {
         throw new RuntimeException('Missing expected dashboards for '.$spec['slug']);
     }
 
+    $reportFileName = 'portal-e2e-'.$spec['slug'].'.csv';
+    $reportPath = 'reports/'.$reportFileName;
+    Storage::disk('local')->put($reportPath, "timestamp,value\\n2026-07-21T00:00:00Z,1\\n");
+
+    $report = ReportRun::query()->updateOrCreate(
+        [
+            'organization_id' => $organization->id,
+            'file_name' => $reportFileName,
+        ],
+        [
+            'device_id' => $device->id,
+            'requested_by_user_id' => $user->id,
+            'type' => ReportType::ParameterValues,
+            'status' => ReportRunStatus::Completed,
+            'format' => 'csv',
+            'grouping' => null,
+            'parameter_keys' => [],
+            'from_at' => now()->subDay()->startOfDay(),
+            'until_at' => now()->startOfDay(),
+            'timezone' => 'UTC',
+            'storage_disk' => 'local',
+            'storage_path' => $reportPath,
+            'file_size' => Storage::disk('local')->size($reportPath),
+            'row_count' => 1,
+            'generated_at' => now(),
+            'failure_reason' => null,
+        ],
+    );
+
     $fixtures[$spec['slug']] = [
         'id' => (int) $organization->id,
         'email' => $user->email,
         'device' => ['id' => (int) $device->id, 'name' => $device->name],
+        'report' => ['id' => (int) $report->id, 'fileName' => $report->file_name],
         'dashboards' => collect($spec['dashboards'])
             ->map(function (string $name) use ($dashboards): array {
                 $dashboard = $dashboards->get($name);

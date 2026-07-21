@@ -34,12 +34,12 @@ class ReportRunPolicy
 
     public function update(User $user, ReportRun $reportRun): bool
     {
-        return $this->view($user, $reportRun);
+        return $user->isSuperAdmin();
     }
 
     public function delete(User $user, ReportRun $reportRun): bool
     {
-        return $this->view($user, $reportRun);
+        return $user->isSuperAdmin();
     }
 
     public function restore(User $user, ReportRun $reportRun): bool

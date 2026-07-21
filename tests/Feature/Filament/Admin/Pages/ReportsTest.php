@@ -10,8 +10,11 @@ use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
 use App\Domain\Reporting\Enums\ReportType;
 use App\Domain\Shared\Models\Organization;
+use App\Domain\Shared\Models\User;
 use App\Filament\Admin\Pages\Reports;
+use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
 
@@ -23,6 +26,8 @@ function invokeReportsMethod(Reports $reports, string $method, mixed ...$argumen
 }
 
 it('resolves reporting options from profile publish channels', function (): void {
+    $this->actingAs(User::factory()->create(['is_super_admin' => true]));
+
     $organization = Organization::factory()->create();
     $profileVersion = DeviceProfileVersion::factory()->create();
     $device = Device::factory()
@@ -77,4 +82,18 @@ it('resolves reporting options from profile publish channels', function (): void
         ->and($parameterOptions)
         ->toHaveKey('energy_wh', 'Energy (energy_wh)')
         ->not->toHaveKey('command_value');
+});
+
+it('keeps admin reporting controls available to super administrators', function (): void {
+    $this->actingAs(User::factory()->create(['is_super_admin' => true]));
+    Organization::factory()->count(2)->create();
+
+    Filament::setCurrentPanel('admin');
+    Filament::bootCurrentPanel();
+
+    Livewire::test(Reports::class)
+        ->assertActionVisible('generateReport')
+        ->assertActionVisible('reportSettings')
+        ->assertTableColumnVisible('organization.name')
+        ->assertTableFilterVisible('organization_id');
 });

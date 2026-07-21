@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\IoTDashboard\IoTDashboardSnapshotsController;
 use App\Http\Controllers\IoTDashboard\IoTDashboardWidgetLayoutController;
 use App\Http\Controllers\IoTDashboard\PortalIoTDashboardSnapshotsController;
+use App\Http\Controllers\Reporting\PortalReportRunDownloadController;
 use App\Http\Controllers\Reporting\ReportRunDownloadController;
 use Illuminate\Support\Facades\Route;
 
@@ -40,5 +41,13 @@ Route::middleware('auth')
     ->name('reporting.')
     ->group(function (): void {
         Route::get('/report-runs/{reportRun}/download', ReportRunDownloadController::class)
+            ->name('report-runs.download');
+    });
+
+Route::middleware('auth')
+    ->prefix('portal/{organization}/reports')
+    ->name('portal.reporting.')
+    ->group(function (): void {
+        Route::get('/report-runs/{reportRun}/download', PortalReportRunDownloadController::class)
             ->name('report-runs.download');
     });
