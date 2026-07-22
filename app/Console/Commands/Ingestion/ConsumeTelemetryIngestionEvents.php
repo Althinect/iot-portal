@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Ingestion;
 
+use App\Domain\Automation\Jobs\DispatchTelemetryAutomation;
 use App\Domain\DataIngestion\Jobs\DispatchTelemetryReceivedSideEffects;
 use App\Domain\Shared\Services\BasisNatsClientHeartbeatProbe;
 use App\Domain\Shared\Services\NatsConnectionHeartbeat;
@@ -128,6 +129,7 @@ class ConsumeTelemetryIngestionEvents extends Command
             return;
         }
 
+        DispatchTelemetryAutomation::dispatch($telemetryLogId);
         DispatchTelemetryReceivedSideEffects::dispatch($telemetryLogId);
     }
 

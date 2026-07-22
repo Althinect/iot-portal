@@ -92,6 +92,25 @@ it('does not queue automation runs when automation pipeline is disabled', functi
     Queue::assertNothingPushed();
 });
 
+it('does not duplicate automation during the general telemetry side effects fan-out', function (): void {
+    app()->bind(TriggerMatcher::class, fn () => new class implements TriggerMatcher
+    {
+        public function hasCandidateTelemetryTriggers(DeviceTelemetryLog $telemetryLog): bool
+        {
+            throw new RuntimeException('The trigger matcher should not be called when automation is skipped.');
+        }
+
+        public function matchTelemetryTriggers(DeviceTelemetryLog $telemetryLog): Collection
+        {
+            throw new RuntimeException('The trigger matcher should not be called when automation is skipped.');
+        }
+    });
+
+    $listener = app(QueueTelemetryAutomationRuns::class);
+
+    expect($listener->shouldQueue(new TelemetryReceived('telemetry-log-id', skipAutomation: true)))->toBeFalse();
+});
+
 it('does not queue automation runs when telemetry automation fan-out is disabled', function (): void {
     Queue::fake();
 

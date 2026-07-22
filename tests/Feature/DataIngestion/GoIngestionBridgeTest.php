@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Console\Commands\Ingestion\ConsumeTelemetryIngestionEvents;
+use App\Domain\Automation\Jobs\DispatchTelemetryAutomation;
+use App\Domain\Automation\Listeners\QueueTelemetryAutomationRuns;
 use App\Domain\DataIngestion\Jobs\DispatchTelemetryReceivedSideEffects;
 use App\Domain\DataIngestion\Models\IngestionMessage;
 use App\Domain\Shared\Services\RuntimeSettingRegistry;
@@ -13,6 +15,8 @@ use Basis\Nats\Message\Payload;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
+
+use function Pest\Laravel\mock;
 
 uses(RefreshDatabase::class);
 
@@ -72,7 +76,7 @@ it('dispatches raw telemetry incoming events from go bridge payloads', function 
 });
 
 it('queues telemetry side effects from go persisted payloads', function (): void {
-    Queue::fake([DispatchTelemetryReceivedSideEffects::class]);
+    Queue::fake();
 
     $ingestionMessage = IngestionMessage::factory()->create();
     $telemetryLog = DeviceTelemetryLog::factory()->create([
@@ -93,6 +97,11 @@ it('queues telemetry side effects from go persisted payloads', function (): void
             && $job->connection === 'redis'
             && $job->queue === 'telemetry-side-effects';
     });
+    Queue::assertPushed(DispatchTelemetryAutomation::class, function (DispatchTelemetryAutomation $job) use ($telemetryLog): bool {
+        return $job->telemetryLogId === $telemetryLog->id
+            && $job->connection === 'redis'
+            && $job->queue === 'automation';
+    });
 });
 
 it('dispatches telemetry received events from the queued go side effects bridge', function (): void {
@@ -102,8 +111,22 @@ it('dispatches telemetry received events from the queued go side effects bridge'
     $job->handle();
 
     Event::assertDispatched(TelemetryReceived::class, function (TelemetryReceived $event): bool {
-        return $event->telemetryLogId === 'telemetry-log-id';
+        return $event->telemetryLogId === 'telemetry-log-id'
+            && $event->skipAutomation;
     });
+});
+
+it('dispatches go telemetry automation through the priority bridge', function (): void {
+    $listener = mock(QueueTelemetryAutomationRuns::class);
+    $listener->shouldReceive('handle')
+        ->once()
+        ->withArgs(function (TelemetryReceived $event): bool {
+            return $event->telemetryLogId === 'telemetry-log-id'
+                && ! $event->skipAutomation;
+        });
+
+    $job = new DispatchTelemetryAutomation('telemetry-log-id');
+    $job->handle($listener);
 });
 
 function invokeBridgeHandler(ConsumeTelemetryIngestionEvents $command, string $method, Payload $payload): void

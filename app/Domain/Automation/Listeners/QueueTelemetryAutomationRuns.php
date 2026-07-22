@@ -25,6 +25,10 @@ class QueueTelemetryAutomationRuns implements ShouldQueue
 
     public function shouldQueue(TelemetryReceived $event): bool
     {
+        if ($event->skipAutomation) {
+            return false;
+        }
+
         if (! (bool) config('automation.enabled', true)) {
             return false;
         }

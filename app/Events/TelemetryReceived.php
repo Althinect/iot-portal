@@ -10,8 +10,10 @@ class TelemetryReceived
 {
     public string $telemetryLogId;
 
-    public function __construct(DeviceTelemetryLog|string $telemetryLog)
-    {
+    public function __construct(
+        DeviceTelemetryLog|string $telemetryLog,
+        public readonly bool $skipAutomation = false,
+    ) {
         $this->telemetryLogId = $telemetryLog instanceof DeviceTelemetryLog
             ? (string) $telemetryLog->getKey()
             : $telemetryLog;

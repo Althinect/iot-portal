@@ -29,6 +29,6 @@ class DispatchTelemetryReceivedSideEffects implements ShouldQueue
 
     public function handle(): void
     {
-        event(new TelemetryReceived($this->telemetryLogId));
+        event(new TelemetryReceived($this->telemetryLogId, skipAutomation: true));
     }
 }
