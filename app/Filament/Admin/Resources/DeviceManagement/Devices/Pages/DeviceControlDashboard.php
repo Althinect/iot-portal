@@ -39,6 +39,7 @@ use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Gate;
 
 class DeviceControlDashboard extends Page implements HasForms, HasTable
 {
@@ -194,6 +195,7 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
 
         /** @var Device $device */
         $device = $this->getRecord();
+        Gate::authorize('view', $device);
 
         $device->loadMissing('profileVersion.channels.parameters');
 
@@ -261,6 +263,10 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
 
     public function sendCommand(): void
     {
+        /** @var Device $device */
+        $device = $this->getRecord();
+        Gate::authorize('view', $device);
+
         if (! $this->selectedChannelId) {
             Notification::make()
                 ->title('No channel selected')
@@ -271,7 +277,7 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
             return;
         }
 
-        $channel = DeviceChannel::query()->with('parameters')->find((int) $this->selectedChannelId);
+        $channel = $this->getSelectedChannel();
 
         if (! $channel) {
             Notification::make()
@@ -281,6 +287,8 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
 
             return;
         }
+
+        $channel->loadMissing('parameters');
 
         /** @var CommandPayloadResolver $payloadResolver */
         $payloadResolver = app(CommandPayloadResolver::class);
@@ -321,9 +329,6 @@ class DeviceControlDashboard extends Page implements HasForms, HasTable
         }
 
         $this->commandPayloadJson = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}';
-
-        /** @var Device $device */
-        $device = $this->getRecord();
 
         /** @var DeviceCommandDispatcher $dispatcher */
         $dispatcher = app(DeviceCommandDispatcher::class);

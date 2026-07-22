@@ -11,6 +11,7 @@ use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Domain\DeviceProfile\Services\DeviceProfileContractResolver;
 use App\Filament\Admin\Resources\DeviceManagement\Devices\RelationManagers\TelemetryLogsRelationManager;
 use BackedEnum;
+use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\KeyValue;
@@ -410,6 +411,11 @@ class DeviceResource extends Resource
                     }),
             ])
             ->recordActions([
+                Action::make('controlDashboard')
+                    ->label('Control Dashboard')
+                    ->icon(Heroicon::OutlinedCommandLine)
+                    ->url(fn (Device $record): string => self::getUrl('control-dashboard', ['record' => $record]))
+                    ->visible(fn (Device $record): bool => $record->canBeControlled()),
                 ViewAction::make(),
             ])
             ->defaultSort('created_at', 'desc');
@@ -427,6 +433,7 @@ class DeviceResource extends Resource
         return [
             'index' => Pages\ListDevices::route('/'),
             'view' => Pages\ViewDevice::route('/{record}'),
+            'control-dashboard' => Pages\DeviceControlDashboard::route('/{record}/control-dashboard'),
         ];
     }
 }
