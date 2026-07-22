@@ -4,11 +4,10 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Ingestion;
 
+use App\Domain\DataIngestion\Jobs\DispatchTelemetryReceivedSideEffects;
 use App\Domain\Shared\Services\BasisNatsClientHeartbeatProbe;
 use App\Domain\Shared\Services\NatsConnectionHeartbeat;
-use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use App\Events\TelemetryIncoming;
-use App\Events\TelemetryReceived;
 use Basis\Nats\Client;
 use Basis\Nats\Configuration;
 use Basis\Nats\Message\Payload;
@@ -129,15 +128,7 @@ class ConsumeTelemetryIngestionEvents extends Command
             return;
         }
 
-        $telemetryLog = DeviceTelemetryLog::query()->whereKey($telemetryLogId)->first();
-
-        if (! $telemetryLog instanceof DeviceTelemetryLog) {
-            $this->warn("Telemetry log [{$telemetryLogId}] not found for Go ingestion side effects.");
-
-            return;
-        }
-
-        event(new TelemetryReceived((string) $telemetryLog->getKey()));
+        DispatchTelemetryReceivedSideEffects::dispatch($telemetryLogId);
     }
 
     /**

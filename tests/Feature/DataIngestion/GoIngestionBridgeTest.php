@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Console\Commands\Ingestion\ConsumeTelemetryIngestionEvents;
+use App\Domain\DataIngestion\Jobs\DispatchTelemetryReceivedSideEffects;
 use App\Domain\DataIngestion\Models\IngestionMessage;
 use App\Domain\Shared\Services\RuntimeSettingRegistry;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
@@ -11,6 +12,7 @@ use App\Events\TelemetryReceived;
 use Basis\Nats\Message\Payload;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 
 uses(RefreshDatabase::class);
 
@@ -69,8 +71,8 @@ it('dispatches raw telemetry incoming events from go bridge payloads', function 
     });
 });
 
-it('dispatches telemetry received events from go persisted payloads', function (): void {
-    Event::fake([TelemetryReceived::class]);
+it('queues telemetry side effects from go persisted payloads', function (): void {
+    Queue::fake([DispatchTelemetryReceivedSideEffects::class]);
 
     $ingestionMessage = IngestionMessage::factory()->create();
     $telemetryLog = DeviceTelemetryLog::factory()->create([
@@ -86,8 +88,21 @@ it('dispatches telemetry received events from go persisted payloads', function (
         'ingestion_message_id' => $ingestionMessage->id,
     ], JSON_THROW_ON_ERROR), subject: 'iot.v1.ingestion.persisted'));
 
-    Event::assertDispatched(TelemetryReceived::class, function (TelemetryReceived $event) use ($telemetryLog): bool {
-        return $event->telemetryLogId === $telemetryLog->id;
+    Queue::assertPushed(DispatchTelemetryReceivedSideEffects::class, function (DispatchTelemetryReceivedSideEffects $job) use ($telemetryLog): bool {
+        return $job->telemetryLogId === $telemetryLog->id
+            && $job->connection === 'redis'
+            && $job->queue === 'telemetry-side-effects';
+    });
+});
+
+it('dispatches telemetry received events from the queued go side effects bridge', function (): void {
+    Event::fake([TelemetryReceived::class]);
+
+    $job = new DispatchTelemetryReceivedSideEffects('telemetry-log-id');
+    $job->handle();
+
+    Event::assertDispatched(TelemetryReceived::class, function (TelemetryReceived $event): bool {
+        return $event->telemetryLogId === 'telemetry-log-id';
     });
 });
 
