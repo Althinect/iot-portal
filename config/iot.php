@@ -13,6 +13,8 @@ return [
     'mqtt' => [
         'host' => (string) env('IOT_MQTT_HOST', (string) env('IOT_NATS_HOST', (string) env('INGESTION_NATS_HOST', '127.0.0.1'))),
         'port' => (int) env('IOT_MQTT_PORT', 1883),
+        'username' => (string) env('IOT_DEVICE_MQTT_USERNAME', ''),
+        'password' => (string) env('IOT_DEVICE_MQTT_PASSWORD', ''),
         'tls' => [
             'enabled' => (bool) env('IOT_MQTT_TLS_ENABLED', false),
             'ca_path' => (string) env('IOT_MQTT_TLS_CA_PATH', storage_path('app/private/iot-pki/ca.crt')),

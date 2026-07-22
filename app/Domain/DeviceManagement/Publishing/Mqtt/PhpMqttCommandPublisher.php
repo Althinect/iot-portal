@@ -82,7 +82,12 @@ final class PhpMqttCommandPublisher implements MqttCommandPublisher
         stream_set_timeout($socket, self::CONNECT_TIMEOUT_SECONDS);
 
         try {
-            $this->sendConnect($socket);
+            $configuredUsername = config('iot.mqtt.username');
+            $configuredPassword = config('iot.mqtt.password');
+            $username = is_string($configuredUsername) ? trim($configuredUsername) : '';
+            $password = is_string($configuredPassword) ? $configuredPassword : '';
+
+            $this->sendConnect($socket, $username, $password);
             $this->readConnack($socket);
 
             Log::channel('device_control')->debug('MQTT CONNACK received, publishing', [
@@ -119,14 +124,33 @@ final class PhpMqttCommandPublisher implements MqttCommandPublisher
     /**
      * @param  resource  $socket
      */
-    private function sendConnect($socket): void
+    private function sendConnect($socket, string $username = '', string $password = ''): void
     {
+        $username = trim($username);
+        $connectFlags = 0x00;
+
+        if ($username !== '') {
+            $connectFlags |= 0x80;
+        }
+
+        if ($password !== '') {
+            $connectFlags |= 0x40;
+        }
+
         $variableHeader = $this->encodeUtf8String('MQTT')
             ."\x04"
-            ."\x00"
+            .chr($connectFlags)
             .pack('n', self::KEEPALIVE_SECONDS);
 
         $packetPayload = $this->encodeUtf8String(self::CLIENT_ID);
+
+        if ($username !== '') {
+            $packetPayload .= $this->encodeUtf8String($username);
+        }
+
+        if ($password !== '') {
+            $packetPayload .= $this->encodeUtf8String($password);
+        }
 
         $this->writePacket($socket, 0x10, $variableHeader.$packetPayload);
     }

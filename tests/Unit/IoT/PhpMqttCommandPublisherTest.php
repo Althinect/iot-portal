@@ -29,6 +29,64 @@ it('uses a fixed client ID with persistent session in the CONNECT packet', funct
     expect($clientId)->toBe('iot-portal-cmd');
 });
 
+it('includes configured username and password in the CONNECT packet', function (): void {
+    $publisher = new PhpMqttCommandPublisher;
+    $stream = fopen('php://memory', 'r+');
+
+    $sendConnect = new ReflectionMethod($publisher, 'sendConnect');
+    $sendConnect->invoke($publisher, $stream, 'test-device-client', 'test-password');
+
+    rewind($stream);
+    $packet = stream_get_contents($stream);
+    fclose($stream);
+
+    $connectFlagsByte = ord($packet[9]);
+    $usernameFlag = ($connectFlagsByte >> 7) & 0x01;
+    $passwordFlag = ($connectFlagsByte >> 6) & 0x01;
+    $cleanSessionBit = ($connectFlagsByte >> 1) & 0x01;
+
+    $payloadOffset = 12;
+    $readUtf8String = function () use ($packet, &$payloadOffset): string {
+        $length = unpack('n', substr($packet, $payloadOffset, 2))[1];
+        $payloadOffset += 2;
+        $value = substr($packet, $payloadOffset, $length);
+        $payloadOffset += $length;
+
+        return $value;
+    };
+
+    expect($usernameFlag)->toBe(1)
+        ->and($passwordFlag)->toBe(1)
+        ->and($cleanSessionBit)->toBe(0)
+        ->and($readUtf8String())->toBe('iot-portal-cmd')
+        ->and($readUtf8String())->toBe('test-device-client')
+        ->and($readUtf8String())->toBe('test-password');
+});
+
+it('omits username and password from an anonymous CONNECT packet', function (): void {
+    $publisher = new PhpMqttCommandPublisher;
+    $stream = fopen('php://memory', 'r+');
+
+    $sendConnect = new ReflectionMethod($publisher, 'sendConnect');
+    $sendConnect->invoke($publisher, $stream);
+
+    rewind($stream);
+    $packet = stream_get_contents($stream);
+    fclose($stream);
+
+    $connectFlagsByte = ord($packet[9]);
+    $usernameFlag = ($connectFlagsByte >> 7) & 0x01;
+    $passwordFlag = ($connectFlagsByte >> 6) & 0x01;
+
+    $clientIdLengthOffset = 12;
+    $clientIdLength = unpack('n', substr($packet, $clientIdLengthOffset, 2))[1];
+    $expectedPacketLength = $clientIdLengthOffset + 2 + $clientIdLength;
+
+    expect($usernameFlag)->toBe(0)
+        ->and($passwordFlag)->toBe(0)
+        ->and(strlen($packet))->toBe($expectedPacketLength);
+});
+
 it('sends messages with QoS 1', function (): void {
     $publisher = new PhpMqttCommandPublisher;
     $stream = fopen('php://memory', 'r+');

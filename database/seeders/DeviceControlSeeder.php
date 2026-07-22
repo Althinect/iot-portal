@@ -6,11 +6,13 @@ namespace Database\Seeders;
 
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceProfile\Enums\ChannelDirection;
+use App\Domain\DeviceProfile\Enums\ChannelLinkType;
 use App\Domain\DeviceProfile\Enums\ChannelPurpose;
 use App\Domain\DeviceProfile\Enums\ChannelTransport;
 use App\Domain\DeviceProfile\Enums\MetricUnit;
 use App\Domain\DeviceProfile\Enums\ParameterDataType;
 use App\Domain\DeviceProfile\Models\DeviceChannel;
+use App\Domain\DeviceProfile\Models\DeviceChannelLink;
 use App\Domain\DeviceProfile\Models\DeviceProfile;
 use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
@@ -69,6 +71,17 @@ class DeviceControlSeeder extends Seeder
                 'model' => 'PZEM-016 + ESP32',
             ],
         );
+
+        $this->seedDeviceForType(
+            organizationId: $organization->id,
+            profileKey: 'waveshare_audio_alarm',
+            externalId: 'alarm-demo-01',
+            name: 'Waveshare Audio Alarm',
+            metadata: [
+                'location' => 'Demo Area',
+                'model' => 'ESP32-S3-AUDIO-Board',
+            ],
+        );
     }
 
     /**
@@ -104,25 +117,35 @@ class DeviceControlSeeder extends Seeder
             'tags' => null,
         ]);
 
+        $protocolConfig = [
+            'broker_host' => '127.0.0.1',
+            'broker_port' => 1883,
+            'base_topic' => $profileKey === 'waveshare_audio_alarm' ? 'devices' : $profileKey,
+            'security_mode' => 'username_password',
+            'username' => $profileKey === 'waveshare_audio_alarm' ? 'device-client' : $profileKey,
+            'password' => $profileKey === 'waveshare_audio_alarm' ? null : "{$profileKey}_password",
+            'use_tls' => false,
+        ];
+
         $version = DeviceProfileVersion::query()->firstOrCreate([
             'device_profile_id' => $profile->id,
             'version' => 1,
         ], [
             'status' => 'active',
             'protocol' => 'mqtt',
-            'protocol_config' => [
-                'broker_host' => '127.0.0.1',
-                'broker_port' => 1883,
-                'base_topic' => $profileKey,
-                'security_mode' => 'username_password',
-                'username' => $profileKey,
-                'password' => "{$profileKey}_password",
-                'use_tls' => false,
-            ],
+            'protocol_config' => $protocolConfig,
             'notes' => 'Seeded demo profile contract',
         ]);
 
-        $version->forceFill(['status' => 'active'])->save();
+        $versionAttributes = ['status' => 'active'];
+
+        if ($profileKey === 'waveshare_audio_alarm') {
+            $versionAttributes['protocol'] = 'mqtt';
+            $versionAttributes['protocol_config'] = $protocolConfig;
+            $versionAttributes['notes'] = 'Seeded Waveshare audio alarm demo contract';
+        }
+
+        $version->forceFill($versionAttributes)->save();
 
         if (in_array($profileKey, ['energy_meter', 'single_phase_energy_meter'], true)) {
             $this->ensureEnergyTelemetryChannel($version);
@@ -130,6 +153,10 @@ class DeviceControlSeeder extends Seeder
 
         if (in_array($profileKey, ['rgb_led_controller', 'dimmable_light'], true)) {
             $this->ensureLightingControlChannel($version);
+        }
+
+        if ($profileKey === 'waveshare_audio_alarm') {
+            $this->ensureAlarmChannels($version);
         }
 
         return $version;
@@ -175,6 +202,46 @@ class DeviceControlSeeder extends Seeder
         $this->ensureParameter($channel, 'brightness', 'Brightness', 'brightness', ParameterDataType::Integer, MetricUnit::Percent->value, 2, 100, ['min' => 0, 'max' => 100]);
         $this->ensureParameter($channel, 'color_hex', 'Color', 'color_hex', ParameterDataType::String, null, 3, '#FFFFFF', ['regex' => '/^#[0-9A-Fa-f]{6}$/']);
         $this->ensureParameter($channel, 'effect', 'Effect', 'effect', ParameterDataType::String, null, 4, 'solid', ['enum' => ['solid', 'blink']]);
+    }
+
+    private function ensureAlarmChannels(DeviceProfileVersion $version): void
+    {
+        $commandChannel = DeviceChannel::query()->updateOrCreate([
+            'device_profile_version_id' => $version->id,
+            'key' => 'control',
+        ], [
+            'label' => 'Alarm Control',
+            'direction' => ChannelDirection::Subscribe,
+            'purpose' => ChannelPurpose::Command,
+            'transport' => ChannelTransport::Mqtt,
+            'address' => 'control',
+            'qos' => 1,
+            'retain' => false,
+            'sequence' => 0,
+        ]);
+
+        $stateChannel = DeviceChannel::query()->updateOrCreate([
+            'device_profile_version_id' => $version->id,
+            'key' => 'state',
+        ], [
+            'label' => 'Alarm State',
+            'direction' => ChannelDirection::Publish,
+            'purpose' => ChannelPurpose::State,
+            'transport' => ChannelTransport::Mqtt,
+            'address' => 'state',
+            'qos' => 1,
+            'retain' => true,
+            'sequence' => 1,
+        ]);
+
+        $this->ensureParameter($commandChannel, 'alarm_on', 'Alarm', 'alarm_on', ParameterDataType::Boolean, null, 1, false);
+        $this->ensureParameter($stateChannel, 'alarm_on', 'Alarm', 'alarm_on', ParameterDataType::Boolean, null, 1, false);
+
+        DeviceChannelLink::query()->updateOrCreate([
+            'from_device_channel_id' => $commandChannel->id,
+            'to_device_channel_id' => $stateChannel->id,
+            'link_type' => ChannelLinkType::StateFeedback,
+        ]);
     }
 
     /**
