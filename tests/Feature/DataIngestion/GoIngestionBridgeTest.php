@@ -30,6 +30,25 @@ it('uses the configured heartbeat interval for the go ingestion bridge', functio
     expect($reflection->invoke($command))->toBe(7);
 });
 
+it('selects the requested go ingestion event streams', function (string $eventMode, bool $consumesIncoming, bool $consumesPersisted): void {
+    $command = app(ConsumeTelemetryIngestionEvents::class);
+    $incomingReflection = new ReflectionMethod($command, 'consumesIncomingEvents');
+    $persistedReflection = new ReflectionMethod($command, 'consumesPersistedEvents');
+
+    expect($incomingReflection->invoke($command, $eventMode))->toBe($consumesIncoming)
+        ->and($persistedReflection->invoke($command, $eventMode))->toBe($consumesPersisted);
+})->with([
+    'all events' => ['all', true, true],
+    'incoming events only' => ['incoming', true, false],
+    'persisted events only' => ['persisted', false, true],
+]);
+
+it('rejects an invalid go ingestion event mode', function (): void {
+    $this->artisan('ingestion:consume-go-events', ['--only' => 'unknown'])
+        ->expectsOutputToContain('The --only option must be incoming, persisted, or all.')
+        ->assertExitCode(2);
+});
+
 it('dispatches raw telemetry incoming events from go bridge payloads', function (): void {
     Event::fake([TelemetryIncoming::class]);
 

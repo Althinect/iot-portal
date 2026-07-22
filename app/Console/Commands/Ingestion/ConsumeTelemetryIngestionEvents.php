@@ -21,6 +21,7 @@ class ConsumeTelemetryIngestionEvents extends Command
     protected $signature = 'ingestion:consume-go-events
                             {--host= : NATS broker host}
                             {--port= : NATS broker port}
+                            {--only=all : Event stream to consume (incoming, persisted, or all)}
                             {--incoming-subject= : Subject for Go incoming telemetry events}
                             {--persisted-subject= : Subject for Go persisted telemetry events}';
 
@@ -28,6 +29,14 @@ class ConsumeTelemetryIngestionEvents extends Command
 
     public function handle(BasisNatsClientHeartbeatProbe $heartbeatProbe): int
     {
+        $eventMode = $this->resolveEventMode();
+
+        if ($eventMode === null) {
+            $this->error('The --only option must be incoming, persisted, or all.');
+
+            return self::INVALID;
+        }
+
         $configuration = new Configuration(
             host: $this->resolveHost(),
             port: $this->resolvePort(),
@@ -40,16 +49,21 @@ class ConsumeTelemetryIngestionEvents extends Command
                 $client = new Client($configuration);
                 $lastActivityAt = microtime(true);
 
-                $client->subscribe($this->resolveIncomingSubject(), function (Payload $payload) use (&$lastActivityAt): void {
-                    $lastActivityAt = microtime(true);
-                    $this->handleIncomingPayload($payload);
-                });
-                $client->subscribe($this->resolvePersistedSubject(), function (Payload $payload) use (&$lastActivityAt): void {
-                    $lastActivityAt = microtime(true);
-                    $this->handlePersistedPayload($payload);
-                });
+                if ($this->consumesIncomingEvents($eventMode)) {
+                    $client->subscribe($this->resolveIncomingSubject(), function (Payload $payload) use (&$lastActivityAt): void {
+                        $lastActivityAt = microtime(true);
+                        $this->handleIncomingPayload($payload);
+                    });
+                }
 
-                $this->info('Consuming Go telemetry ingestion events.');
+                if ($this->consumesPersistedEvents($eventMode)) {
+                    $client->subscribe($this->resolvePersistedSubject(), function (Payload $payload) use (&$lastActivityAt): void {
+                        $lastActivityAt = microtime(true);
+                        $this->handlePersistedPayload($payload);
+                    });
+                }
+
+                $this->info("Consuming Go {$eventMode} telemetry ingestion events.");
                 $lastHeartbeatAt = microtime(true);
 
                 while (true) { /** @phpstan-ignore while.alwaysTrue */
@@ -184,6 +198,29 @@ class ConsumeTelemetryIngestionEvents extends Command
     private function resolveHealthCheckInterval(): int
     {
         return max(1, $this->resolveIntConfig('ingestion.nats.health_check_seconds', 15));
+    }
+
+    private function resolveEventMode(): ?string
+    {
+        $option = $this->option('only');
+
+        if (! is_string($option) || trim($option) === '') {
+            return 'all';
+        }
+
+        $eventMode = strtolower(trim($option));
+
+        return in_array($eventMode, ['incoming', 'persisted', 'all'], true) ? $eventMode : null;
+    }
+
+    private function consumesIncomingEvents(string $eventMode): bool
+    {
+        return in_array($eventMode, ['incoming', 'all'], true);
+    }
+
+    private function consumesPersistedEvents(string $eventMode): bool
+    {
+        return in_array($eventMode, ['persisted', 'all'], true);
     }
 
     private function resolveIncomingSubject(): string
