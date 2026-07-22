@@ -9,6 +9,7 @@ use App\Domain\Automation\Models\AutomationNotificationProfile;
 use App\Domain\Automation\Models\AutomationWorkflow;
 use App\Domain\Automation\Models\AutomationWorkflowVersion;
 use App\Domain\Automation\Services\GuidedConditionService;
+use App\Domain\Automation\Services\WorkflowBuilderGraphNormalizer;
 use App\Domain\Automation\Services\WorkflowGraphValidator;
 use App\Domain\Automation\Services\WorkflowNodeConfigValidator;
 use App\Domain\Automation\Services\WorkflowTelemetryTriggerCompiler;
@@ -316,7 +317,9 @@ class EditAutomationDag extends Page
             return null;
         }
 
-        $parameterDefinitionId = $this->resolvePositiveInt($context['parameter_key'] ?? null);
+        $parameterDefinitionId = $this->resolvePositiveInt(
+            $context['parameter_definition_id'] ?? $context['parameter_key'] ?? null,
+        );
         if ($parameterDefinitionId === null) {
             return null;
         }
@@ -377,7 +380,8 @@ class EditAutomationDag extends Page
      */
     public function saveGraph(array $graph): void
     {
-        $workflowGraph = WorkflowGraph::fromArray($graph);
+        $builderGraph = app(WorkflowBuilderGraphNormalizer::class)->normalize($graph);
+        $workflowGraph = WorkflowGraph::fromArray($builderGraph);
 
         try {
             app(WorkflowGraphValidator::class)->validate($workflowGraph);
