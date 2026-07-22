@@ -1,10 +1,53 @@
 package ingest
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/tharindarodrigo/iot-portal/services/telemetry-ingester/internal/config"
 )
+
+func TestIngestionEventsUseSideEffectsPublisher(t *testing.T) {
+	publishedSubjects := []string{}
+	publisher := &NATSEventPublisher{
+		config: config.Config{
+			IncomingEventSubject:  "iot.v1.ingestion.incoming",
+			PersistedEventSubject: "iot.v1.ingestion.persisted",
+		},
+		publishMessage: func(subject string, data []byte) error {
+			var payload map[string]any
+			if err := json.Unmarshal(data, &payload); err != nil {
+				t.Fatalf("published payload is not valid json: %v", err)
+			}
+			publishedSubjects = append(publishedSubjects, subject)
+			return nil
+		},
+	}
+
+	err := publisher.PublishIncoming(context.Background(), Envelope{
+		MQTTTopic: "devices/meter-01/telemetry",
+		Payload:   map[string]any{"voltage": 239.5},
+	})
+	if err != nil {
+		t.Fatalf("publish incoming: %v", err)
+	}
+
+	err = publisher.PublishPersisted(context.Background(), PersistedTelemetry{ID: "telemetry-1"}, Message{}, ResolvedTopic{})
+	if err != nil {
+		t.Fatalf("publish persisted: %v", err)
+	}
+
+	if len(publishedSubjects) != 2 {
+		t.Fatalf("expected two ingestion side-effect events, got %d", len(publishedSubjects))
+	}
+	if publishedSubjects[0] != "iot.v1.ingestion.incoming" {
+		t.Fatalf("unexpected incoming subject: %s", publishedSubjects[0])
+	}
+	if publishedSubjects[1] != "iot.v1.ingestion.persisted" {
+		t.Fatalf("unexpected persisted subject: %s", publishedSubjects[1])
+	}
+}
 
 func TestAnalyticsSubjectsMatchLaravelContract(t *testing.T) {
 	publisher := NewNATSEventPublisher(nil, nil, config.Config{

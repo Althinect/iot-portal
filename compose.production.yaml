@@ -148,7 +148,7 @@ services:
 
     ingestion-go-events:
         <<: *app-command-service
-        command: php artisan ingestion:consume-go-events --host=emqx --port=4222
+        command: php artisan ingestion:consume-go-events --host=nats --port=4222
 
     horizon:
         <<: *app-command-service
