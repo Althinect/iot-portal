@@ -21,6 +21,15 @@ it('allows go as an ingestion pipeline driver', function (): void {
         ->and($options)->toHaveKey('go');
 });
 
+it('uses the configured heartbeat interval for the go ingestion bridge', function (): void {
+    config()->set('ingestion.nats.health_check_seconds', 7);
+
+    $command = app(ConsumeTelemetryIngestionEvents::class);
+    $reflection = new ReflectionMethod($command, 'resolveHealthCheckInterval');
+
+    expect($reflection->invoke($command))->toBe(7);
+});
+
 it('dispatches raw telemetry incoming events from go bridge payloads', function (): void {
     Event::fake([TelemetryIncoming::class]);
 

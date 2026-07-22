@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Ingestion;
 
+use App\Domain\Shared\Services\BasisNatsClientHeartbeatProbe;
+use App\Domain\Shared\Services\NatsConnectionHeartbeat;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use App\Events\TelemetryIncoming;
 use App\Events\TelemetryReceived;
@@ -24,36 +26,52 @@ class ConsumeTelemetryIngestionEvents extends Command
 
     protected $description = 'Consume Go telemetry ingestion events and dispatch Laravel side effects.';
 
-    public function handle(): int
+    public function handle(BasisNatsClientHeartbeatProbe $heartbeatProbe): int
     {
         $configuration = new Configuration(
             host: $this->resolveHost(),
             port: $this->resolvePort(),
             timeout: $this->resolveTimeout(),
         );
+        $heartbeat = new NatsConnectionHeartbeat($this->resolveHealthCheckInterval());
 
-        $client = new Client($configuration);
-        $client->subscribe($this->resolveIncomingSubject(), function (Payload $payload): void {
-            $this->handleIncomingPayload($payload);
-        });
-        $client->subscribe($this->resolvePersistedSubject(), function (Payload $payload): void {
-            $this->handlePersistedPayload($payload);
-        });
-
-        $this->info('Consuming Go telemetry ingestion events.');
-
-        while (true) {
-            /** @phpstan-ignore while.alwaysTrue */
+        while (true) { /** @phpstan-ignore while.alwaysTrue */
             try {
-                $client->process(1);
-            } catch (\Throwable $exception) {
-                if (str_contains($exception->getMessage(), 'No handler')) {
-                    usleep(200_000);
+                $client = new Client($configuration);
+                $lastActivityAt = microtime(true);
 
-                    continue;
+                $client->subscribe($this->resolveIncomingSubject(), function (Payload $payload) use (&$lastActivityAt): void {
+                    $lastActivityAt = microtime(true);
+                    $this->handleIncomingPayload($payload);
+                });
+                $client->subscribe($this->resolvePersistedSubject(), function (Payload $payload) use (&$lastActivityAt): void {
+                    $lastActivityAt = microtime(true);
+                    $this->handlePersistedPayload($payload);
+                });
+
+                $this->info('Consuming Go telemetry ingestion events.');
+                $lastHeartbeatAt = microtime(true);
+
+                while (true) { /** @phpstan-ignore while.alwaysTrue */
+                    try {
+                        $client->process(1);
+                        $lastHeartbeatAt = $heartbeat->maintain(
+                            ping: fn (): bool => $heartbeatProbe->ping($client),
+                            lastHeartbeatAt: $lastHeartbeatAt,
+                            lastActivityAt: $lastActivityAt,
+                        );
+                    } catch (\Throwable $exception) {
+                        if (str_contains($exception->getMessage(), 'No handler')) {
+                            usleep(200_000);
+
+                            continue;
+                        }
+
+                        throw $exception;
+                    }
                 }
-
-                $this->error("Processing error: {$exception->getMessage()}");
+            } catch (\Throwable $exception) {
+                $this->error("Connection error: {$exception->getMessage()}");
                 sleep(1);
             }
         }
@@ -161,6 +179,11 @@ class ConsumeTelemetryIngestionEvents extends Command
     private function resolveTimeout(): int
     {
         return $this->resolveIntConfig('ingestion.nats.timeout', 5);
+    }
+
+    private function resolveHealthCheckInterval(): int
+    {
+        return max(1, $this->resolveIntConfig('ingestion.nats.health_check_seconds', 15));
     }
 
     private function resolveIncomingSubject(): string
