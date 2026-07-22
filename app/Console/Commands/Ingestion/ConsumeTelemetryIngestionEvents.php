@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands\Ingestion;
 
 use App\Domain\Automation\Jobs\DispatchTelemetryAutomation;
+use App\Domain\Automation\Services\AutomationTelemetryScopeIndex;
 use App\Domain\DataIngestion\Jobs\DispatchTelemetryReceivedSideEffects;
 use App\Domain\Shared\Services\BasisNatsClientHeartbeatProbe;
 use App\Domain\Shared\Services\NatsConnectionHeartbeat;
@@ -22,17 +23,27 @@ class ConsumeTelemetryIngestionEvents extends Command
                             {--host= : NATS broker host}
                             {--port= : NATS broker port}
                             {--only=all : Event stream to consume (incoming, persisted, or all)}
+                            {--effects=all : Persisted side effects to queue (automation or all)}
                             {--incoming-subject= : Subject for Go incoming telemetry events}
                             {--persisted-subject= : Subject for Go persisted telemetry events}';
 
     protected $description = 'Consume Go telemetry ingestion events and dispatch Laravel side effects.';
 
-    public function handle(BasisNatsClientHeartbeatProbe $heartbeatProbe): int
-    {
+    public function handle(
+        BasisNatsClientHeartbeatProbe $heartbeatProbe,
+        AutomationTelemetryScopeIndex $automationScopeIndex,
+    ): int {
         $eventMode = $this->resolveEventMode();
+        $effectsMode = $this->resolveEffectsMode();
 
         if ($eventMode === null) {
             $this->error('The --only option must be incoming, persisted, or all.');
+
+            return self::INVALID;
+        }
+
+        if ($effectsMode === null) {
+            $this->error('The --effects option must be automation or all.');
 
             return self::INVALID;
         }
@@ -57,9 +68,9 @@ class ConsumeTelemetryIngestionEvents extends Command
                 }
 
                 if ($this->consumesPersistedEvents($eventMode)) {
-                    $client->subscribe($this->resolvePersistedSubject(), function (Payload $payload) use (&$lastActivityAt): void {
+                    $client->subscribe($this->resolvePersistedSubject(), function (Payload $payload) use (&$lastActivityAt, $automationScopeIndex, $effectsMode): void {
                         $lastActivityAt = microtime(true);
-                        $this->handlePersistedPayload($payload);
+                        $this->handlePersistedPayload($payload, $automationScopeIndex, $effectsMode);
                     });
                 }
 
@@ -117,8 +128,11 @@ class ConsumeTelemetryIngestionEvents extends Command
         ));
     }
 
-    private function handlePersistedPayload(Payload $payload): void
-    {
+    private function handlePersistedPayload(
+        Payload $payload,
+        AutomationTelemetryScopeIndex $automationScopeIndex,
+        string $effectsMode,
+    ): void {
         $data = $this->decodePayload($payload);
         if ($data === null) {
             return;
@@ -129,8 +143,16 @@ class ConsumeTelemetryIngestionEvents extends Command
             return;
         }
 
-        DispatchTelemetryAutomation::dispatch($telemetryLogId);
-        DispatchTelemetryReceivedSideEffects::dispatch($telemetryLogId);
+        $deviceId = $this->resolvePositiveInt($data['device_id'] ?? null);
+        $deviceChannelId = $this->resolvePositiveInt($data['device_channel_id'] ?? null);
+
+        if ($deviceId !== null && $deviceChannelId !== null && $automationScopeIndex->hasCandidate($deviceId, $deviceChannelId)) {
+            DispatchTelemetryAutomation::dispatch($telemetryLogId);
+        }
+
+        if ($effectsMode === 'all') {
+            DispatchTelemetryReceivedSideEffects::dispatch($telemetryLogId);
+        }
     }
 
     /**
@@ -214,6 +236,28 @@ class ConsumeTelemetryIngestionEvents extends Command
     private function consumesPersistedEvents(string $eventMode): bool
     {
         return in_array($eventMode, ['persisted', 'all'], true);
+    }
+
+    private function resolveEffectsMode(): ?string
+    {
+        $option = $this->option('effects');
+
+        if (! is_string($option) || trim($option) === '') {
+            return 'all';
+        }
+
+        $effectsMode = strtolower(trim($option));
+
+        return in_array($effectsMode, ['automation', 'all'], true) ? $effectsMode : null;
+    }
+
+    private function resolvePositiveInt(mixed $value): ?int
+    {
+        if (! is_numeric($value) || (int) $value <= 0) {
+            return null;
+        }
+
+        return (int) $value;
     }
 
     private function resolveIncomingSubject(): string

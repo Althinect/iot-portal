@@ -3,8 +3,13 @@
 declare(strict_types=1);
 
 use App\Console\Commands\Ingestion\ConsumeTelemetryIngestionEvents;
+use App\Domain\Automation\Enums\AutomationWorkflowStatus;
 use App\Domain\Automation\Jobs\DispatchTelemetryAutomation;
 use App\Domain\Automation\Listeners\QueueTelemetryAutomationRuns;
+use App\Domain\Automation\Models\AutomationTelemetryTrigger;
+use App\Domain\Automation\Models\AutomationWorkflow;
+use App\Domain\Automation\Models\AutomationWorkflowVersion;
+use App\Domain\Automation\Services\AutomationTelemetryScopeIndex;
 use App\Domain\DataIngestion\Jobs\DispatchTelemetryReceivedSideEffects;
 use App\Domain\DataIngestion\Models\IngestionMessage;
 use App\Domain\Shared\Services\RuntimeSettingRegistry;
@@ -55,6 +60,12 @@ it('rejects an invalid go ingestion event mode', function (): void {
         ->assertExitCode(2);
 });
 
+it('rejects an invalid go ingestion effects mode', function (): void {
+    $this->artisan('ingestion:consume-go-events', ['--effects' => 'unknown'])
+        ->expectsOutputToContain('The --effects option must be automation or all.')
+        ->assertExitCode(2);
+});
+
 it('dispatches raw telemetry incoming events from go bridge payloads', function (): void {
     Event::fake([TelemetryIncoming::class]);
 
@@ -87,10 +98,18 @@ it('queues telemetry side effects from go persisted payloads', function (): void
     ]);
 
     $command = app(ConsumeTelemetryIngestionEvents::class);
+    $scopeIndex = mock(AutomationTelemetryScopeIndex::class);
+    $scopeIndex->shouldReceive('hasCandidate')
+        ->once()
+        ->with((int) $telemetryLog->device_id, (int) $telemetryLog->device_channel_id)
+        ->andReturnTrue();
+
     invokeBridgeHandler($command, 'handlePersistedPayload', new Payload(json_encode([
         'telemetry_log_id' => $telemetryLog->id,
         'ingestion_message_id' => $ingestionMessage->id,
-    ], JSON_THROW_ON_ERROR), subject: 'iot.v1.ingestion.persisted'));
+        'device_id' => $telemetryLog->device_id,
+        'device_channel_id' => $telemetryLog->device_channel_id,
+    ], JSON_THROW_ON_ERROR), subject: 'iot.v1.ingestion.persisted'), $scopeIndex, 'all');
 
     Queue::assertPushed(DispatchTelemetryReceivedSideEffects::class, function (DispatchTelemetryReceivedSideEffects $job) use ($telemetryLog): bool {
         return $job->telemetryLogId === $telemetryLog->id
@@ -102,6 +121,59 @@ it('queues telemetry side effects from go persisted payloads', function (): void
             && $job->connection === 'redis'
             && $job->queue === 'automation';
     });
+});
+
+it('queues only candidate automation in production effects mode', function (): void {
+    Queue::fake();
+
+    $scopeIndex = mock(AutomationTelemetryScopeIndex::class);
+    $scopeIndex->shouldReceive('hasCandidate')
+        ->once()
+        ->with(17, 4)
+        ->andReturnTrue();
+
+    $command = app(ConsumeTelemetryIngestionEvents::class);
+    invokeBridgeHandler($command, 'handlePersistedPayload', new Payload(json_encode([
+        'telemetry_log_id' => 'telemetry-log-id',
+        'device_id' => 17,
+        'device_channel_id' => 4,
+    ], JSON_THROW_ON_ERROR), subject: 'iot.v1.ingestion.persisted'), $scopeIndex, 'automation');
+
+    Queue::assertPushed(DispatchTelemetryAutomation::class, 1);
+    Queue::assertNotPushed(DispatchTelemetryReceivedSideEffects::class);
+});
+
+it('indexes active telemetry automation scopes and refreshes after trigger changes', function (): void {
+    $telemetryLog = DeviceTelemetryLog::factory()->create();
+    $workflow = AutomationWorkflow::factory()->create([
+        'organization_id' => $telemetryLog->device->organization_id,
+        'status' => AutomationWorkflowStatus::Active,
+    ]);
+    $workflowVersion = AutomationWorkflowVersion::factory()->create([
+        'automation_workflow_id' => $workflow->id,
+    ]);
+    $workflow->update(['active_version_id' => $workflowVersion->id]);
+
+    AutomationTelemetryTrigger::factory()->create([
+        'organization_id' => $workflow->organization_id,
+        'workflow_version_id' => $workflowVersion->id,
+        'device_id' => $telemetryLog->device_id,
+        'device_channel_id' => $telemetryLog->device_channel_id,
+    ]);
+
+    $scopeIndex = app(AutomationTelemetryScopeIndex::class);
+
+    expect($scopeIndex->hasCandidate((int) $telemetryLog->device_id, (int) $telemetryLog->device_channel_id))->toBeTrue()
+        ->and($scopeIndex->hasCandidate((int) $telemetryLog->device_id + 1, (int) $telemetryLog->device_channel_id))->toBeFalse();
+
+    AutomationTelemetryTrigger::factory()->create([
+        'organization_id' => $workflow->organization_id,
+        'workflow_version_id' => $workflowVersion->id,
+        'device_id' => null,
+        'device_channel_id' => null,
+    ]);
+
+    expect($scopeIndex->hasCandidate((int) $telemetryLog->device_id + 1, (int) $telemetryLog->device_channel_id + 1))->toBeTrue();
 });
 
 it('dispatches telemetry received events from the queued go side effects bridge', function (): void {
@@ -129,8 +201,8 @@ it('dispatches go telemetry automation through the priority bridge', function ()
     $job->handle($listener);
 });
 
-function invokeBridgeHandler(ConsumeTelemetryIngestionEvents $command, string $method, Payload $payload): void
+function invokeBridgeHandler(ConsumeTelemetryIngestionEvents $command, string $method, mixed ...$arguments): void
 {
     $reflection = new ReflectionMethod($command, $method);
-    $reflection->invoke($command, $payload);
+    $reflection->invoke($command, ...$arguments);
 }

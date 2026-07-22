@@ -48,7 +48,7 @@ it('defines a production docker compose stack beside the local sail stack', func
         ->and($services['iot-ingest-telemetry']['image'])->toBe('${TELEMETRY_INGESTER_IMAGE:?Set TELEMETRY_INGESTER_IMAGE in .env.production}')
         ->and($services['iot-ingest-telemetry']['environment']['INGESTION_PIPELINE_DRIVER'])->toBe('go')
         ->and($services['iot-ingest-telemetry']['environment']['INGESTION_NATS_SUBJECT'])->toBe('${INGESTION_NATS_SUBJECT:-devices.*.telemetry,devices.*.*.telemetry,devices.*.*.*.telemetry,migration.source.imoni.*.*.telemetry,migration.source.egravity.*.telemetry}')
-        ->and($services['ingestion-go-events']['command'])->toBe('php artisan ingestion:consume-go-events --host=nats --port=4222 --only=persisted')
+        ->and($services['ingestion-go-events']['command'])->toBe('php artisan ingestion:consume-go-events --host=nats --port=4222 --only=persisted --effects=automation')
         ->and($services['ingestion-go-events']['healthcheck']['disable'])->toBeTrue()
         ->and($services['horizon']['command'])->toBe('php artisan horizon --quiet')
         ->and($services['horizon']['healthcheck']['disable'])->toBeTrue()

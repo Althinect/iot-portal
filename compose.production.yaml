@@ -148,7 +148,7 @@ services:
 
     ingestion-go-events:
         <<: *app-command-service
-        command: php artisan ingestion:consume-go-events --host=nats --port=4222 --only=persisted
+        command: php artisan ingestion:consume-go-events --host=nats --port=4222 --only=persisted --effects=automation
 
     horizon:
         <<: *app-command-service
