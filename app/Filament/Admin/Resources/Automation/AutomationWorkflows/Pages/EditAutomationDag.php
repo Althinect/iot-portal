@@ -52,17 +52,12 @@ class EditAutomationDag extends Page
         $this->record = $resolvedRecord;
 
         if ($resolvedRecord->is_managed) {
-            $thresholdPolicyId = data_get($resolvedRecord->managed_metadata, 'threshold_policy_id');
-            $redirectUrl = is_numeric($thresholdPolicyId)
-                ? AutomationThresholdPolicyResource::getUrl('edit', ['record' => (int) $thresholdPolicyId])
-                : AutomationWorkflowResource::getUrl('view', ['record' => $resolvedRecord]);
-
             Notification::make()
                 ->title('Managed workflows are read-only.')
                 ->warning()
                 ->send();
 
-            $this->redirect($redirectUrl, navigate: true);
+            $this->redirect($this->managedWorkflowRedirectUrl($resolvedRecord), navigate: true);
 
             return;
         }
@@ -371,8 +366,27 @@ class EditAutomationDag extends Page
             Action::make('workflowDetails')
                 ->label('Workflow Details')
                 ->icon(Heroicon::OutlinedPencilSquare)
-                ->url(fn (): string => AutomationWorkflowResource::getUrl('edit', ['record' => $this->getRecord()])),
+                ->url(fn (): string => $this->workflowResourceUrl('edit', ['record' => $this->getRecord()])),
         ];
+    }
+
+    protected function managedWorkflowRedirectUrl(AutomationWorkflow $workflow): string
+    {
+        $thresholdPolicyId = data_get($workflow->managed_metadata, 'threshold_policy_id');
+
+        return is_numeric($thresholdPolicyId)
+            ? AutomationThresholdPolicyResource::getUrl('edit', ['record' => (int) $thresholdPolicyId])
+            : $this->workflowResourceUrl('view', ['record' => $workflow]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $parameters
+     */
+    protected function workflowResourceUrl(string $page, array $parameters = []): string
+    {
+        $resource = static::getResource();
+
+        return $resource::getUrl($page, $parameters);
     }
 
     /**

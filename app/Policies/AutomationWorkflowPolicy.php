@@ -12,27 +12,32 @@ class AutomationWorkflowPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->hasPermissionTo(AutomationWorkflowPermission::VIEW_ANY);
+        return $this->belongsToAnOrganization($user)
+            || $user->hasPermissionTo(AutomationWorkflowPermission::VIEW_ANY);
     }
 
     public function view(User $user, AutomationWorkflow $automationWorkflow): bool
     {
-        return $user->hasPermissionTo(AutomationWorkflowPermission::VIEW);
+        return $this->belongsToWorkflowOrganization($user, $automationWorkflow)
+            || $user->hasPermissionTo(AutomationWorkflowPermission::VIEW);
     }
 
     public function create(User $user): bool
     {
-        return $user->hasPermissionTo(AutomationWorkflowPermission::CREATE);
+        return $this->belongsToAnOrganization($user)
+            || $user->hasPermissionTo(AutomationWorkflowPermission::CREATE);
     }
 
     public function update(User $user, AutomationWorkflow $automationWorkflow): bool
     {
-        return $user->hasPermissionTo(AutomationWorkflowPermission::UPDATE);
+        return $this->belongsToWorkflowOrganization($user, $automationWorkflow)
+            || $user->hasPermissionTo(AutomationWorkflowPermission::UPDATE);
     }
 
     public function delete(User $user, AutomationWorkflow $automationWorkflow): bool
     {
-        return $user->hasPermissionTo(AutomationWorkflowPermission::DELETE);
+        return $this->belongsToWorkflowOrganization($user, $automationWorkflow)
+            || $user->hasPermissionTo(AutomationWorkflowPermission::DELETE);
     }
 
     public function restore(User $user, AutomationWorkflow $automationWorkflow): bool
@@ -47,6 +52,19 @@ class AutomationWorkflowPolicy
 
     public function publish(User $user, AutomationWorkflow $automationWorkflow): bool
     {
-        return $user->hasPermissionTo(AutomationWorkflowPermission::PUBLISH);
+        return $this->belongsToWorkflowOrganization($user, $automationWorkflow)
+            || $user->hasPermissionTo(AutomationWorkflowPermission::PUBLISH);
+    }
+
+    private function belongsToAnOrganization(User $user): bool
+    {
+        return $user->organizations()->exists();
+    }
+
+    private function belongsToWorkflowOrganization(User $user, AutomationWorkflow $automationWorkflow): bool
+    {
+        return $user->organizations()
+            ->whereKey($automationWorkflow->organization_id)
+            ->exists();
     }
 }
