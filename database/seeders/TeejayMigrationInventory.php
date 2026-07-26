@@ -77,6 +77,137 @@ JSON;
          */
         $inventory = json_decode(self::INVENTORY_JSON, true, 512, JSON_THROW_ON_ERROR);
 
+        foreach (self::liveLegacyAdditions() as $deviceType => $devices) {
+            $inventory['device_types'][$deviceType] = array_merge($inventory['device_types'][$deviceType] ?? [], $devices);
+        }
+
+        foreach ($inventory['device_types']['AC Energy Mate'] as &$device) {
+            if (($device['legacy_virtual_device_id'] ?? null) === '8122829d-8edf-486d-9d18-1eccb66f9e38') {
+                $device['hub_imei'] = '869604063874209';
+            }
+        }
+        unset($device);
+
         return $inventory;
+    }
+
+    /**
+     * @return array<string, array<int, array<string, mixed>>
+     */
+    private static function liveLegacyAdditions(): array
+    {
+        $device = static fn (
+            string $name,
+            string $externalId,
+            string $legacyDeviceUid,
+            string $hubImei,
+            string $peripheralTypeHex,
+            array $parameterMap,
+            array $conditionalCalibrations,
+            string $legacyVirtualDeviceId,
+        ): array => [
+            'name' => $name,
+            'external_id' => $externalId,
+            'legacy_device_uid' => $legacyDeviceUid,
+            'hub_imei' => $hubImei,
+            'peripheral_type_hex' => $peripheralTypeHex,
+            'parameter_map' => $parameterMap,
+            'calibrations' => [],
+            'conditional_calibrations' => $conditionalCalibrations,
+            'metadata' => [],
+            'legacy_virtual_device_id' => $legacyVirtualDeviceId,
+        ];
+
+        $energy = static function (string $name, string $externalId, string $hubImei, int $peripheral, string $legacyVirtualDeviceId) use ($device): array {
+            return $device(
+                $name,
+                $externalId,
+                $externalId,
+                $hubImei,
+                substr($externalId, -2),
+                [
+                    'TotalEnergy' => "peripheralDataArr.AC_energyMate{$peripheral}.7.3",
+                    'PhaseACurrent' => "peripheralDataArr.AC_energyMate{$peripheral}.4.3",
+                    'PhaseAVoltage' => "peripheralDataArr.AC_energyMate{$peripheral}.1.3",
+                    'PhaseBCurrent' => "peripheralDataArr.AC_energyMate{$peripheral}.5.3",
+                    'PhaseBVoltage' => "peripheralDataArr.AC_energyMate{$peripheral}.2.3",
+                    'PhaseCCurrent' => "peripheralDataArr.AC_energyMate{$peripheral}.6.3",
+                    'PhaseCVoltage' => "peripheralDataArr.AC_energyMate{$peripheral}.3.3",
+                    'totalPowerFactor' => "peripheralDataArr.AC_energyMate{$peripheral}.8.3",
+                ],
+                [],
+                $legacyVirtualDeviceId,
+            );
+        };
+
+        $pressure = static fn (string $name, string $externalId, int $peripheral, string $legacyVirtualDeviceId): array => $device(
+            $name,
+            $externalId,
+            $externalId,
+            '869604063835382',
+            substr($externalId, -2),
+            ['preassure' => "peripheralDataArr.Modbus{$peripheral}.1.3"],
+            ['preassure' => '{"/":[{"var":"preassure"},10]}'],
+            $legacyVirtualDeviceId,
+        );
+
+        $status = static fn (string $name, string $externalId, string $legacyDeviceUid, string $hubImei, int $channel, string $legacyVirtualDeviceId): array => $device(
+            $name,
+            $externalId,
+            $legacyDeviceUid,
+            $hubImei,
+            '00',
+            ['status' => "peripheralDataArr.iMoni_LITE.{$channel}.3"],
+            ['status' => '{"if":[{"var":"status"},0,1]}'],
+            $legacyVirtualDeviceId,
+        );
+
+        $steam = static fn (string $name, string $externalId, string $hubImei, int $peripheral, string $legacyVirtualDeviceId): array => $device(
+            $name,
+            $externalId,
+            $externalId,
+            $hubImei,
+            substr($externalId, -2),
+            [
+                'flow' => "peripheralDataArr.Modbus{$peripheral}.1.3",
+                'totaliser_count_1' => "peripheralDataArr.Modbus{$peripheral}.2.3",
+                'totaliser_count_2' => "peripheralDataArr.Modbus{$peripheral}.3.3",
+                'totaliser_count_3' => "peripheralDataArr.Modbus{$peripheral}.4.3",
+            ],
+            [],
+            $legacyVirtualDeviceId,
+        );
+
+        $mainMdb = $energy('Main MDB(Knitting Old Mezzanine)', '869604063876550-21', '869604063876550', 1, '65f59130-ac16-42e4-881a-b7fc11eb2e08');
+        unset($mainMdb['parameter_map']['totalPowerFactor']);
+
+        return [
+            'AC Energy Mate' => [
+                $energy('Thermic Heater 1', '869604063813629-24', '869604063813629', 4, '65f111ce-d90e-4bfe-a843-d6e3999127df'),
+                $energy('Thermic Heater 2', '869604063813629-25', '869604063813629', 5, '731b7abc-5a7e-42f1-ae87-ceafcf870e80'),
+                $energy('Thermic Heater 3', '869604063813629-26', '869604063813629', 6, '536946f7-c5f1-4949-b1b3-52439608dcf5'),
+                $mainMdb,
+            ],
+            'Preassure' => [
+                $pressure('Slitter 01 Mini Padder', '869604063835382-57', 7, 'ba33c44f-4aa0-4f35-8ccc-344cf4f26df9'),
+                $pressure('Slitter 02 Mini Padder', '869604063835382-58', 8, 'd984b7e6-a11c-48e0-a2d5-e454e3aef285'),
+                $pressure('Slitter 04 Mini Padder', '869604063835382-59', 9, '55053ac8-4bc0-4e9e-9c33-b0b8e80d70af'),
+                $pressure('Slitter 05 Mini Padder', '869604063835382-5A', 10, '8c5e3e82-9e73-4644-b96c-164d7d77259e'),
+            ],
+            'Status' => [
+                $status('Final Inspection 1', '869604063849748-00-04', '869604063849748-00-04', '869604063849748', 7, 'bb641791-9697-4c44-a747-bd18edb0e764'),
+                $status('Final Inspection 2', '869604063849748-00-03', '869604063849748-00-03', '869604063849748', 3, 'cc6e2e63-93d2-453c-b0ca-826e17c9fc3d'),
+                $status('Final Inspection 3', '869604063849748-00-01', '869604063849748-00-01', '869604063849748', 1, '94235808-aee0-4b32-b07d-9f91bfd3bdd2'),
+                $status('Final Inspection 4', '869604063849748-00-02', '869604063849748-00-02', '869604063849748', 2, '9299cbbf-9349-486a-9ecb-9677c93d6991'),
+                $status('Final Inspection 5', '8865286073149329-00-01', '869604063846025-00-01', '8865286073149329', 1, '772ae549-f408-4ff3-9066-3d38b2619ff1'),
+                $status('Final Inspection 6', '8865286073149329-00-02', '869604063846025-00-02', '8865286073149329', 2, '8348e4cf-c46c-4661-bb9b-f311018db600'),
+                $status('Final Inspection 7', '8865286073149329-00-03', '869604063846025-00-03', '8865286073149329', 3, '92f930aa-bb93-4e0a-9c9d-f58e11730b2e'),
+            ],
+            'Steam meter' => [
+                $steam('Teejay Prints - Steam', '869604063817216-52', '869604063817216', 2, '7e4db458-26b5-40f3-ad77-c58e8edca308'),
+                $steam('Compressor Room1 (Compressed Air)', '869604063813629-57', '869604063813629', 7, '801c500a-7502-485f-b167-b04c15604482'),
+                $steam('Compressor Room3 (Compressed Air)', '869688058522493-56', '869688058522493', 6, 'ce0fe267-fe70-4037-9f90-7dc2cace671c'),
+            ],
+        ];
     }
 }
