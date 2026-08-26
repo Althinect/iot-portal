@@ -48,6 +48,7 @@ use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Table;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
@@ -85,6 +86,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        ResetPassword::createUrlUsing(function (User $user, string $token): string {
+            return Filament::getPanel($user->isSuperAdmin() ? 'admin' : 'portal')
+                ->getResetPasswordUrl($token, $user);
+        });
+
         // Preserve v3 behavior for file visibility (files default to public instead of private)
         FileUpload::configureUsing(fn (FileUpload $fileUpload) => $fileUpload
             ->visibility('public'));

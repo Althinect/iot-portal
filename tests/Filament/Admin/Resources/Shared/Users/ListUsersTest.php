@@ -2,7 +2,12 @@
 
 use App\Domain\Shared\Models\User;
 use App\Filament\Admin\Resources\Shared\Users\Pages\ListUsers;
+use Filament\Actions\Testing\TestAction;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Password;
 
 uses(RefreshDatabase::class);
 
@@ -49,4 +54,36 @@ it('displays no records message when empty', function (): void {
 
     livewire(ListUsers::class)
         ->assertCountTableRecords(0);
+});
+
+it('can send a password reset link to a user', function (): void {
+    Notification::fake();
+
+    $user = User::factory()->create();
+
+    livewire(ListUsers::class)
+        ->callAction(TestAction::make('sendPasswordResetLink')->table($user))
+        ->assertNotified();
+
+    Notification::assertSentTo($user, ResetPassword::class);
+});
+
+it('can set a custom password for a user', function (): void {
+    $user = User::factory()->create();
+    $originalRememberToken = $user->remember_token;
+    $resetToken = Password::createToken($user);
+    $customPassword = 'EmergencyPassword123!';
+
+    livewire(ListUsers::class)
+        ->callAction(TestAction::make('setCustomPassword')->table($user), data: [
+            'password' => $customPassword,
+            'password_confirmation' => $customPassword,
+        ])
+        ->assertNotified('Password updated');
+
+    $user = $user->fresh();
+
+    expect(Hash::check($customPassword, $user->password))->toBeTrue()
+        ->and($user->remember_token)->not->toBe($originalRememberToken)
+        ->and(Password::tokenExists($user, $resetToken))->toBeFalse();
 });
