@@ -69,18 +69,29 @@ class WidgetBootstrapPayloadBuilder
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function buildForPortal(IoTDashboard $dashboard, Organization $organization): array
-    {
+    public function buildForPortal(
+        IoTDashboard $dashboard,
+        Organization $organization,
+        bool $readOnly = true,
+    ): array {
         return collect($this->build($dashboard))
-            ->map(function (array $widget) use ($dashboard, $organization): array {
-                unset($widget['layout_url']);
+            ->map(function (array $widget) use ($dashboard, $organization, $readOnly): array {
+                if ($readOnly) {
+                    unset($widget['layout_url']);
+                } else {
+                    $widget['layout_url'] = route('portal.iot-dashboard.dashboards.widgets.layout', [
+                        'organization' => $organization,
+                        'dashboard' => $dashboard,
+                        'widget' => $widget['id'],
+                    ]);
+                }
 
                 $widget['snapshot_url'] = route('portal.iot-dashboard.dashboards.snapshots', [
                     'organization' => $organization,
                     'dashboard' => $dashboard,
                     'widget' => $widget['id'],
                 ]);
-                $widget['read_only'] = true;
+                $widget['read_only'] = $readOnly;
 
                 return $widget;
             })

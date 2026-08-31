@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace App\Filament\Portal\Resources\DeviceManagement\Devices;
 
 use App\Domain\DeviceManagement\Models\Device;
+use App\Domain\DeviceManagement\Services\TenantDeviceLifecycleManager;
 use App\Domain\DeviceProfile\DTO\ChannelDefinition;
 use App\Domain\DeviceProfile\DTO\DeviceProfileContract;
 use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Domain\DeviceProfile\Services\DeviceProfileContractResolver;
+use App\Domain\Shared\Models\Entity;
+use App\Domain\Shared\Models\User;
 use App\Filament\Admin\Resources\DeviceManagement\Devices\RelationManagers\TelemetryLogsRelationManager;
 use BackedEnum;
 use Filament\Actions\Action;
+use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\KeyValue;
@@ -29,8 +33,12 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 
 class DeviceResource extends Resource
@@ -71,6 +79,12 @@ class DeviceResource extends Resource
                         TextInput::make('external_id')
                             ->label('External ID')
                             ->maxLength(255),
+
+                        Select::make('entity_id')
+                            ->label('Primary site')
+                            ->options(fn (): array => self::siteOptions())
+                            ->searchable()
+                            ->preload(),
                     ])
                     ->columnSpan(2),
 
@@ -362,6 +376,11 @@ class DeviceResource extends Resource
                     ->searchable()
                     ->sortable(),
 
+                TextColumn::make('entity.label')
+                    ->label('Site')
+                    ->placeholder('Unassigned')
+                    ->toggleable(),
+
                 IconColumn::make('is_active')
                     ->label('Active')
                     ->boolean()
@@ -409,14 +428,45 @@ class DeviceResource extends Resource
 
                         return $query->whereEffectiveConnectionState($value);
                     }),
+                TrashedFilter::make(),
             ])
             ->recordActions([
                 Action::make('controlDashboard')
                     ->label('Control Dashboard')
                     ->icon(Heroicon::OutlinedCommandLine)
                     ->url(fn (Device $record): string => self::getUrl('control-dashboard', ['record' => $record]))
-                    ->visible(fn (Device $record): bool => $record->canBeControlled()),
+                    ->visible(fn (Device $record): bool => ! $record->trashed()
+                        && $record->canBeControlled()
+                        && Gate::allows('control', $record)),
                 ViewAction::make(),
+                EditAction::make()->visible(fn (Device $record): bool => ! $record->trashed()),
+                Action::make('credentials')
+                    ->label('Credentials')
+                    ->icon(Heroicon::OutlinedKey)
+                    ->url(fn (Device $record): string => self::getUrl('credentials', ['record' => $record]))
+                    ->visible(fn (Device $record): bool => ! $record->trashed()
+                        && Gate::allows('manageCredentials', $record)),
+                Action::make('decommission')
+                    ->color('danger')
+                    ->icon(Heroicon::OutlinedArchiveBox)
+                    ->requiresConfirmation()
+                    ->visible(fn (Device $record): bool => ! $record->trashed()
+                        && Gate::allows('decommission', $record))
+                    ->action(function (Device $record): void {
+                        $user = Auth::user();
+                        abort_unless($user instanceof User, 403);
+                        app(TenantDeviceLifecycleManager::class)->decommission($record, $user);
+                    }),
+                Action::make('reactivate')
+                    ->color('success')
+                    ->icon(Heroicon::OutlinedArrowPath)
+                    ->visible(fn (Device $record): bool => $record->trashed()
+                        && Gate::allows('reactivate', $record))
+                    ->action(function (Device $record): void {
+                        $user = Auth::user();
+                        abort_unless($user instanceof User, 403);
+                        app(TenantDeviceLifecycleManager::class)->reactivate($record, $user);
+                    }),
             ])
             ->defaultSort('created_at', 'desc');
     }
@@ -428,12 +478,39 @@ class DeviceResource extends Resource
         ];
     }
 
+    public static function getRecordRouteBindingEloquentQuery(): Builder
+    {
+        return parent::getRecordRouteBindingEloquentQuery()
+            ->withoutGlobalScopes([SoftDeletingScope::class]);
+    }
+
     public static function getPages(): array
     {
         return [
             'index' => Pages\ListDevices::route('/'),
+            'create' => Pages\CreateDevice::route('/create'),
             'view' => Pages\ViewDevice::route('/{record}'),
+            'edit' => Pages\EditDevice::route('/{record}/edit'),
+            'credentials' => Pages\DeviceCredentials::route('/{record}/credentials'),
             'control-dashboard' => Pages\DeviceControlDashboard::route('/{record}/control-dashboard'),
         ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function siteOptions(): array
+    {
+        $tenant = Filament::getTenant();
+
+        return Entity::query()
+            ->when(
+                $tenant !== null,
+                fn (Builder $query): Builder => $query->where('organization_id', $tenant->getKey()),
+                fn (Builder $query): Builder => $query->whereRaw('1 = 0'),
+            )
+            ->orderBy('label')
+            ->pluck('label', 'id')
+            ->all();
     }
 }

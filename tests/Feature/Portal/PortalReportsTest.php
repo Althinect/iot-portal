@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Domain\Authorization\Enums\TenantRole;
 use App\Domain\Authorization\Permissions\RolePermission;
+use App\Domain\Authorization\Services\TenantRoleManager;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\DeviceProfile\Models\ProfileParameterDefinition;
@@ -30,6 +32,8 @@ beforeEach(function (): void {
     $this->portalUser->organizations()->attach($this->organization);
     $this->otherPortalUser = User::factory()->create();
     $this->otherPortalUser->organizations()->attach($this->otherOrganization);
+    app(TenantRoleManager::class)->assign($this->portalUser, $this->organization, TenantRole::Operator);
+    app(TenantRoleManager::class)->assign($this->otherPortalUser, $this->otherOrganization, TenantRole::Viewer);
     $this->superAdmin = User::factory()->create(['is_super_admin' => true]);
     $this->device = Device::factory()->create(['organization_id' => $this->organization->id]);
     $this->otherDevice = Device::factory()->create(['organization_id' => $this->otherOrganization->id]);

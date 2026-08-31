@@ -6,8 +6,12 @@ namespace App\Providers;
 
 use App\Database\TimescalePostgresConnection;
 use App\Domain\Alerts\Listeners\QueueTelemetryThresholdAlertRecords;
+use App\Domain\Alerts\Models\Alert;
+use App\Domain\Authorization\Services\TenantRoleManager;
 use App\Domain\Automation\Contracts\TriggerMatcher;
 use App\Domain\Automation\Listeners\QueueTelemetryAutomationRuns;
+use App\Domain\Automation\Models\AutomationNotificationProfile;
+use App\Domain\Automation\Models\AutomationThresholdPolicy;
 use App\Domain\Automation\Models\AutomationWorkflow;
 use App\Domain\Automation\Services\DatabaseTriggerMatcher;
 use App\Domain\DataIngestion\Listeners\BroadcastTelemetryRealtimeUpdate;
@@ -27,17 +31,25 @@ use App\Domain\DeviceProfile\Services\DeviceProfileContractResolver;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Domain\IoTDashboard\Models\IoTDashboardWidget;
 use App\Domain\Reporting\Models\ReportRun;
+use App\Domain\Shared\Models\Entity;
+use App\Domain\Shared\Models\Organization;
+use App\Domain\Shared\Models\TenantInvitation;
 use App\Domain\Shared\Models\User;
 use App\Domain\Shared\Services\HorizonRuntimeConfigurator;
 use App\Domain\Shared\Services\RuntimeSettingManager;
 use App\Domain\Shared\Services\RuntimeSettingRegistry;
 use App\Events\TelemetryReceived;
+use App\Policies\AlertPolicy;
+use App\Policies\AutomationNotificationProfilePolicy;
+use App\Policies\AutomationThresholdPolicyPolicy;
 use App\Policies\AutomationWorkflowPolicy;
 use App\Policies\DeviceProfilePolicy;
 use App\Policies\DeviceProfileVersionPolicy;
+use App\Policies\EntityPolicy;
 use App\Policies\IoTDashboardPolicy;
 use App\Policies\IoTDashboardWidgetPolicy;
 use App\Policies\ReportRunPolicy;
+use App\Policies\TenantInvitationPolicy;
 use Filament\Events\TenantSet;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Field;
@@ -129,11 +141,21 @@ class AppServiceProvider extends ServiceProvider
         });
 
         Gate::policy(AutomationWorkflow::class, AutomationWorkflowPolicy::class);
+        Gate::policy(Alert::class, AlertPolicy::class);
+        Gate::policy(AutomationNotificationProfile::class, AutomationNotificationProfilePolicy::class);
+        Gate::policy(AutomationThresholdPolicy::class, AutomationThresholdPolicyPolicy::class);
         Gate::policy(DeviceProfile::class, DeviceProfilePolicy::class);
         Gate::policy(DeviceProfileVersion::class, DeviceProfileVersionPolicy::class);
+        Gate::policy(Entity::class, EntityPolicy::class);
         Gate::policy(IoTDashboard::class, IoTDashboardPolicy::class);
         Gate::policy(IoTDashboardWidget::class, IoTDashboardWidgetPolicy::class);
         Gate::policy(ReportRun::class, ReportRunPolicy::class);
+        Gate::policy(TenantInvitation::class, TenantInvitationPolicy::class);
+
+        Organization::created(
+            fn (Organization $organization): mixed => app(TenantRoleManager::class)
+                ->syncForOrganization($organization),
+        );
 
         Event::listen(TenantSet::class, function (): void {
             setPermissionsTeamId(Filament::getTenant()->id);

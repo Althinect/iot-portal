@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Domain\Authorization\Enums\TenantRole;
 use App\Domain\Authorization\Permissions\RolePermission;
+use App\Domain\Authorization\Services\TenantRoleManager;
 use App\Domain\Automation\Enums\AutomationWorkflowStatus;
 use App\Domain\Automation\Models\AutomationTelemetryTrigger;
 use App\Domain\Automation\Models\AutomationWorkflow;
@@ -33,6 +35,7 @@ beforeEach(function (): void {
     $this->otherOrganization = Organization::factory()->create(['slug' => 'portal-automation-other']);
     $this->portalUser = User::factory()->create();
     $this->portalUser->organizations()->attach($this->organization);
+    app(TenantRoleManager::class)->assign($this->portalUser, $this->organization, TenantRole::Operator);
     $this->userWithoutOrganization = User::factory()->create();
 
     $permissionNames = [

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Filament\Portal\Resources\Authorization\Roles;
 
 use App\Domain\Authorization\Models\Role;
@@ -20,6 +22,16 @@ use Filament\Tables\Table;
 
 class RoleResource extends Resource
 {
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
+    public static function canViewAny(): bool
+    {
+        return false;
+    }
+
     protected static ?string $model = Role::class;
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-rectangle-stack';

@@ -7,11 +7,18 @@ namespace App\Filament\Portal\Resources\IoTDashboards\Tables;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
 use App\Filament\Portal\Pages\IoTDashboard as IoTDashboardPage;
 use Filament\Actions\Action;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
+use Filament\Actions\RestoreAction;
+use Filament\Actions\RestoreBulkAction;
 use Filament\Actions\ViewAction;
 use Filament\Facades\Filament;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 
 class IoTDashboardsTable
@@ -28,6 +35,10 @@ class IoTDashboardsTable
                     ->label('Widgets')
                     ->counts('widgets')
                     ->sortable(),
+                TextColumn::make('entity.label')
+                    ->label('Primary site')
+                    ->placeholder('All sites')
+                    ->toggleable(),
                 IconColumn::make('is_active')
                     ->label('Active')
                     ->boolean()
@@ -35,6 +46,9 @@ class IoTDashboardsTable
                 TextColumn::make('updated_at')
                     ->since()
                     ->sortable(),
+            ])
+            ->filters([
+                TrashedFilter::make(),
             ])
             ->recordActions([
                 Action::make('openDashboard')
@@ -47,6 +61,15 @@ class IoTDashboardsTable
                         tenant: Filament::getTenant(),
                     )),
                 ViewAction::make(),
+                EditAction::make(),
+                DeleteAction::make()->label('Archive'),
+                RestoreAction::make(),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    DeleteBulkAction::make()->label('Archive selected'),
+                    RestoreBulkAction::make(),
+                ]),
             ])
             ->defaultSort('updated_at', 'desc');
     }

@@ -47,7 +47,9 @@ class Reports extends BaseReports
 
     protected function canManageReportSettings(): bool
     {
-        return false;
+        $user = Auth::user();
+
+        return $user instanceof User && $user->can('manageSettings', ReportRun::class);
     }
 
     protected function canDeleteReports(): bool

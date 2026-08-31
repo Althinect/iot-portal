@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domain\DeviceProfile\Models\DeviceProfile;
 use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Domain\DeviceProfile\Permissions\DeviceProfileVersionPermission;
 use App\Domain\Shared\Models\Organization;
@@ -13,8 +14,8 @@ use Spatie\Permission\Models\Role;
 uses(RefreshDatabase::class);
 
 beforeEach(function (): void {
-    $organization = Organization::factory()->create();
-    setPermissionsTeamId($organization->id);
+    $this->organization = Organization::factory()->create();
+    setPermissionsTeamId($this->organization->id);
 
     foreach (DeviceProfileVersionPermission::cases() as $permission) {
         Permission::findOrCreate($permission->value, 'web');
@@ -23,6 +24,7 @@ beforeEach(function (): void {
 
 it('allows user with viewAny permission to view profile versions index', function (): void {
     $user = User::factory()->create();
+    $user->organizations()->attach($this->organization);
     $role = Role::create(['name' => 'Viewer', 'guard_name' => 'web']);
     $role->givePermissionTo(DeviceProfileVersionPermission::VIEW_ANY->value);
     $user->assignRole($role);
@@ -32,30 +34,38 @@ it('allows user with viewAny permission to view profile versions index', functio
 
 it('denies user without viewAny permission to view profile versions index', function (): void {
     $user = User::factory()->create();
+    $user->organizations()->attach($this->organization);
 
     expect($user->can('viewAny', DeviceProfileVersion::class))->toBeFalse();
 });
 
 it('allows user with view permission to view a profile version', function (): void {
     $user = User::factory()->create();
+    $user->organizations()->attach($this->organization);
     $role = Role::create(['name' => 'Viewer', 'guard_name' => 'web']);
     $role->givePermissionTo(DeviceProfileVersionPermission::VIEW->value);
     $user->assignRole($role);
 
-    $version = DeviceProfileVersion::factory()->create();
+    $version = DeviceProfileVersion::factory()->forProfile(
+        DeviceProfile::factory()->global()->create(),
+    )->create();
 
     expect($user->can('view', $version))->toBeTrue();
 });
 
 it('denies user without view permission to view a profile version', function (): void {
     $user = User::factory()->create();
-    $version = DeviceProfileVersion::factory()->create();
+    $user->organizations()->attach($this->organization);
+    $version = DeviceProfileVersion::factory()->forProfile(
+        DeviceProfile::factory()->global()->create(),
+    )->create();
 
     expect($user->can('view', $version))->toBeFalse();
 });
 
 it('allows user with create permission to create profile versions', function (): void {
     $user = User::factory()->create();
+    $user->organizations()->attach($this->organization);
     $role = Role::create(['name' => 'Creator', 'guard_name' => 'web']);
     $role->givePermissionTo(DeviceProfileVersionPermission::CREATE->value);
     $user->assignRole($role);
@@ -65,42 +75,63 @@ it('allows user with create permission to create profile versions', function ():
 
 it('denies user without create permission to create profile versions', function (): void {
     $user = User::factory()->create();
+    $user->organizations()->attach($this->organization);
 
     expect($user->can('create', DeviceProfileVersion::class))->toBeFalse();
 });
 
 it('allows user with update permission to update a profile version', function (): void {
     $user = User::factory()->create();
+    $user->organizations()->attach($this->organization);
     $role = Role::create(['name' => 'Editor', 'guard_name' => 'web']);
     $role->givePermissionTo(DeviceProfileVersionPermission::UPDATE->value);
     $user->assignRole($role);
 
-    $version = DeviceProfileVersion::factory()->create();
+    $version = DeviceProfileVersion::factory()->forProfile(
+        DeviceProfile::factory()->create([
+            'organization_id' => $this->organization->id,
+        ]),
+    )->create();
 
     expect($user->can('update', $version))->toBeTrue();
 });
 
 it('denies user without update permission to update a profile version', function (): void {
     $user = User::factory()->create();
-    $version = DeviceProfileVersion::factory()->create();
+    $user->organizations()->attach($this->organization);
+    $version = DeviceProfileVersion::factory()->forProfile(
+        DeviceProfile::factory()->create([
+            'organization_id' => $this->organization->id,
+        ]),
+    )->create();
 
     expect($user->can('update', $version))->toBeFalse();
 });
 
 it('allows user with delete permission to delete a profile version', function (): void {
     $user = User::factory()->create();
+    $user->organizations()->attach($this->organization);
     $role = Role::create(['name' => 'Admin', 'guard_name' => 'web']);
     $role->givePermissionTo(DeviceProfileVersionPermission::DELETE->value);
     $user->assignRole($role);
 
-    $version = DeviceProfileVersion::factory()->create();
+    $version = DeviceProfileVersion::factory()->forProfile(
+        DeviceProfile::factory()->create([
+            'organization_id' => $this->organization->id,
+        ]),
+    )->create();
 
     expect($user->can('delete', $version))->toBeTrue();
 });
 
 it('denies user without delete permission to delete a profile version', function (): void {
     $user = User::factory()->create();
-    $version = DeviceProfileVersion::factory()->create();
+    $user->organizations()->attach($this->organization);
+    $version = DeviceProfileVersion::factory()->forProfile(
+        DeviceProfile::factory()->create([
+            'organization_id' => $this->organization->id,
+        ]),
+    )->create();
 
     expect($user->can('delete', $version))->toBeFalse();
 });

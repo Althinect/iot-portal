@@ -7,6 +7,7 @@ namespace App\Domain\Alerts\Models;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceProfile\Models\DeviceChannel;
 use App\Domain\Shared\Models\Organization;
+use App\Domain\Shared\Models\User;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
@@ -34,6 +35,7 @@ class Alert extends Model
             'normalized_at' => 'datetime',
             'alert_notification_sent_at' => 'datetime',
             'normalized_notification_sent_at' => 'datetime',
+            'acknowledged_at' => 'datetime',
         ];
     }
 
@@ -76,6 +78,30 @@ class Alert extends Model
     public function normalizedTelemetryLog(): BelongsTo
     {
         return $this->belongsTo(DeviceTelemetryLog::class, 'normalized_telemetry_log_id');
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function acknowledgedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'acknowledged_by_user_id');
+    }
+
+    public function isAcknowledged(): bool
+    {
+        return $this->acknowledged_at !== null;
+    }
+
+    public function acknowledge(User $user, ?string $note = null): void
+    {
+        if ($this->isAcknowledged()) {
+            return;
+        }
+
+        $this->forceFill([
+            'acknowledged_at' => now(),
+            'acknowledged_by_user_id' => $user->getKey(),
+            'acknowledgement_note' => is_string($note) && trim($note) !== '' ? trim($note) : null,
+        ])->save();
     }
 
     /**

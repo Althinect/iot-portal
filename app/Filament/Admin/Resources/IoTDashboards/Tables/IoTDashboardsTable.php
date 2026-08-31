@@ -9,6 +9,7 @@ use Filament\Actions;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 
 class IoTDashboardsTable
@@ -45,6 +46,9 @@ class IoTDashboardsTable
                     ->since()
                     ->sortable(),
             ])
+            ->filters([
+                TrashedFilter::make(),
+            ])
             ->recordActions([
                 Actions\Action::make('openDashboard')
                     ->label('Open Dashboard')
@@ -59,10 +63,15 @@ class IoTDashboardsTable
                     ),
                 Actions\ViewAction::make(),
                 Actions\EditAction::make(),
+                Actions\DeleteAction::make()->label('Archive'),
+                Actions\RestoreAction::make(),
+                Actions\ForceDeleteAction::make(),
             ])
             ->toolbarActions([
                 Actions\BulkActionGroup::make([
-                    Actions\DeleteBulkAction::make(),
+                    Actions\DeleteBulkAction::make()->label('Archive selected'),
+                    Actions\RestoreBulkAction::make(),
+                    Actions\ForceDeleteBulkAction::make(),
                 ]),
             ])
             ->defaultSort('updated_at', 'desc');

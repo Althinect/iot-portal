@@ -18,4 +18,5 @@ enum AutomationWorkflowPermission: string
     case RESTORE = 'AutomationWorkflow.restore';
     case FORCE_DELETE = 'AutomationWorkflow.force-delete';
     case PUBLISH = 'AutomationWorkflow.publish';
+    case ARCHIVE = 'AutomationWorkflow.archive';
 }

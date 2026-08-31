@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Portal\Resources\IoTDashboards\Pages;
 
 use App\Filament\Portal\Resources\IoTDashboards\IoTDashboardResource;
+use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
 
 class ListIoTDashboards extends ListRecords
@@ -13,6 +14,8 @@ class ListIoTDashboards extends ListRecords
 
     protected function getHeaderActions(): array
     {
-        return [];
+        return [
+            Actions\CreateAction::make(),
+        ];
     }
 }

@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Domain\Authorization\Enums\TenantRole;
 use App\Domain\Authorization\Models\Role;
 use App\Domain\Authorization\Permissions\RolePermission;
+use App\Domain\Authorization\Services\TenantRoleManager;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Permissions\DevicePermission;
 use App\Domain\IoTDashboard\Models\IoTDashboard;
@@ -28,6 +30,8 @@ beforeEach(function (): void {
     $this->portalUser->organizations()->attach($this->organization);
     $this->otherPortalUser = User::factory()->create();
     $this->otherPortalUser->organizations()->attach($this->otherOrganization);
+    app(TenantRoleManager::class)->assign($this->portalUser, $this->organization, TenantRole::Viewer);
+    app(TenantRoleManager::class)->assign($this->otherPortalUser, $this->otherOrganization, TenantRole::Viewer);
     $this->superAdmin = User::factory()->create(['is_super_admin' => true]);
     $this->userWithoutOrganization = User::factory()->create();
 

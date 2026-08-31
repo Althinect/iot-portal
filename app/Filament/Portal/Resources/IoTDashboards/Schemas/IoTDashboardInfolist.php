@@ -22,6 +22,9 @@ class IoTDashboardInfolist
                         TextEntry::make('widgets_count')
                             ->label('Widgets')
                             ->state(fn ($record): int => $record->widgets()->count()),
+                        TextEntry::make('entity.label')
+                            ->label('Primary site')
+                            ->placeholder('All sites'),
                         TextEntry::make('refresh_interval_seconds')
                             ->label('Refresh interval')
                             ->suffix(' seconds'),

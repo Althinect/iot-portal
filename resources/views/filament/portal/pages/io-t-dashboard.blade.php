@@ -27,7 +27,11 @@
             </x-filament::section>
         @elseif ($this->selectedDashboard->widgets->isEmpty())
             <div class="iot-empty-state">
-                No widgets are configured for this dashboard.
+                @if ($this->canManageWidgets())
+                    No widgets yet. Click <strong>Add Widget</strong> to start building this dashboard.
+                @else
+                    No widgets are configured for this dashboard.
+                @endif
             </div>
         @else
             @php(
@@ -36,7 +40,11 @@
                     ->all()
             )
 
-            <div class="iot-dashboard-grid grid-stack" id="iot-dashboard-grid" data-read-only="true">
+            <div
+                class="iot-dashboard-grid grid-stack"
+                id="iot-dashboard-grid"
+                data-read-only="{{ $this->canManageWidgets() ? 'false' : 'true' }}"
+            >
                 @foreach ($this->selectedDashboard->widgets as $widget)
                     @php($layout = $widgetLayouts[(int) $widget->id] ?? [])
                     @php($gridSpan = max(1, min(24, (int) data_get($layout, 'w', 6))))
@@ -52,8 +60,10 @@
                         gs-y="{{ $gridY }}"
                         gs-w="{{ $gridSpan }}"
                         gs-h="{{ $gridHeight }}"
-                        gs-no-move="true"
-                        gs-no-resize="true"
+                        @if (! $this->canManageWidgets())
+                            gs-no-move="true"
+                            gs-no-resize="true"
+                        @endif
                     >
                         <article
                             class="iot-widget-card iot-widget-card--{{ str_replace('_', '-', (string) $widget->type) }} grid-stack-item-content"
@@ -63,6 +73,12 @@
                                 <div>
                                     <h3 class="iot-widget-title">{{ $widget->title }}</h3>
                                 </div>
+
+                                @if ($this->canManageWidgets())
+                                    <div class="iot-widget-flags">
+                                        {{ $this->widgetHeaderActionGroup((int) $widget->id) }}
+                                    </div>
+                                @endif
                             </header>
 
                             <div wire:ignore class="iot-widget-chart" id="iot-widget-chart-{{ $widget->id }}"></div>
@@ -72,6 +88,8 @@
             </div>
         @endif
     </div>
+
+    <x-filament-actions::modals />
 
     @push('scripts')
         <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
@@ -88,7 +106,7 @@
                         'dashboard' => $this->selectedDashboard,
                     ])
                     : null,
-                'read_only' => true,
+                'read_only' => ! $this->canManageWidgets(),
                 'widgets' => $this->widgetBootstrapPayload,
             ]);
         </script>

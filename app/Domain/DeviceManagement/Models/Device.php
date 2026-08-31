@@ -13,6 +13,7 @@ use App\Domain\DeviceManagement\Services\VirtualStandardProfileRegistry;
 use App\Domain\DeviceManagement\ValueObjects\VirtualStandards\VirtualStandardProfile;
 use App\Domain\DeviceProfile\Models\DeviceProfileVersion;
 use App\Domain\DeviceProfile\Models\DeviceTwin;
+use App\Domain\Shared\Models\Entity;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Telemetry\Models\DeviceTelemetryLog;
 use Database\Factories\Domain\DeviceManagement\Models\DeviceFactory;
@@ -91,6 +92,14 @@ class Device extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    /**
+     * @return BelongsTo<Entity, $this>
+     */
+    public function entity(): BelongsTo
+    {
+        return $this->belongsTo(Entity::class);
     }
 
     /**

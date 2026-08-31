@@ -4,20 +4,19 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Domain\DeviceManagement\Permissions\DevicePermission;
+use App\Domain\Authorization\Enums\TenantRole;
+use App\Domain\Authorization\Services\TenantRoleManager;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Shared\Models\User;
-use App\Domain\Telemetry\Permissions\DeviceTelemetryLogPermission;
 use Illuminate\Database\Seeder;
 use LogicException;
-use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 
 class PortalUserSeeder extends Seeder
 {
     public const string DEFAULT_PASSWORD = 'PortalDemo123!';
 
-    public const string VIEWER_ROLE = 'portal-viewer';
+    public const string VIEWER_ROLE = 'viewer';
 
     /**
      * @var array<string, array{name: string, email: string}>
@@ -37,18 +36,11 @@ class PortalUserSeeder extends Seeder
         ],
     ];
 
-    public function run(): void
+    public function run(TenantRoleManager $roleManager): void
     {
         if (app()->environment('production')) {
             throw new LogicException('Portal demo users cannot be seeded in production.');
         }
-
-        $permissions = collect([
-            DevicePermission::VIEW_ANY->value,
-            DevicePermission::VIEW->value,
-            DeviceTelemetryLogPermission::VIEW_ANY->value,
-            DeviceTelemetryLogPermission::VIEW->value,
-        ])->map(fn (string $permission): Permission => Permission::findOrCreate($permission, 'web'));
 
         $previousPermissionsTeamId = getPermissionsTeamId();
 
@@ -57,8 +49,6 @@ class PortalUserSeeder extends Seeder
                 $organization = Organization::query()
                     ->where('slug', $organizationSlug)
                     ->firstOrFail();
-
-                setPermissionsTeamId($organization->id);
 
                 $user = User::query()->updateOrCreate(
                     ['email' => $account['email']],
@@ -69,24 +59,15 @@ class PortalUserSeeder extends Seeder
                     ],
                 );
 
-                $user->forceFill([
-                    'email_verified_at' => now(),
-                ])->save();
-
+                $user->forceFill(['email_verified_at' => now()])->save();
                 $user->organizations()->sync([$organization->id]);
 
-                $role = $organization->roles()->firstOrCreate([
-                    'name' => self::VIEWER_ROLE,
-                    'guard_name' => 'web',
-                ]);
-
-                $role->syncPermissions($permissions);
-                $user->roles()->detach();
-                $user->assignRole($role);
+                $roleManager->assign($user, $organization, TenantRole::Viewer);
             }
+
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
         } finally {
             setPermissionsTeamId($previousPermissionsTeamId);
-            app(PermissionRegistrar::class)->forgetCachedPermissions();
         }
     }
 }

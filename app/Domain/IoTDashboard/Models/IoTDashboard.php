@@ -5,18 +5,22 @@ declare(strict_types=1);
 namespace App\Domain\IoTDashboard\Models;
 
 use App\Domain\IoTDashboard\Enums\DashboardHistoryPreset;
+use App\Domain\Shared\Models\Entity;
 use App\Domain\Shared\Models\Organization;
 use Database\Factories\Domain\IoTDashboard\Models\IoTDashboardFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
 class IoTDashboard extends Model
 {
     /** @use HasFactory<IoTDashboardFactory> */
     use HasFactory;
+
+    use SoftDeletes;
 
     protected $table = 'iot_dashboards';
 
@@ -57,6 +61,14 @@ class IoTDashboard extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    /**
+     * @return BelongsTo<Entity, $this>
+     */
+    public function entity(): BelongsTo
+    {
+        return $this->belongsTo(Entity::class);
     }
 
     /**

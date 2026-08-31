@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Domain\Authorization\Enums\TenantRole;
 use App\Domain\Authorization\Permissions\RolePermission;
+use App\Domain\Authorization\Services\TenantRoleManager;
 use App\Domain\DeviceControl\Enums\CommandStatus;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Permissions\DevicePermission;
@@ -111,6 +113,7 @@ beforeEach(function (): void {
     $this->otherOrganization = Organization::factory()->create(['slug' => 'portal-control-other']);
     $this->portalUser = User::factory()->create();
     $this->portalUser->organizations()->attach($this->organization);
+    app(TenantRoleManager::class)->assign($this->portalUser, $this->organization, TenantRole::Operator);
 
     foreach ([
         DevicePermission::VIEW_ANY->value,

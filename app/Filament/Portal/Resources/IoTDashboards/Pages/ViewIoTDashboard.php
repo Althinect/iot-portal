@@ -7,6 +7,7 @@ namespace App\Filament\Portal\Resources\IoTDashboards\Pages;
 use App\Filament\Portal\Pages\IoTDashboard as IoTDashboardPage;
 use App\Filament\Portal\Resources\IoTDashboards\IoTDashboardResource;
 use Filament\Actions\Action;
+use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Resources\Pages\ViewRecord;
 use Filament\Support\Icons\Heroicon;
@@ -27,6 +28,7 @@ class ViewIoTDashboard extends ViewRecord
                     panel: 'portal',
                     tenant: Filament::getTenant(),
                 )),
+            EditAction::make(),
         ];
     }
 }

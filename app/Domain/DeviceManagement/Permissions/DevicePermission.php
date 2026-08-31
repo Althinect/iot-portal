@@ -17,4 +17,10 @@ enum DevicePermission: string
     case DELETE = 'Device.delete';
     case RESTORE = 'Device.restore';
     case FORCE_DELETE = 'Device.force-delete';
+    case CONTROL = 'Device.control';
+    case VIEW_DIAGNOSTICS = 'Device.view-diagnostics';
+    case PROVISION = 'Device.provision';
+    case MANAGE_CREDENTIALS = 'Device.manage-credentials';
+    case DECOMMISSION = 'Device.decommission';
+    case REACTIVATE = 'Device.reactivate';
 }

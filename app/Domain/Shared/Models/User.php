@@ -22,6 +22,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Notifications\Notification;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Permission\PermissionRegistrar;
 use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable implements FilamentUser, HasTenants
@@ -126,13 +127,31 @@ class User extends Authenticatable implements FilamentUser, HasTenants
      */
     public function roles(): MorphToMany
     {
-        return $this->morphToMany(
+        $relation = $this->morphToMany(
             related: Role::class,
             name: 'model',
             table: 'model_has_roles',
             foreignPivotKey: 'model_id',
             relatedPivotKey: 'role_id',
-        )->withPivot('organization_id');
+        );
+
+        $permissionRegistrar = app(PermissionRegistrar::class);
+
+        if (! $permissionRegistrar->teams) {
+            return $relation;
+        }
+
+        $teamsKey = $permissionRegistrar->teamsKey;
+        $teamField = config('permission.table_names.roles').'.'.$teamsKey;
+
+        return $relation
+            ->withPivot($teamsKey)
+            ->wherePivot($teamsKey, getPermissionsTeamId())
+            ->where(
+                fn ($query) => $query
+                    ->whereNull($teamField)
+                    ->orWhere($teamField, getPermissionsTeamId()),
+            );
     }
 
     public function getActivitylogOptions(): LogOptions

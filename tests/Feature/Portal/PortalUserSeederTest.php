@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-use App\Domain\DeviceManagement\Permissions\DevicePermission;
+use App\Domain\Authorization\Enums\TenantRole;
+use App\Domain\Authorization\Services\TenantRoleManager;
 use App\Domain\Shared\Models\Organization;
 use App\Domain\Shared\Models\User;
-use App\Domain\Telemetry\Permissions\DeviceTelemetryLogPermission;
 use Database\Seeders\PortalUserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -46,16 +46,20 @@ it('seeds idempotent organization-scoped portal viewers with only view permissio
 
     $this->seed(PortalUserSeeder::class);
 
-    $expectedPermissions = collect([
-        DevicePermission::VIEW_ANY->value,
-        DevicePermission::VIEW->value,
-        DeviceTelemetryLogPermission::VIEW_ANY->value,
-        DeviceTelemetryLogPermission::VIEW->value,
-    ])->sort()->values()->all();
+    $expectedPermissions = collect(
+        app(TenantRoleManager::class)->permissionsFor(TenantRole::Viewer),
+    )->sort()->values()->all();
+    $portalOrganizationIds = Organization::query()
+        ->whereIn('slug', array_keys(PortalUserSeeder::ACCOUNTS))
+        ->pluck('id');
 
     expect($userIds)->toHaveCount(3)
-        ->and(Role::query()->where('name', PortalUserSeeder::VIEWER_ROLE)->count())->toBe(3)
-        ->and(Permission::query()->whereIn('name', $expectedPermissions)->count())->toBe(4);
+        ->and(Role::query()
+            ->whereIn('organization_id', $portalOrganizationIds)
+            ->where('name', PortalUserSeeder::VIEWER_ROLE)
+            ->count())->toBe(3)
+        ->and(Permission::query()->whereIn('name', $expectedPermissions)->count())
+        ->toBe(count($expectedPermissions));
 
     foreach (PortalUserSeeder::ACCOUNTS as $organizationSlug => $account) {
         $organization = Organization::query()->where('slug', $organizationSlug)->firstOrFail();
@@ -83,7 +87,7 @@ it('refuses to create demo portal users in production', function (): void {
     $this->app->detectEnvironment(fn (): string => 'production');
 
     try {
-        expect(fn () => (new PortalUserSeeder)->run())
+        expect(fn () => app()->call([new PortalUserSeeder, 'run']))
             ->toThrow(LogicException::class, 'Portal demo users cannot be seeded in production.');
     } finally {
         $this->app->detectEnvironment(fn (): string => 'testing');

@@ -70,4 +70,20 @@ class Organization extends Model implements HasAvatar
     {
         return $this->hasMany(IoTDashboard::class);
     }
+
+    /**
+     * @return HasMany<TenantInvitation, $this>
+     */
+    public function tenantInvitations(): HasMany
+    {
+        return $this->hasMany(TenantInvitation::class);
+    }
+
+    /**
+     * @return HasMany<Entity, $this>
+     */
+    public function entities(): HasMany
+    {
+        return $this->hasMany(Entity::class);
+    }
 }

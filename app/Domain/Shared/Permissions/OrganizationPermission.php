@@ -15,5 +15,6 @@ enum OrganizationPermission: string
     case DELETE = 'Organization.delete';
     case RESTORE = 'Organization.restore';
     case FORCE_DELETE = 'Organization.force-delete';
+    case UPDATE_SETTINGS = 'Organization.update-settings';
 
 }

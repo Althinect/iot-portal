@@ -11,30 +11,21 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateIoTDashboardWidgetLayoutRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
-        /** @var IoTDashboard|null $dashboard */
         $dashboard = $this->route('dashboard');
-        /** @var IoTDashboardWidget|null $widget */
         $widget = $this->route('widget');
+        $user = $this->user();
 
-        if (! $dashboard instanceof IoTDashboard || ! $widget instanceof IoTDashboardWidget) {
-            return false;
-        }
-
-        if ((int) $widget->iot_dashboard_id !== (int) $dashboard->id) {
-            return false;
-        }
-
-        return $this->user()?->can('update', $widget) ?? false;
+        return $dashboard instanceof IoTDashboard
+            && $widget instanceof IoTDashboardWidget
+            && (int) $widget->iot_dashboard_id === (int) $dashboard->id
+            && $user !== null
+            && $user->can('view', $dashboard)
+            && $user->can('layout', $widget);
     }
 
     /**
-     * Get the validation rules that apply to the request.
-     *
      * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array

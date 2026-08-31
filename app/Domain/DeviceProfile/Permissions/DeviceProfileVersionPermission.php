@@ -17,4 +17,5 @@ enum DeviceProfileVersionPermission: string
     case DELETE = 'DeviceProfileVersion.delete';
     case RESTORE = 'DeviceProfileVersion.restore';
     case FORCE_DELETE = 'DeviceProfileVersion.force-delete';
+    case ACTIVATE = 'DeviceProfileVersion.activate';
 }

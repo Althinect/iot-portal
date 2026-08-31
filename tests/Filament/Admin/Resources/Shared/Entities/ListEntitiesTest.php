@@ -29,6 +29,6 @@ it('allows bulk deleting entities', function (): void {
         ->callAction(TestAction::make(DeleteBulkAction::class)->table()->bulk())
         ->assertNotified();
 
-    $this->assertDatabaseMissing('entities', ['id' => $entityA->id]);
-    $this->assertDatabaseMissing('entities', ['id' => $entityB->id]);
+    $this->assertSoftDeleted($entityA);
+    $this->assertSoftDeleted($entityB);
 });

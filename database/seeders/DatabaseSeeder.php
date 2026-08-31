@@ -32,6 +32,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             UserSeeder::class,
             OrganizationSeeder::class,
+            TenantRoleSeeder::class,
             WitcoMigrationSeeder::class,
             WitcoDashboardSeeder::class,
             MiracleDomeMigrationSeeder::class,

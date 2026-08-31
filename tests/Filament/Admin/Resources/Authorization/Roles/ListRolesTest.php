@@ -44,7 +44,7 @@ it('can search for roles by name', function (): void {
         ->assertCanNotSeeTableRecords([$role2]);
 });
 
-it('displays no records message when empty', function (): void {
+it('creates protected tenant roles for a new organization', function (): void {
     livewire(ListRoles::class)
-        ->assertCountTableRecords(0);
+        ->assertCountTableRecords(3);
 });

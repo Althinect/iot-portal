@@ -9,7 +9,9 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Tenant-scoped hierarchical entity used to represent buildings/floors/zones/etc.
@@ -18,6 +20,8 @@ class Entity extends Model
 {
     /** @use HasFactory<EntityFactory> */
     use HasFactory;
+
+    use SoftDeletes;
 
     protected $guarded = ['id'];
 
@@ -36,6 +40,7 @@ class Entity extends Model
 
         // Always ensure the chained label is kept up-to-date on save
         static::saving(function (self $model): void {
+            $model->validateParent();
             $model->label = $model->generateLabel();
         });
 
@@ -88,5 +93,36 @@ class Entity extends Model
         }
 
         return implode(' -> ', $parts);
+    }
+
+    private function validateParent(): void
+    {
+        if ($this->parent_id === null) {
+            return;
+        }
+
+        $parent = self::query()->find($this->parent_id);
+
+        if (! $parent instanceof self || (int) $parent->organization_id !== (int) $this->organization_id) {
+            throw ValidationException::withMessages([
+                'parent_id' => 'The parent site must belong to the same organization.',
+            ]);
+        }
+
+        $current = $parent;
+        $visited = 0;
+
+        while ($current instanceof self && $visited < 100) {
+            if ($this->exists && $current->is($this)) {
+                throw ValidationException::withMessages([
+                    'parent_id' => 'A site cannot be nested beneath itself.',
+                ]);
+            }
+
+            $current = $current->parent_id !== null
+                ? self::query()->find($current->parent_id)
+                : null;
+            $visited++;
+        }
     }
 }

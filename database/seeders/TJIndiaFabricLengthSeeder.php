@@ -58,7 +58,8 @@ class TJIndiaFabricLengthSeeder extends TJIndiaMigrationSeederSupport
         }
 
         foreach ($inventory as $deviceConfig) {
-            $parentDevice = $hubs[$deviceConfig['hub_imei']] ?? null;
+            $parentHubImei = $this->parentHubImeiFor($deviceConfig);
+            $parentDevice = $hubs[$parentHubImei] ?? null;
             $signature = $this->schemaSignatureFor($deviceConfig);
             $schemaVersion = $schemaVersions[$signature] ?? null;
 
@@ -81,6 +82,7 @@ class TJIndiaFabricLengthSeeder extends TJIndiaMigrationSeederSupport
                     'legacy_device_uid' => $deviceConfig['legacy_device_uid'],
                     'legacy_virtual_device_id' => $deviceConfig['legacy_virtual_device_id'],
                     'legacy_hub_imei' => $deviceConfig['hub_imei'],
+                    'legacy_parent_hub_imei' => $parentHubImei,
                     'legacy_peripheral_type_hex' => $deviceConfig['peripheral_type_hex'],
                     'legacy_parameter_map' => $deviceConfig['parameter_map'],
                     'legacy_conditional_calibrations' => $deviceConfig['conditional_calibrations'],

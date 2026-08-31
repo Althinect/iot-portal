@@ -27,4 +27,13 @@ class TJIndiaMigrationSeederSupport extends LegacyImoniMigrationSeederSupport
     {
         return $this->energyProfileDisplayName($name, $profileVersion);
     }
+
+    protected function parentHubImeiFor(array $deviceConfig): ?string
+    {
+        $parentHubImei = $deviceConfig['parent_hub_imei'] ?? $deviceConfig['hub_imei'] ?? null;
+
+        return is_string($parentHubImei) && $parentHubImei !== ''
+            ? $parentHubImei
+            : null;
+    }
 }
