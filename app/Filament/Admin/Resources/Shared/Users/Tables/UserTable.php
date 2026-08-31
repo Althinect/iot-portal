@@ -86,7 +86,9 @@ class UserTable
                     ->action(function (array $data, User $record): void {
                         $record->forceFill([
                             'password' => $data['password'],
-                        ])->setRememberToken(Str::random(60))->save();
+                        ]);
+                        $record->setRememberToken(Str::random(60));
+                        $record->save();
 
                         Password::deleteToken($record);
 
