@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Filament\Portal\Resources\DeviceManagement\Devices\Pages;
 
+use App\Domain\DeviceManagement\Enums\MqttSecurityMode;
 use App\Domain\DeviceManagement\Models\Device;
 use App\Domain\DeviceManagement\Services\DeviceCertificateIssuer;
-use App\Domain\DeviceProfile\Enums\Protocol;
+use App\Domain\DeviceManagement\Services\DeviceConnectionKitBuilder;
+use App\Domain\DeviceManagement\ValueObjects\Protocol\MqttProtocolConfig;
 use App\Filament\Portal\Resources\DeviceManagement\Devices\DeviceResource;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Concerns\InteractsWithRecord;
@@ -49,17 +51,19 @@ class DeviceCredentials extends Page
         return $this->device()->activeCertificate()->exists();
     }
 
-    public function usesMqtt(): bool
+    public function usesMqttX509(): bool
     {
         $this->device()->loadMissing('profileVersion');
+        $protocolConfig = $this->device()->profileVersion?->protocol_config;
 
-        return $this->device()->profileVersion?->protocol === Protocol::Mqtt;
+        return $protocolConfig instanceof MqttProtocolConfig
+            && $protocolConfig->securityMode === MqttSecurityMode::X509Mtls;
     }
 
     public function issue(): void
     {
         Gate::authorize('manageCredentials', $this->record);
-        abort_unless($this->usesMqtt(), 422);
+        abort_unless($this->usesMqttX509(), 422);
         $device = $this->device();
         $issuer = app(DeviceCertificateIssuer::class);
         $userId = auth()->id();
@@ -95,7 +99,10 @@ class DeviceCredentials extends Page
     {
         Gate::authorize('manageCredentials', $this->record);
         abort_unless($this->credentialBundle !== null, 404);
-        $payload = json_encode($this->credentialBundle, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
+        $payload = json_encode([
+            ...app(DeviceConnectionKitBuilder::class)->build($this->device()),
+            'credentials' => $this->credentialBundle,
+        ], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
         $filename = Str::slug($this->device()->name).'-credentials.json';
         $this->credentialBundle = null;
 

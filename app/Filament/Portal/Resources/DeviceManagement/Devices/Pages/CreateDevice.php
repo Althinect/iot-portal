@@ -66,6 +66,6 @@ class CreateDevice extends CreateRecord
 
     protected function getRedirectUrl(): string
     {
-        return DeviceResource::getUrl('credentials', ['record' => $this->record]);
+        return DeviceResource::getUrl('control-dashboard', ['record' => $this->record]);
     }
 }

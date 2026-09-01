@@ -16,7 +16,7 @@
                 </div>
             </div>
 
-            @if ($this->usesMqtt())
+            @if ($this->usesMqttX509())
                 <div class="flex flex-wrap gap-3">
                     <x-filament::button wire:click="issue" icon="heroicon-o-key">
                         {{ $this->hasActiveCertificate() ? 'Rotate credentials' : 'Issue credentials' }}
@@ -30,7 +30,7 @@
                 </div>
             @else
                 <p class="text-sm text-gray-600 dark:text-gray-300">
-                    This device profile does not use MQTT X.509 credentials. Connection secrets remain platform-managed.
+                    This device profile is not configured for MQTT X.509 mTLS. Shared profile passwords are not exposed in the Portal.
                 </p>
             @endif
         </div>
@@ -39,7 +39,7 @@
     @if ($credentialBundle !== null)
         <x-filament::section
             heading="One-time credential download"
-            description="Download this file now. After download or page refresh, the private key will no longer be available in the Portal."
+            description="Download this file now. It includes the broker, client ID, resolved topics, CA certificate, device certificate, and private key. After download or page refresh, the private key will no longer be available in the Portal."
             :icon="\Filament\Support\Icons\Heroicon::OutlinedArrowDownTray"
             class="mt-6"
         >

@@ -432,11 +432,11 @@ class DeviceResource extends Resource
             ])
             ->recordActions([
                 Action::make('controlDashboard')
-                    ->label('Control Dashboard')
+                    ->label('Setup, Test & Control')
                     ->icon(Heroicon::OutlinedCommandLine)
                     ->url(fn (Device $record): string => self::getUrl('control-dashboard', ['record' => $record]))
                     ->visible(fn (Device $record): bool => ! $record->trashed()
-                        && $record->canBeControlled()
+                        && ($record->canBeControlled() || $record->canBeSimulated())
                         && Gate::allows('control', $record)),
                 ViewAction::make(),
                 EditAction::make()->visible(fn (Device $record): bool => ! $record->trashed()),

@@ -1,4 +1,8 @@
 <x-filament-panels::page>
+    @if (method_exists($this, 'getConnectionKit'))
+        @include('filament.portal.resources.device-management.devices.partials.connection-kit')
+    @endif
+
     <style>
         .dc-status-indicator {
             display: inline-flex;

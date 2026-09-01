@@ -32,11 +32,11 @@ class ViewDevice extends ViewRecord
                 ->visible(fn (): bool => $this->record instanceof Device
                     && Gate::allows('manageCredentials', $this->record)),
             Action::make('controlDashboard')
-                ->label('Control Dashboard')
+                ->label('Setup, Test & Control')
                 ->icon(Heroicon::OutlinedCommandLine)
                 ->url(fn (): string => DeviceResource::getUrl('control-dashboard', ['record' => $this->record]))
                 ->visible(fn (): bool => $this->record instanceof Device
-                    && $this->record->canBeControlled()
+                    && ($this->record->canBeControlled() || $this->record->canBeSimulated())
                     && Gate::allows('control', $this->record)),
         ];
     }

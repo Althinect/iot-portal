@@ -145,7 +145,7 @@ it('shows and opens the control dashboard for a device in the current portal ten
 
     $this->get(DeviceResource::getUrl('control-dashboard', ['record' => $device]))
         ->assertSuccessful()
-        ->assertSee('Control Dashboard')
+        ->assertSee('Setup, Test &amp; Control', escape: false)
         ->assertSee($device->name);
 
     livewire(DeviceControlDashboard::class, ['record' => $device->id])
